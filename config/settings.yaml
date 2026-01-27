@@ -1,0 +1,127 @@
+# =============================================================
+# Omni-P4 Shogun-Hybrid "Long Context" - Configuration
+# =============================================================
+
+system:
+  name: "Omni-P4 Shogun-Hybrid"
+  version: "3.0"
+  language: "ja"  # Primary language: Japanese
+
+# --- Network ---
+network:
+  controller_host: "0.0.0.0"
+  controller_port: 8400
+  ollama_base_url: "http://localhost:11434"
+
+# --- Cloud Agents (API) ---
+cloud:
+  shogun:
+    codename: "Shogun"
+    model: "claude-opus-4-5-20250514"
+    role: "最高意思決定者 - プロジェクト全体の戦略判断、解決不能なバグの最終診断"
+    max_tokens: 4096
+    temperature: 0.3
+  karo:
+    codename: "Karo"
+    model: "claude-sonnet-4-5-20250514"
+    role: "実装参謀 - 将軍の補佐。最高レベルのコーディング能力で複雑な実装方針を策定"
+    max_tokens: 8192
+    temperature: 0.4
+
+# --- Local Agents (Ollama) ---
+local:
+  # Mode A: 軍議 (Deep Thinking) - Exclusive memory use
+  mode_a:
+    taisho:
+      codename: "Taisho"
+      model: "taisho-r1-14b-jp"
+      base_model: "cyberagent/deepseek-r1-distill-qwen-14b-japanese"
+      quantization: "Q8_0"
+      num_ctx: 32768
+      role: "設計・推論 - 日本語ネイティブ。<think>タグで深く推論し論理的な解決策を導出"
+
+  # Mode B: 進軍 (Action) - Parallel workers
+  mode_b:
+    leader:
+      codename: "Leader"
+      model: "leader-hermes-8b"
+      base_model: "nous-hermes-llama3.1:8b"
+      quantization: "Q6_K"
+      num_ctx: 32768
+      role: "現場監督 (Agentic) - 自律判断。エラー時の回避策考案、指示の噛み砕き"
+    coder:
+      codename: "Coder"
+      model: "coder-qwen-7b"
+      base_model: "qwen2.5-coder:7b"
+      quantization: "Q6_K"
+      num_ctx: 32768
+      role: "実装職人 - コード記述、Linuxコマンド操作に特化。ESP32-P4開発"
+    scout:
+      codename: "Scout"
+      model: "scout-qwen-1.5b"
+      base_model: "qwen2.5:1.5b"
+      quantization: "Q8_0"
+      num_ctx: 4096
+      role: "斥候 (Scout) - 爆速でログ収集・検索・単純整形を行う"
+
+# --- Memory Allocation (24GB Total) ---
+memory:
+  total_gb: 24
+  controller_mb: 1024
+  mode_a_gb: 22       # Taisho exclusive
+  mode_b_gb: 18       # Leader + Coder + Scout shared
+
+# --- Proxmox LXC ---
+proxmox:
+  ct100:
+    name: "honin-controller"
+    memory_mb: 1024
+    role: "本陣 - タスクキュー管理、モード切替制御"
+  ct101:
+    name: "taisho-chamber"
+    memory_mb: 22528
+    role: "侍大将ノ間 - Mode A用"
+  ct102:
+    name: "ashigaru-barracks"
+    memory_mb: 18432
+    role: "足軽長屋 - Mode B用"
+
+# --- Escalation Policy ---
+escalation:
+  # Auto-escalate if local agent fails after N retries
+  max_local_retries: 2
+  # Escalation chain: Scout -> Coder/Leader -> Taisho -> Karo -> Shogun
+  chain:
+    - scout
+    - coder
+    - leader
+    - taisho
+    - karo
+    - shogun
+
+# --- Task Categories ---
+task_categories:
+  recon:
+    description: "偵察 - ログ収集、ファイル検索、情報抽出"
+    default_agent: "scout"
+    mode: "b"
+  code:
+    description: "実装 - コード記述、ファイル編集、ビルド"
+    default_agent: "coder"
+    mode: "b"
+  plan:
+    description: "設計 - タスク分解、方針決定、コードレビュー"
+    default_agent: "leader"
+    mode: "b"
+  think:
+    description: "深考 - 複雑な推論、設計判断、日本語での議論"
+    default_agent: "taisho"
+    mode: "a"
+  strategy:
+    description: "戦略 - プロジェクト全体方針、最終判断"
+    default_agent: "karo"
+    mode: "cloud"
+  critical:
+    description: "最終決裁 - 将軍への直訴"
+    default_agent: "shogun"
+    mode: "cloud"

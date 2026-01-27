@@ -1,0 +1,14 @@
+# Omni-P4 Shogun-Hybrid Dependencies
+# Core
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+httpx>=0.27.0
+pyyaml>=6.0
+pydantic>=2.0
+
+# Anthropic API (optional - for cloud agents)
+anthropic>=0.40.0
+
+# Utilities
+python-dotenv>=1.0
+rich>=13.0
