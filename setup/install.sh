@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# Omni-P4 将軍システム v5.0 - Controller Installation
+# 将軍システム v5.0 - Controller Installation
 # =============================================================
 # CT 100 (本陣) で実行。Python + Node.js + MCP + CLI をセットアップ。
 #
@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo "============================================="
-echo "  Omni-P4 将軍システム v5.0 - 本陣セットアップ"
+echo "  将軍システム v5.0 - 本陣セットアップ"
 echo "  Project: ${PROJECT_DIR}"
 echo "============================================="
 
@@ -92,7 +92,7 @@ echo "[7/8] 環境変数..."
 ENV_FILE="${PROJECT_DIR}/.env"
 if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" << 'ENV'
-# Omni-P4 将軍システム v5.0 - 環境変数
+# 将軍システム v5.0 - 環境変数
 
 # Anthropic API (将軍/家老のAPIフォールバック用)
 # ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
@@ -117,7 +117,7 @@ if [ ! -f "$ENV_FILE" ]; then
 # BRAVE_API_KEY=BSAxxxxx
 
 # Database
-# DATABASE_URL=postgresql://user:pass@localhost:5432/omni_p4
+# DATABASE_URL=postgresql://user:pass@localhost:5432/shogun
 ENV
     echo "  .env テンプレート作成。APIキーを設定してください。"
 else
@@ -130,7 +130,10 @@ echo "[8/8] Git自動同期..."
 SYNC_SCRIPT="${PROJECT_DIR}/setup/auto_sync.sh"
 cat > "$SYNC_SCRIPT" << 'SYNC'
 #!/bin/bash
-REPO_PATH="/home/claude/omni-p4"
+# Detect repo path: GitHub {user}/{repo} → /home/claude/{repo}
+LOCAL_BASE="/home/claude"
+REPO_NAME=$(basename "$(git -C "${PROJECT_DIR}" remote get-url origin 2>/dev/null | sed 's/\.git$//')" 2>/dev/null || echo "")
+REPO_PATH="${LOCAL_BASE}/${REPO_NAME:-$(basename "$PROJECT_DIR")}"
 LOG_FILE="/var/log/repo-sync.log"
 
 log() {

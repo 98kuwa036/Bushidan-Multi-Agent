@@ -97,7 +97,10 @@ class Controller:
         }
 
         # Repo path for git sync
-        self.repo_path = self.config.get("repo_path", "/home/claude/omni-p4")
+        # GitHub username/ 以降と /home/claude/ 以降を同期
+        repo_cfg = self.config.get("repo", {})
+        self.repo_local_base = repo_cfg.get("local_base", "/home/claude")
+        self.repo_path = self._detect_repo_path()
 
     @property
     def api_provider(self):
@@ -270,7 +273,7 @@ class Controller:
         logger.info("[侍大将] 推論開始 (%s)", mode_label)
 
         system = (
-            "あなたは侍大将です。Omni-P4プロジェクトの設計・推論担当。\n"
+            "あなたは侍大将です。プロジェクトの設計・推論担当。\n"
             "<think>タグで日本語で深く推論し、論理的な結論を導いてください。\n"
         )
         if company_mode:
@@ -416,23 +419,52 @@ class Controller:
     def _get_system_prompt(self, agent: str) -> str:
         if agent == "shogun":
             return (
-                "あなたはOmni-P4プロジェクトの将軍（Shogun）です。\n"
+                "あなたはプロジェクトの将軍（Shogun）です。\n"
                 "最高意思決定者として、プロジェクト全体の戦略的判断と最終決裁を行います。\n"
                 "配下の家老・侍大将が解決できなかった難問がエスカレーションとして届きます。\n"
                 "前任者の分析結果を踏まえつつ、根本的な解決策を提示してください。\n"
-                "ESP32-P4、Proxmox VE、組み込みLinux、RTOS全般に精通しています。\n"
             )
         elif agent == "karo":
             return (
-                "あなたはOmni-P4プロジェクトの家老（Karo）です。\n"
+                "あなたはプロジェクトの家老（Karo）です。\n"
                 "将軍の右腕として、作業の割振りと高度な実装方針の策定を行います。\n"
                 "侍大将からの分析結果を受け、具体的なコード変更提案を行ってください。\n"
-                "ESP-IDF、FreeRTOS、Linuxドライバに精通した実装のスペシャリストです。\n"
                 "複雑な統合タスクを分解し、明確な実装手順を示してください。\n"
             )
         return ""
 
     # ─── Git Sync ───
+
+    def _detect_repo_path(self) -> str:
+        """Detect local repo path from git remote URL.
+
+        Maps: github.com/{user}/{repo} → {local_base}/{repo}
+        """
+        base = self.repo_local_base
+        # Try to read git remote from current directory
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "remote", "get-url", "origin"],
+                capture_output=True, text=True, timeout=5,
+                cwd=str(self.base_dir),
+            )
+            if result.returncode == 0:
+                url = result.stdout.strip()
+                # Extract repo name from URL
+                # https://github.com/user/repo.git → repo
+                # git@github.com:user/repo.git → repo
+                repo_name = url.rstrip("/").rstrip(".git").rsplit("/", 1)[-1]
+                if repo_name:
+                    path = f"{base}/{repo_name}"
+                    logger.info("[本陣] リポジトリ検出: %s → %s", url, path)
+                    return path
+        except Exception:
+            pass
+
+        # Fallback: use base dir directly
+        logger.info("[本陣] リポジトリパス: %s", base)
+        return base
 
     async def _sync_repo(self) -> None:
         """Git sync (リポジトリ同期)."""

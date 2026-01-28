@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Omni-P4 将軍システム - CLI (IDE Console Interface)
+"""将軍システム - CLI (IDE Console Interface)
 
 IDEのコンソールから呼び出せるCLIインターフェース。
 
@@ -106,7 +106,7 @@ async def cmd_repl(args) -> None:
     current_agent = ""
 
     print("=" * 60)
-    print("  Omni-P4 将軍システム v5.0 - 対話モード")
+    print("  将軍システム v5.0 - 対話モード")
     print("=" * 60)
     print(f"  編成: {'大隊' if current_mode == 'battalion' else '中隊'}")
     print()
@@ -285,7 +285,7 @@ def cmd_server(args) -> None:
 def main():
     parser = argparse.ArgumentParser(
         prog="shogun",
-        description="Omni-P4 将軍システム v5.0 - 階層型ハイブリッドAI開発システム",
+        description="将軍システム v5.0 - 階層型ハイブリッドAI開発システム",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="詳細ログ")
     sub = parser.add_subparsers(dest="command")

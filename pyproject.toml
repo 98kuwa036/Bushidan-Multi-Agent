@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
-name = "omni-p4-shogun"
+name = "shogun-hybrid"
 version = "5.0.0"
-description = "Omni-P4 将軍システム Hybrid: 階層型ハイブリッドAI開発システム"
+description = "将軍システム Hybrid: 階層型ハイブリッドAI開発システム"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

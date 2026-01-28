@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# Omni-P4 将軍システム v5.0 - Proxmox LXC Setup
+# 将軍システム v5.0 - Proxmox LXC Setup
 # =============================================================
 # Proxmoxホスト上で実行。CT 100 (本陣) と CT 101 (侍大将) を作成。
 #
@@ -15,7 +15,7 @@ STORAGE="${1:-local-lvm}"
 TEMPLATE="local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
 
 echo "============================================="
-echo "  Omni-P4 将軍システム - Proxmox Setup"
+echo "  将軍システム - Proxmox Setup"
 echo "  Storage: ${STORAGE}"
 echo "============================================="
 

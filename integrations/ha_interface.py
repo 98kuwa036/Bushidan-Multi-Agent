@@ -19,7 +19,7 @@ RPi 4B (HA OS) からのHTTP API受付。
 # Home Assistant configuration.yaml テンプレート
 HA_CONFIG_TEMPLATE = """\
 # ==============================
-# Omni-P4 将軍システム HA OS統合
+# 将軍システム HA OS統合
 # ==============================
 
 rest_command:

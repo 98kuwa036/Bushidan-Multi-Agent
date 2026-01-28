@@ -1,4 +1,4 @@
-"""Omni-P4 将軍システム - FastAPI Server
+"""将軍システム - FastAPI Server
 
 REST API for CT 100 (本陣).
 Slack Bot, HA OS, メインPC全てのインターフェースが本陣経由。
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Omni-P4 将軍システム",
+        title="将軍システム",
         description="階層型ハイブリッドAI開発システム v5.0",
         version="5.0.0",
         lifespan=lifespan,
@@ -78,7 +78,7 @@ def create_app() -> FastAPI:
     @app.get("/")
     async def root():
         return {
-            "system": "Omni-P4 将軍システム",
+            "system": "将軍システム",
             "version": "5.0.0",
             "modes": ["battalion", "company"],
         }

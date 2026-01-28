@@ -10,8 +10,8 @@
   家訓:   #家訓-{rule}  (永続的ルール)
 
 起動方法:
-  @shogun-bot   → 大隊モード
-  @中隊          → 中隊モード (¥0)
+  @shogun-bot       → 大隊モード
+  @shogun-bot-light → 中隊モード (¥0)
 """
 
 import asyncio
@@ -131,8 +131,8 @@ class SlackShogun:
         channel = event.get("channel", "")
         thread_ts = event.get("thread_ts", event.get("ts", ""))
 
-        # Determine mode
-        if "中隊" in text:
+        # Determine mode: @shogun-bot-light → 中隊, @shogun-bot → 大隊
+        if "shogun-bot-light" in text.lower() or "light" in text.lower():
             mode = "company"
             task = self._clean_mention(text)
             self._post_as("shogun", channel,

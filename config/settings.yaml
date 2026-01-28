@@ -1,14 +1,19 @@
 # =============================================================
-# Omni-P4 将軍システム v5.0 - Configuration
+# 将軍システム v5.0 - Configuration
 # =============================================================
 
 system:
-  name: "Omni-P4 将軍システム Hybrid"
+  name: "将軍システム Hybrid"
   version: "5.0"
   language: "ja"
 
-# --- リポジトリ ---
-repo_path: "/home/claude/omni-p4"
+# --- リポジトリ同期 ---
+# GitHubリモートの {username}/ 以降と /home/claude/ 以降を同期
+# 例: github.com/user/project → /home/claude/project
+repo:
+  local_base: "/home/claude"
+  github_remote: ""  # git remote から自動取得。手動設定も可
+  sync_interval_min: 5
 
 # --- 侍大将 R1 (OpenVINO) ---
 taisho:
