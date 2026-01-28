@@ -1,311 +1,196 @@
-# Omni-P4 Shogun-Hybrid "Long Context" v3.0
+# Omni-P4 将軍システム Hybrid v5.0
 
 ESP32-P4低レイヤー開発を支援する、クラウド/ローカルハイブリッド型の階層的AI開発システム。
+月額¥4,000-6,000で最高品質の開発環境を実現。
 
-## 概要
+## アーキテクチャ
 
 ```
-☁️ 天空層 (API)          🏰 地上層 (Proxmox / Ollama)
-┌─────────────────┐      ┌──────────────────────────────┐
-│ Shogun (Opus4.5)│      │ Mode A: 軍議                  │
-│ Karo (Sonnet4.5)│      │   └─ Taisho (14B Q8 / 32k)   │
-│   最終決裁のみ   │      │                                │
-└────────┬────────┘      │ Mode B: 進軍                  │
-         │ escalation    │   ├─ Leader (8B Q6 / 32k)     │
-         ▼               │   ├─ Coder  (7B Q6 / 32k)     │
-  ┌──────────────┐       │   └─ Scout  (1.5B Q8 / 4k)    │
-  │ CT100 本陣    │◄─────┤                                │
-  │ (Controller)  │       │ 排他運用: AとBは同時に動かない │
-  └──────────────┘       └──────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│ 将軍 (Shogun) ── Claude Opus 4.5                 │
+│ 最終決裁・戦略判断  ¥1,350/回  月1-5回           │  ☁️ Cloud
+│                                                  │  (claude-cli Pro版
+│ 家老 (Karo) ── Claude Sonnet 4.5                 │   → API fallback)
+│ 作業割振り・複雑実装  ¥280/回  月10-20回         │
+└──────────────────────────────────────────────────┘
+                       ↑ エスカレーション
+━━━━━━━━━━━━━━━ API / Local 境界 ━━━━━━━━━━━━━━━
+                       ↓ 指示
+┌──────────────────────────────────────────────────┐
+│ 侍大将 (Taisho) ── DeepSeek-R1-14B OpenVINO     │  🏰 CT 101
+│ 設計・推論・足軽の意見統一  ¥0  月900+回         │  (192.168.1.11)
+└──────────────────────────────────────────────────┘
+                       ↓ MCP指示
+┌──────────────────────────────────────────────────┐
+│ 足軽 × 8 ── MCPサーバー群                        │  ⚔️ CT 100
+│ 1.filesystem 2.github 3.fetch 4.memory           │  (192.168.1.10)
+│ 5.postgres 6.puppeteer 7.brave-search 8.slack    │
+└──────────────────────────────────────────────────┘
 ```
 
-### 特徴
+## 部隊編成
 
-1. **ハイブリッド頭脳**: Claude 4.5 API + ローカルOllama LLM
-2. **排他的モード切替**: 24GB RAMを最大活用（Mode A: 思考 / Mode B: 実働）
-3. **自動エスカレーション**: Scout → Coder → Leader → Taisho → Karo → Shogun
-4. **Long Context**: ローカル足軽に32kトークンの記憶
+### 大隊モード (Battalion) - デフォルト
+- **全階層利用可能**: 将軍 + 家老 + 侍大将 + 足軽×8
+- 複雑度に応じて自動ルーティング
+- Simple/Medium → 侍大将 (¥0)
+- Complex → 侍大将分析 → 家老実装 (¥280)
+- Strategic → 将軍決裁 (¥1,350)
+
+### 中隊モード (Company) - コスト優先
+- **侍大将 + 足軽のみ**: API不使用 ¥0
+- Simple/Mediumタスク専用
+- 能力超過時は大隊モード推奨を通知
 
 ## クイックスタート
 
-### 1. インストール
-
+### インストール
 ```bash
 cd /path/to/codings
 bash shogun/setup/install.sh
 source shogun/.venv/bin/activate
 ```
 
-### 2. Ollama準備
-
+### IDE コンソールから使う
 ```bash
-# Ollamaインストール (まだの場合)
-curl -fsSL https://ollama.com/install.sh | sh
-
-# モデルダウンロード
-bash shogun/setup/ollama_setup.sh all
-```
-
-### 3. 使用
-
-```bash
-# ヘルスチェック
-shogun health
-
 # 対話モード (REPL)
 shogun repl
 
-# 直接質問
+# 直接タスク実行
 shogun ask "ESP32-P4のSPI DMAの設定方法は？"
 
-# カテゴリ指定
-shogun ask -c think "DMAバッファのアライメント設計を考えて"
+# 中隊モード (¥0)
+shogun ask -m company "I2Sバッファサイズを決めて"
 
 # エージェント指定
 shogun ask -a taisho "このビルドエラーを分析して"
 
-# REST APIサーバー起動
-shogun server --port 8400
+# パイプ入力 (ログ解析)
+cat build.log | shogun pipe
+
+# APIサーバー起動
+shogun server --port 8080
+
+# ヘルスチェック
+shogun health
 ```
 
-## CLI コマンド一覧
-
-| コマンド | 説明 |
-|---------|------|
-| `shogun repl` | 対話モード (デフォルト) |
-| `shogun ask <prompt>` | タスク実行 |
-| `shogun ask -c <cat> <prompt>` | カテゴリ指定で実行 |
-| `shogun ask -a <agent> <prompt>` | エージェント指定で実行 |
-| `shogun mode` | 現在のモード表示 |
-| `shogun mode a` | Mode A (軍議) に切替 |
-| `shogun mode b` | Mode B (進軍) に切替 |
-| `shogun status` | システム状態表示 |
-| `shogun agents` | エージェント一覧 |
-| `shogun health` | Ollama接続チェック |
-| `shogun models` | ダウンロード済みモデル一覧 |
-| `shogun unload` | 全モデルをメモリから解放 |
-| `shogun server` | REST APIサーバー起動 |
-| `shogun pipe` | stdin からパイプ入力 |
-
-### REPL内コマンド
-
+### REPL コマンド
 ```
-/mode [a|b|cloud]  - モード切替
-/cat <category>    - デフォルトカテゴリ変更
-/agent <name>      - エージェント固定
-/agent             - エージェント固定解除
-/status            - ステータス表示
-/agents            - エージェント一覧
-quit               - 終了
+/mode [battalion|company]  モード切替
+/agent [taisho|karo|shogun] エージェント固定
+/agent                     自動選択に戻す
+/status                    ステータス
+/stats                     コスト統計
+/health                    ヘルスチェック
+quit                       終了
 ```
-
-### カテゴリ
-
-| カテゴリ | 説明 | デフォルトエージェント |
-|---------|------|---------------------|
-| `recon` | 偵察 (ログ収集・検索) | Scout |
-| `code` | 実装 (コーディング) | Coder |
-| `plan` | 設計 (タスク分解) | Leader |
-| `think` | 深考 (複雑な推論) | Taisho |
-| `strategy` | 戦略 (実装方針) | Karo |
-| `critical` | 最終決裁 | Shogun |
 
 ## REST API
 
-サーバー起動: `shogun server --port 8400`
+サーバー起動: `shogun server --port 8080`
 
 | Endpoint | Method | 説明 |
 |----------|--------|------|
-| `/` | GET | システム情報 |
-| `/ask` | POST | タスク投入 |
-| `/status` | GET | ステータス |
-| `/mode` | POST | モード切替 |
-| `/agents` | GET | エージェント一覧 |
-| `/tasks` | GET | タスク一覧 |
-| `/tasks/{id}` | GET | タスク詳細 |
-| `/health` | GET | ヘルスチェック |
-| `/unload` | POST | 全モデル解放 |
-
-### API使用例
+| `/api/task` | POST | タスク投入 (大隊/中隊) |
+| `/api/ask` | POST | HA OS音声用 (中隊固定) |
+| `/api/status` | GET | システム状態 |
+| `/api/stats` | GET | コスト統計 |
+| `/api/health` | GET | ヘルスチェック |
+| `/api/mode` | POST | モード切替 |
+| `/api/mcp` | GET | MCP (足軽) 状態 |
+| `/api/dashboard` | GET | 戦況報告 |
 
 ```bash
-# タスク投入
-curl -X POST http://localhost:8400/ask \
+# 大隊モード
+curl -X POST http://192.168.1.10:8080/api/task \
   -H 'Content-Type: application/json' \
-  -d '{"prompt": "ESP32-P4のGPIO設定コードを書いて", "category": "code"}'
+  -d '{"task": "Spotify統合実装", "mode": "battalion"}'
 
-# モード切替
-curl -X POST http://localhost:8400/mode \
-  -H 'Content-Type: application/json' \
-  -d '{"mode": "a"}'
+# 中隊モード
+curl -X POST http://192.168.1.10:8080/api/task \
+  -d '{"task": "I2Sバッファサイズ", "mode": "company"}'
 
-# ステータス確認
-curl http://localhost:8400/status
+# HA OS音声 (中隊固定)
+curl -X POST http://192.168.1.10:8080/api/ask \
+  -d '{"question": "I2Sバッファは何サンプル推奨？"}'
 ```
 
-## IDE連携
+## インターフェース
 
-### VS Code タスク設定
+| 経路 | 使用頻度 | 部隊 | コスト |
+|------|---------|------|--------|
+| エディタ拡張 (Pro版) | 95% | - | ¥0 (Pro月額内) |
+| Slack | 3% | 大隊/中隊 | 状況依存 |
+| HA OS 音声 | 2% | 中隊固定 | ¥0 |
+| API直接 | <1% | 指定可能 | 状況依存 |
 
-`.vscode/tasks.json`:
-```json
-{
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "Shogun: Ask",
-      "type": "shell",
-      "command": "shogun ask '${input:prompt}'",
-      "problemMatcher": []
-    },
-    {
-      "label": "Shogun: REPL",
-      "type": "shell",
-      "command": "shogun repl",
-      "isBackground": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Shogun: Status",
-      "type": "shell",
-      "command": "shogun status",
-      "problemMatcher": []
-    }
-  ],
-  "inputs": [
-    {
-      "id": "prompt",
-      "type": "promptString",
-      "description": "Task prompt"
-    }
-  ]
-}
-```
+## ハードウェア構成
 
-### パイプ統合
+| 機器 | スペック | 役割 |
+|------|---------|------|
+| HP ProDesk 600 G4 | i5-8500, 24GB, Proxmox | CT100 本陣 + CT101 侍大将 |
+| Raspberry Pi 4B | 8GB, HA OS | 音声アシスタント, 中隊トリガー |
+| メインPC | macOS/Linux/Windows | 日常開発 (エディタ拡張) |
 
-```bash
-# ビルドログを分析
-cat build.log | shogun pipe -c recon
-
-# エラーをCoderに投入
-grep "error" build.log | shogun pipe -c code -a coder
-```
-
-## アーキテクチャ
-
-### エージェント階層
+## コスト構成
 
 ```
-☁️ 将軍 (Shogun) ─── Claude Opus 4.5 (最高意思決定者)
-☁️ 家老 (Karo)   ─── Claude Sonnet 4.5 (実装参謀)
-─────────────────── API / Local 境界 ───────────────────
-🏰 侍大将 (Taisho) ── DeepSeek-R1-14B-JP Q8 / 32k (設計・推論)
-⚔️ 足軽頭 (Leader) ── Hermes-3-8B Q6 / 32k (現場監督)
-⚔️ 技術兵 (Coder)  ── Qwen2.5-Coder-7B Q6 / 32k (実装職人)
-⚔️ 小者   (Scout)  ── Qwen2.5-1.5B Q8 / 4k (斥候)
+固定費:
+  Claude Pro: ¥3,000/月
+  電力 (24h稼働): ¥800/月
+
+変動費:
+  Anthropic API: ¥1,000-3,000/月
+  (中隊モード活用で大幅削減)
+
+合計: ¥4,000-6,000/月
 ```
-
-### メモリ配分 (24GB)
-
-```
-Mode A (軍議):
-  CT100 Controller: 1GB
-  CT101 Taisho:     22GB (14B Q8 = ~15GB + 32k Context)
-  CT102:            停止
-
-Mode B (進軍):
-  CT100 Controller: 1GB
-  CT101:            停止
-  CT102 Ashigaru:   18GB
-    ├─ Leader:  6.6GB
-    ├─ Coder:   5.9GB
-    ├─ Scout:   1.8GB
-    └─ Buffer:  ~4GB (Context用)
-```
-
-### タスク実行フロー
-
-```
-1. タスク受信
-   │
-2. カテゴリ判定 → デフォルトエージェント選択
-   │
-3. モード切替 (必要時)
-   │  ├─ Mode A: Taisho ロード (22GB)
-   │  ├─ Mode B: Leader+Coder+Scout ロード (18GB)
-   │  └─ Cloud: ローカルモデル不要
-   │
-4. エージェント実行
-   │
-5. 結果判定
-   ├─ 成功 → 完了
-   └─ 失敗 → エスカレーション
-              └─ Scout → Coder → Leader → Taisho → Karo → Shogun
-```
-
-## Proxmoxセットアップ
-
-```bash
-# Proxmoxホストで実行
-bash shogun/setup/proxmox_setup.sh local-lvm
-
-# 各CTでOllamaセットアップ
-pct exec 101 -- bash /path/to/shogun/setup/ollama_setup.sh mode_a
-pct exec 102 -- bash /path/to/shogun/setup/ollama_setup.sh mode_b
-
-# コントローラーインストール
-pct exec 100 -- bash /path/to/shogun/setup/install.sh
-```
-
-## 環境変数
-
-| 変数 | 説明 | デフォルト |
-|------|------|-----------|
-| `ANTHROPIC_API_KEY` | Anthropic API キー (Cloud必須) | - |
-| `OLLAMA_BASE_URL` | Ollama エンドポイント | `http://localhost:11434` |
 
 ## ディレクトリ構成
 
 ```
 shogun/
-├── __init__.py
-├── cli.py                  # CLI エントリーポイント
-├── main.py                 # FastAPI サーバー
-├── requirements.txt
-├── pyproject.toml
-├── README.md               # このファイル
-│
+├── cli.py                  CLI (REPL + コマンド)
+├── main.py                 FastAPI サーバー
 ├── core/
-│   ├── __init__.py
-│   ├── controller.py       # モード切替 & オーケストレーション
-│   ├── task_queue.py       # タスクキュー管理
-│   └── escalation.py       # エスカレーション制御
-│
-├── agents/
-│   ├── __init__.py
-│   ├── base.py             # エージェント基底クラス (Local/Cloud)
-│   └── factory.py          # エージェント生成ファクトリ
-│
+│   ├── controller.py       本陣 (大隊/中隊制御)
+│   ├── task_queue.py       YAML タスクキュー
+│   ├── escalation.py       エスカレーション連鎖
+│   ├── complexity.py       複雑度判定エンジン
+│   ├── dashboard.py        戦況報告 (dashboard.md)
+│   └── mcp_manager.py      MCP (足軽×8) 管理
 ├── providers/
-│   ├── __init__.py
-│   ├── ollama.py           # Ollama REST API クライアント
-│   └── anthropic_api.py    # Anthropic Messages API クライアント
-│
+│   ├── claude_cli.py       Claude CLI (Pro版) ラッパー
+│   ├── anthropic_api.py    Anthropic API (フォールバック)
+│   └── openvino_client.py  OpenVINO R1 クライアント
+├── integrations/
+│   ├── slack_bot.py        Slack 10ボット統合
+│   └── ha_interface.py     HA OS 音声連携
+├── instructions/           エージェント役割定義
 ├── config/
-│   ├── settings.yaml       # システム設定
-│   └── modelfiles/
-│       ├── taisho.Modelfile
-│       ├── leader.Modelfile
-│       ├── coder.Modelfile
-│       └── scout.Modelfile
-│
+│   ├── settings.yaml       システム設定
+│   └── mcp_config.json     MCP サーバー定義
 ├── setup/
-│   ├── proxmox_setup.sh    # Proxmox LXC 作成
-│   ├── ollama_setup.sh     # Ollama + モデル導入
-│   └── install.sh          # Controller インストール
-│
-├── queue/                  # タスクキュー永続化
-├── status/                 # ステータスファイル
-└── logs/                   # ログディレクトリ
+│   ├── proxmox_setup.sh    Proxmox LXC 作成
+│   ├── openvino_setup.sh   R1 モデル変換 + サーバー
+│   └── install.sh          本陣インストール
+├── queue/                  タスクキュー (YAML)
+│   ├── tasks/              足軽別タスクファイル
+│   └── reports/            足軽別レポート
+├── status/                 dashboard.md
+├── context/                プロジェクトコンテキスト
+└── templates/              テンプレート
 ```
+
+## 構築手順
+
+1. **Proxmox**: `bash setup/proxmox_setup.sh local-lvm`
+2. **侍大将 (CT101)**: `pct enter 101 && bash setup/openvino_setup.sh`
+3. **本陣 (CT100)**: `pct enter 100 && bash setup/install.sh`
+4. **環境変数**: `.env` にAPIキー設定
+5. **動作確認**: `shogun health`
+
+## 参考
+
+- [multi-agent-shogun](https://github.com/yohey-w/multi-agent-shogun) - 設計思想の原典

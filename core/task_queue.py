@@ -1,125 +1,126 @@
-"""Task Queue - タスク管理キュー"""
+"""Task Queue - YAMLベースのタスクキュー管理
 
-import asyncio
+本家 multi-agent-shogun に倣い、YAML ファイルでエージェント間通信を行う。
+ファイル分離: 各足軽は自分専用のファイルのみ読み書き（RACE-001対策）。
+"""
+
 import json
 import logging
-import time
+import os
 import uuid
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger("shogun.queue")
+import yaml
+
+logger = logging.getLogger("shogun.task_queue")
 
 
 class TaskStatus(str, Enum):
     PENDING = "pending"
+    ASSIGNED = "assigned"
     IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
+    DONE = "done"
     FAILED = "failed"
+    BLOCKED = "blocked"
     ESCALATED = "escalated"
 
 
-class TaskCategory(str, Enum):
-    RECON = "recon"       # 偵察
-    CODE = "code"         # 実装
-    PLAN = "plan"         # 設計
-    THINK = "think"       # 深考
-    STRATEGY = "strategy" # 戦略
-    CRITICAL = "critical" # 最終決裁
+class Complexity(str, Enum):
+    SIMPLE = "simple"
+    MEDIUM = "medium"
+    COMPLEX = "complex"
+    STRATEGIC = "strategic"
+
+
+class DeploymentMode(str, Enum):
+    BATTALION = "battalion"  # 大隊: 家老+将軍+侍大将+足軽
+    COMPANY = "company"      # 中隊: 侍大将+足軽 only (¥0)
 
 
 @dataclass
 class Task:
-    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
-    prompt: str = ""
-    category: TaskCategory = TaskCategory.CODE
+    """Single task unit."""
+
+    prompt: str
+    id: str = field(default_factory=lambda: f"task_{uuid.uuid4().hex[:8]}")
     status: TaskStatus = TaskStatus.PENDING
+    complexity: Complexity = Complexity.SIMPLE
+    mode: DeploymentMode = DeploymentMode.BATTALION
     assigned_agent: str = ""
     result: str = ""
     error: str = ""
-    context: dict = field(default_factory=dict)
-    parent_id: str = ""
     escalation_count: int = 0
-    created_at: float = field(default_factory=time.time)
-    completed_at: float = 0.0
+    context: dict = field(default_factory=dict)
+    created_at: str = field(default_factory=lambda: datetime.now().isoformat())
+    completed_at: str = ""
+    cost_yen: int = 0
 
     def to_dict(self) -> dict:
-        d = asdict(self)
-        d["category"] = self.category.value
-        d["status"] = self.status.value
-        return d
+        return {
+            "id": self.id,
+            "prompt": self.prompt,
+            "status": self.status.value,
+            "complexity": self.complexity.value,
+            "mode": self.mode.value,
+            "assigned_agent": self.assigned_agent,
+            "result": self.result,
+            "error": self.error,
+            "escalation_count": self.escalation_count,
+            "context": self.context,
+            "created_at": self.created_at,
+            "completed_at": self.completed_at,
+            "cost_yen": self.cost_yen,
+        }
 
     @classmethod
     def from_dict(cls, d: dict) -> "Task":
-        d["category"] = TaskCategory(d["category"])
-        d["status"] = TaskStatus(d["status"])
-        return cls(**d)
+        return cls(
+            id=d["id"],
+            prompt=d["prompt"],
+            status=TaskStatus(d.get("status", "pending")),
+            complexity=Complexity(d.get("complexity", "simple")),
+            mode=DeploymentMode(d.get("mode", "battalion")),
+            assigned_agent=d.get("assigned_agent", ""),
+            result=d.get("result", ""),
+            error=d.get("error", ""),
+            escalation_count=d.get("escalation_count", 0),
+            context=d.get("context", {}),
+            created_at=d.get("created_at", ""),
+            completed_at=d.get("completed_at", ""),
+            cost_yen=d.get("cost_yen", 0),
+        )
 
 
 class TaskQueue:
-    """Async task queue with persistence."""
+    """YAML-based task queue (本家互換).
 
-    def __init__(self, queue_dir: str = "queue"):
-        self.queue_dir = Path(queue_dir)
-        self.queue_dir.mkdir(parents=True, exist_ok=True)
-        self._queue: asyncio.Queue[Task] = asyncio.Queue()
+    File layout:
+        queue/shogun_to_karo.yaml      将軍→家老
+        queue/tasks/ashigaru{N}.yaml   家老→足軽N (per-worker)
+        queue/reports/ashigaru{N}_report.yaml  足軽N→家老 (per-worker)
+    """
+
+    def __init__(self, base_dir: str):
+        self.base_dir = Path(base_dir)
+        self.queue_dir = self.base_dir / "queue"
+        self.tasks_dir = self.queue_dir / "tasks"
+        self.reports_dir = self.queue_dir / "reports"
         self._tasks: dict[str, Task] = {}
-        self._lock = asyncio.Lock()
 
-    async def enqueue(self, task: Task) -> str:
-        """Add a task to the queue."""
-        async with self._lock:
-            self._tasks[task.id] = task
-            await self._queue.put(task)
-            self._persist(task)
-            logger.info(
-                "[Queue] Enqueued: %s (%s) -> %s",
-                task.id, task.category.value, task.prompt[:50]
-            )
-        return task.id
+        # Ensure directories
+        self.queue_dir.mkdir(parents=True, exist_ok=True)
+        self.tasks_dir.mkdir(exist_ok=True)
+        self.reports_dir.mkdir(exist_ok=True)
 
-    async def dequeue(self) -> Task:
-        """Get next pending task."""
-        task = await self._queue.get()
-        task.status = TaskStatus.IN_PROGRESS
-        self._persist(task)
-        return task
-
-    async def complete(self, task_id: str, result: str) -> None:
-        """Mark a task as completed."""
-        async with self._lock:
-            if task_id in self._tasks:
-                task = self._tasks[task_id]
-                task.status = TaskStatus.COMPLETED
-                task.result = result
-                task.completed_at = time.time()
-                self._persist(task)
-                logger.info("[Queue] Completed: %s", task_id)
-
-    async def fail(self, task_id: str, error: str) -> None:
-        """Mark a task as failed."""
-        async with self._lock:
-            if task_id in self._tasks:
-                task = self._tasks[task_id]
-                task.status = TaskStatus.FAILED
-                task.error = error
-                self._persist(task)
-                logger.warning("[Queue] Failed: %s - %s", task_id, error)
-
-    async def escalate(self, task_id: str) -> None:
-        """Mark a task for escalation."""
-        async with self._lock:
-            if task_id in self._tasks:
-                task = self._tasks[task_id]
-                task.status = TaskStatus.ESCALATED
-                task.escalation_count += 1
-                self._persist(task)
-                logger.info(
-                    "[Queue] Escalated: %s (count=%d)",
-                    task_id, task.escalation_count
-                )
+    def enqueue(self, task: Task) -> None:
+        """Add task to queue."""
+        self._tasks[task.id] = task
+        self._write_shogun_queue()
+        logger.info("[Queue] Enqueued: %s (%s)", task.id, task.complexity.value)
 
     def get_task(self, task_id: str) -> Task | None:
         return self._tasks.get(task_id)
@@ -127,29 +128,117 @@ class TaskQueue:
     def get_all_tasks(self) -> list[Task]:
         return list(self._tasks.values())
 
-    def get_pending_count(self) -> int:
-        return self._queue.qsize()
+    def get_pending(self) -> list[Task]:
+        return [t for t in self._tasks.values() if t.status == TaskStatus.PENDING]
 
-    def _persist(self, task: Task) -> None:
-        """Save task state to disk."""
-        path = self.queue_dir / f"{task.id}.json"
-        path.write_text(json.dumps(task.to_dict(), ensure_ascii=False, indent=2))
+    def update_task(self, task: Task) -> None:
+        self._tasks[task.id] = task
+        self._write_shogun_queue()
 
-    async def load_from_disk(self) -> int:
-        """Restore pending tasks from disk on startup."""
-        count = 0
-        for path in sorted(self.queue_dir.glob("*.json")):
-            try:
-                data = json.loads(path.read_text())
-                task = Task.from_dict(data)
-                if task.status in (TaskStatus.PENDING, TaskStatus.IN_PROGRESS):
-                    task.status = TaskStatus.PENDING
+    def complete_task(self, task_id: str, result: str, cost_yen: int = 0) -> None:
+        task = self._tasks.get(task_id)
+        if task:
+            task.status = TaskStatus.DONE
+            task.result = result
+            task.cost_yen = cost_yen
+            task.completed_at = datetime.now().isoformat()
+            self._write_shogun_queue()
+
+    def fail_task(self, task_id: str, error: str) -> None:
+        task = self._tasks.get(task_id)
+        if task:
+            task.status = TaskStatus.FAILED
+            task.error = error
+            self._write_shogun_queue()
+
+    # --- YAML file I/O (本家互換) ---
+
+    def _write_shogun_queue(self) -> None:
+        """Write queue/shogun_to_karo.yaml."""
+        path = self.queue_dir / "shogun_to_karo.yaml"
+        data = {
+            "queue": [t.to_dict() for t in self._tasks.values()],
+        }
+        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False))
+
+    def write_ashigaru_task(self, worker_id: int, task: Task) -> None:
+        """Write per-worker task file (RACE-001 safe)."""
+        path = self.tasks_dir / f"ashigaru{worker_id}.yaml"
+        data = {
+            "worker_id": f"ashigaru{worker_id}",
+            "task_id": task.id,
+            "description": task.prompt,
+            "status": "assigned",
+            "assigned_at": datetime.now().isoformat(),
+        }
+        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False))
+        logger.info("[Queue] Assigned to ashigaru%d: %s", worker_id, task.id)
+
+    def write_ashigaru_report(
+        self, worker_id: int, task_id: str, status: str,
+        summary: str, files_modified: list[str] | None = None,
+        skill_candidate: dict | None = None,
+    ) -> None:
+        """Write per-worker report file (RACE-001 safe)."""
+        path = self.reports_dir / f"ashigaru{worker_id}_report.yaml"
+        data = {
+            "worker_id": f"ashigaru{worker_id}",
+            "task_id": task_id,
+            "timestamp": datetime.now().isoformat(),
+            "status": status,
+            "result": {
+                "summary": summary,
+                "files_modified": files_modified or [],
+            },
+            "skill_candidate": skill_candidate or {"found": False},
+        }
+        path.write_text(yaml.dump(data, allow_unicode=True, default_flow_style=False))
+
+    def read_ashigaru_report(self, worker_id: int) -> dict | None:
+        """Read a worker's report."""
+        path = self.reports_dir / f"ashigaru{worker_id}_report.yaml"
+        if not path.exists():
+            return None
+        return yaml.safe_load(path.read_text())
+
+    def reset_all_workers(self) -> None:
+        """Reset all worker files to idle state (startup)."""
+        for i in range(1, 9):
+            task_path = self.tasks_dir / f"ashigaru{i}.yaml"
+            task_path.write_text(yaml.dump({
+                "worker_id": f"ashigaru{i}",
+                "task_id": None,
+                "description": None,
+                "status": "idle",
+            }, allow_unicode=True))
+
+            report_path = self.reports_dir / f"ashigaru{i}_report.yaml"
+            report_path.write_text(yaml.dump({
+                "worker_id": f"ashigaru{i}",
+                "task_id": None,
+                "timestamp": None,
+                "status": "idle",
+                "result": None,
+                "skill_candidate": {"found": False},
+            }, allow_unicode=True))
+
+        # Clear main queue
+        (self.queue_dir / "shogun_to_karo.yaml").write_text(
+            yaml.dump({"queue": []}, allow_unicode=True)
+        )
+        logger.info("[Queue] All workers reset to idle")
+
+    def load_from_disk(self) -> None:
+        """Load tasks from shogun_to_karo.yaml."""
+        path = self.queue_dir / "shogun_to_karo.yaml"
+        if not path.exists():
+            return
+        try:
+            data = yaml.safe_load(path.read_text())
+            if data and "queue" in data:
+                for td in data["queue"]:
+                    task = Task.from_dict(td)
                     self._tasks[task.id] = task
-                    await self._queue.put(task)
-                    count += 1
-                else:
-                    self._tasks[task.id] = task
-            except Exception as e:
-                logger.error("Failed to load task %s: %s", path.name, e)
-        logger.info("[Queue] Loaded %d pending tasks from disk", count)
-        return count
+                logger.info("[Queue] Loaded %d tasks from disk", len(self._tasks))
+        except Exception as e:
+            logger.warning("[Queue] Failed to load: %s", e)

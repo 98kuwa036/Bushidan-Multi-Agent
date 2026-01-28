@@ -1,2 +1,2 @@
-"""Omni-P4 Shogun-Hybrid 'Long Context' System"""
-__version__ = "3.0.0"
+"""Omni-P4 将軍システム Hybrid v5.0"""
+__version__ = "5.0.0"

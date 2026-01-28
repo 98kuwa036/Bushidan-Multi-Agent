@@ -1,46 +1,42 @@
-"""Escalation Engine - エスカレーション制御"""
+"""Escalation Engine - エスカレーション制御
+
+エスカレーション連鎖:
+  足軽(MCP) → 侍大将(R1) → 家老(Sonnet) → 将軍(Opus)
+
+中隊モードでは侍大将が上限。能力超過時に大隊モード推奨を通知。
+"""
 
 import logging
-from typing import Any
-
-from shogun.core.task_queue import Task, TaskCategory, TaskStatus
+from shogun.core.task_queue import Task, TaskStatus, Complexity
 
 logger = logging.getLogger("shogun.escalation")
 
-# Escalation chain: lower index = lower tier
+# Escalation chain (lower index = lower tier)
 ESCALATION_CHAIN = [
-    "scout",    # 小者 (1.5B)
-    "coder",    # 技術兵 (7B)
-    "leader",   # 足軽頭 (8B)
-    "taisho",   # 侍大将 (14B)  -- mode switch required
-    "karo",     # 家老 (Cloud)
-    "shogun",   # 将軍 (Cloud)
+    "taisho",   # 侍大将 (R1, ローカル)
+    "karo",     # 家老 (Sonnet, 作業割振り)
+    "shogun",   # 将軍 (Opus, 最終決裁)
 ]
 
-# Category -> default starting agent
-CATEGORY_DEFAULT = {
-    TaskCategory.RECON: "scout",
-    TaskCategory.CODE: "coder",
-    TaskCategory.PLAN: "leader",
-    TaskCategory.THINK: "taisho",
-    TaskCategory.STRATEGY: "karo",
-    TaskCategory.CRITICAL: "shogun",
+# Complexity → default handler
+COMPLEXITY_HANDLER = {
+    Complexity.SIMPLE: "taisho",
+    Complexity.MEDIUM: "taisho",
+    Complexity.COMPLEX: "karo",       # 家老が将軍に渡す前に判断
+    Complexity.STRATEGIC: "shogun",   # 将軍が最終決裁
 }
 
-# Agent -> required mode
-AGENT_MODE = {
-    "scout": "b",
-    "coder": "b",
-    "leader": "b",
-    "taisho": "a",
-    "karo": "cloud",
-    "shogun": "cloud",
+# Agent → required cost (yen)
+AGENT_COST = {
+    "taisho": 0,
+    "karo": 280,
+    "shogun": 1350,
 }
 
 
-def get_default_agent(category: TaskCategory) -> str:
-    """Get the default agent for a task category."""
-    return CATEGORY_DEFAULT.get(category, "leader")
+def get_handler(complexity: Complexity) -> str:
+    """Get the default handler agent for a given complexity."""
+    return COMPLEXITY_HANDLER.get(complexity, "taisho")
 
 
 def get_next_escalation(current_agent: str) -> str | None:
@@ -51,43 +47,62 @@ def get_next_escalation(current_agent: str) -> str | None:
     try:
         idx = ESCALATION_CHAIN.index(current_agent)
     except ValueError:
-        logger.warning("Unknown agent: %s, defaulting to leader", current_agent)
-        return "leader"
+        return "taisho"  # Default: start from taisho
 
     if idx + 1 < len(ESCALATION_CHAIN):
         next_agent = ESCALATION_CHAIN[idx + 1]
-        logger.info("Escalation: %s -> %s", current_agent, next_agent)
+        logger.info("エスカレーション: %s → %s", current_agent, next_agent)
         return next_agent
 
-    logger.warning("Already at top of chain (Shogun). Cannot escalate further.")
+    logger.warning("将軍（最上位）。これ以上のエスカレーション不可。")
     return None
 
 
-def get_required_mode(agent: str) -> str:
-    """Get the operating mode required for an agent."""
-    return AGENT_MODE.get(agent, "b")
-
-
-def should_escalate(task: Task, max_retries: int = 2) -> bool:
-    """Determine if a failed task should be escalated."""
-    if task.status != TaskStatus.FAILED:
+def should_escalate(task: Task) -> bool:
+    """Determine if a failed/blocked task should be escalated."""
+    if task.status not in (TaskStatus.FAILED, TaskStatus.BLOCKED):
         return False
     if task.escalation_count >= len(ESCALATION_CHAIN) - 1:
         return False
     return True
 
 
+def can_handle_in_company_mode(complexity: Complexity) -> bool:
+    """Check if the task can be handled in company mode (中隊).
+
+    中隊 = 侍大将 + 足軽のみ。Simple/Medium のみ対応。
+    """
+    return complexity in (Complexity.SIMPLE, Complexity.MEDIUM)
+
+
 def build_escalation_context(task: Task) -> str:
-    """Build context message for the escalation target."""
+    """Build context message for escalation target."""
     parts = [
-        f"## エスカレーション報告 (Task: {task.id})",
+        "## エスカレーション報告",
+        f"**任務ID**: {task.id}",
         f"**元の指示**: {task.prompt}",
-        f"**カテゴリ**: {task.category.value}",
-        f"**前任エージェント**: {task.assigned_agent}",
+        f"**複雑度**: {task.complexity.value}",
+        f"**前任**: {task.assigned_agent}",
         f"**エスカレーション回数**: {task.escalation_count}",
     ]
     if task.error:
-        parts.append(f"**エラー内容**: {task.error}")
+        parts.append(f"**エラー**: {task.error}")
     if task.result:
-        parts.append(f"**途中経過**: {task.result}")
+        parts.append(f"**途中経過**:\n{task.result[:2000]}")
     return "\n".join(parts)
+
+
+def build_taisho_analysis_prompt(task: Task) -> str:
+    """Build prompt for Taisho to analyze before escalation to Karo/Shogun."""
+    return f"""あなたは侍大将です。以下の任務を分析し、上位への報告をまとめてください。
+実装は家老・将軍が行います。あなたは分析と方針提案のみ行ってください。
+
+## 任務
+{task.prompt}
+
+## 指示
+1. <think>タグで徹底的に思考してください
+2. 問題の本質を特定してください
+3. 推奨する解決方針を提案してください
+4. 足軽（MCPツール）で集めた情報があれば整理してください
+"""

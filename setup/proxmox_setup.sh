@@ -1,94 +1,110 @@
 #!/bin/bash
 # =============================================================
-# Omni-P4 Shogun-Hybrid - Proxmox LXC セットアップスクリプト
+# Omni-P4 将軍システム v5.0 - Proxmox LXC Setup
 # =============================================================
-# ProDesk 600 G4 (Core i5-8500, 24GB RAM, Proxmox VE)
+# Proxmoxホスト上で実行。CT 100 (本陣) と CT 101 (侍大将) を作成。
 #
-# CT 100: 本陣 (Controller)   - 1GB RAM
-# CT 101: 侍大将ノ間 (Mode A) - 22GB RAM
-# CT 102: 足軽長屋 (Mode B)   - 18GB RAM
-#
-# Usage: bash proxmox_setup.sh [STORAGE] [TEMPLATE]
+# Usage:
+#   bash proxmox_setup.sh [storage]
+#   bash proxmox_setup.sh local-lvm
 # =============================================================
 
 set -euo pipefail
 
 STORAGE="${1:-local-lvm}"
-TEMPLATE="${2:-local:vztmpl/debian-12-standard_12.7-1_amd64.tar.zst}"
-BRIDGE="vmbr0"
-GATEWAY="192.168.1.1"
-NAMESERVER="1.1.1.1"
+TEMPLATE="local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
 
 echo "============================================="
-echo "  Omni-P4 Shogun-Hybrid Proxmox Setup"
+echo "  Omni-P4 将軍システム - Proxmox Setup"
+echo "  Storage: ${STORAGE}"
 echo "============================================="
+
+# --- HugePages 設定 (20GB) ---
+echo "[1/6] HugePages 設定..."
+if ! grep -q "vm.nr_hugepages" /etc/sysctl.conf; then
+    echo "vm.nr_hugepages = 10240" >> /etc/sysctl.conf
+    sysctl -p
+    echo "  HugePages: 10240 (20GB)"
+else
+    echo "  HugePages: 既に設定済み"
+fi
 
 # --- CT 100: 本陣 (Controller) ---
 echo ""
-echo "[1/3] Creating CT 100: 本陣 (Controller)..."
-pct create 100 "$TEMPLATE" \
-  --hostname honin-controller \
-  --memory 1024 \
-  --swap 512 \
-  --cores 2 \
-  --rootfs "${STORAGE}:8" \
-  --net0 "name=eth0,bridge=${BRIDGE},ip=192.168.1.10/24,gw=${GATEWAY}" \
-  --nameserver "$NAMESERVER" \
-  --features nesting=1 \
-  --unprivileged 1 \
-  --start 0 \
-  --onboot 1 \
-  --description "Omni-P4 本陣: Task queue, mode switching, API gateway"
+echo "[2/6] CT 100: 本陣 作成..."
+if pct status 100 &>/dev/null; then
+    echo "  CT 100 既に存在。スキップ。"
+else
+    pct create 100 "$TEMPLATE" \
+        --hostname honmaru-control \
+        --memory 2048 \
+        --cores 2 \
+        --rootfs "${STORAGE}:20" \
+        --net0 name=eth0,bridge=vmbr0,ip=192.168.1.10/24,gw=192.168.1.1 \
+        --onboot 1
+    echo "  CT 100 作成完了"
+fi
 
-echo "  CT 100 created."
-
-# --- CT 101: 侍大将ノ間 (Mode A) ---
+# --- CT 101: 侍大将R1 (OpenVINO) ---
 echo ""
-echo "[2/3] Creating CT 101: 侍大将ノ間 (Mode A - Deep Thinking)..."
-pct create 101 "$TEMPLATE" \
-  --hostname taisho-chamber \
-  --memory 22528 \
-  --swap 2048 \
-  --cores 6 \
-  --rootfs "${STORAGE}:30" \
-  --net0 "name=eth0,bridge=${BRIDGE},ip=192.168.1.11/24,gw=${GATEWAY}" \
-  --nameserver "$NAMESERVER" \
-  --features nesting=1 \
-  --unprivileged 1 \
-  --start 0 \
-  --onboot 0 \
-  --description "Omni-P4 侍大将ノ間: DeepSeek-R1-14B-JP (Q8_0, 32k ctx)"
+echo "[3/6] CT 101: 侍大将R1 作成..."
+if pct status 101 &>/dev/null; then
+    echo "  CT 101 既に存在。スキップ。"
+else
+    pct create 101 "$TEMPLATE" \
+        --hostname taisho-openvino \
+        --memory 20480 \
+        --swap 0 \
+        --cores 6 \
+        --rootfs "${STORAGE}:50" \
+        --net0 name=eth0,bridge=vmbr0,ip=192.168.1.11/24,gw=192.168.1.1 \
+        --onboot 1
+    echo "  CT 101 作成完了"
+fi
 
-echo "  CT 101 created."
-
-# --- CT 102: 足軽長屋 (Mode B) ---
+# --- 最適化設定 ---
 echo ""
-echo "[3/3] Creating CT 102: 足軽長屋 (Mode B - Action)..."
-pct create 102 "$TEMPLATE" \
-  --hostname ashigaru-barracks \
-  --memory 18432 \
-  --swap 2048 \
-  --cores 6 \
-  --rootfs "${STORAGE}:30" \
-  --net0 "name=eth0,bridge=${BRIDGE},ip=192.168.1.12/24,gw=${GATEWAY}" \
-  --nameserver "$NAMESERVER" \
-  --features nesting=1 \
-  --unprivileged 1 \
-  --start 0 \
-  --onboot 0 \
-  --description "Omni-P4 足軽長屋: Hermes-8B + Qwen-Coder-7B + Qwen-1.5B"
+echo "[4/6] 最適化設定..."
 
-echo "  CT 102 created."
+# CT 101: CPU最適化
+pct set 101 --cputype host 2>/dev/null || true
+echo "  CT 101: cputype=host"
+
+# CT 101: メモリ固定 (balloon無効)
+if ! grep -q "balloon" /etc/pve/lxc/101.conf 2>/dev/null; then
+    echo "lxc.cgroup2.memory.max = 21474836480" >> /etc/pve/lxc/101.conf
+fi
+
+# HugePages マウント
+if ! grep -q "hugepages" /etc/pve/lxc/101.conf 2>/dev/null; then
+    echo "lxc.mount.entry: /dev/hugepages dev/hugepages none bind,create=dir 0 0" \
+        >> /etc/pve/lxc/101.conf
+    echo "  CT 101: HugePages マウント追加"
+fi
+
+# --- 起動 ---
+echo ""
+echo "[5/6] コンテナ起動..."
+pct start 100 2>/dev/null || echo "  CT 100: 既に稼働中"
+pct start 101 2>/dev/null || echo "  CT 101: 既に稼働中"
+
+sleep 3
+
+# --- 確認 ---
+echo ""
+echo "[6/6] 状態確認..."
+pct list | grep -E "^(100|101)"
 
 echo ""
 echo "============================================="
-echo "  All containers created successfully!"
+echo "  Proxmox Setup 完了!"
 echo ""
-echo "  Next steps:"
-echo "  1. Start CT 100: pct start 100"
-echo "  2. Install Ollama on CT 101 & 102:"
-echo "     pct exec 101 -- bash /path/to/ollama_setup.sh"
-echo "     pct exec 102 -- bash /path/to/ollama_setup.sh"
-echo "  3. Install Controller on CT 100:"
-echo "     pct exec 100 -- bash /path/to/install.sh"
+echo "  次のステップ:"
+echo "    1. CT 101 で OpenVINO セットアップ:"
+echo "       pct enter 101"
+echo "       bash /path/to/shogun/setup/openvino_setup.sh"
+echo ""
+echo "    2. CT 100 で本陣セットアップ:"
+echo "       pct enter 100"
+echo "       bash /path/to/shogun/setup/install.sh"
 echo "============================================="

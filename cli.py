@@ -1,448 +1,357 @@
 #!/usr/bin/env python3
-"""
-Omni-P4 Shogun-Hybrid CLI - IDEコンソールから呼び出せるインターフェース
+"""Omni-P4 将軍システム - CLI (IDE Console Interface)
+
+IDEのコンソールから呼び出せるCLIインターフェース。
 
 Usage:
-    shogun ask "ESP32-P4のDMA設定を教えて"
-    shogun ask --agent taisho "このビルドエラーを分析して"
-    shogun ask --category think "SPI DMAの設計方針を考えて"
+    shogun repl                     # 対話モード
+    shogun ask "prompt"             # タスク実行
+    shogun ask -m company "prompt"  # 中隊モード (¥0)
+    shogun ask -a taisho "prompt"   # エージェント指定
     shogun mode                     # 現在のモード表示
-    shogun mode a                   # Mode A (軍議) に切替
-    shogun mode b                   # Mode B (進軍) に切替
-    shogun status                   # システム状態表示
-    shogun agents                   # エージェント一覧
-    shogun health                   # Ollama接続チェック
-    shogun models                   # ロード済みモデル一覧
-    shogun unload                   # 全モデルアンロード
-    shogun server                   # FastAPIサーバー起動
+    shogun mode company             # 中隊モードに切替
+    shogun status                   # システム状態
+    shogun stats                    # コスト統計
+    shogun health                   # ヘルスチェック
+    shogun server                   # REST APIサーバー起動
+    shogun pipe                     # stdin パイプ入力
 """
 
 import argparse
 import asyncio
-import json
-import logging
 import os
 import sys
 from pathlib import Path
 
-# Ensure project root is on path
+# Ensure project root on path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from shogun.core.controller import Controller, SystemMode
-from shogun.core.task_queue import Task, TaskCategory
-from shogun.providers.ollama import OllamaClient
-from shogun.agents.factory import create_local_agents, create_cloud_agents
-
-# Logging
-LOG_FORMAT = "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
-
 
 def setup_logging(verbose: bool = False) -> None:
+    import logging
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(format=LOG_FORMAT, level=level, stream=sys.stderr)
-
-
-def find_config() -> str:
-    """Find settings.yaml in expected locations."""
-    candidates = [
-        PROJECT_ROOT / "shogun" / "config" / "settings.yaml",
-        Path("shogun/config/settings.yaml"),
-        Path("config/settings.yaml"),
-    ]
-    for c in candidates:
-        if c.exists():
-            return str(c)
-    raise FileNotFoundError("settings.yaml not found. Run from project root.")
-
-
-async def build_controller() -> Controller:
-    """Build and initialize the controller with all agents."""
-    config_path = find_config()
-    ctrl = Controller(config_path=config_path)
-
-    # Register local agents
-    local_agents = create_local_agents(ctrl.ollama, ctrl.config)
-    for name, agent in local_agents.items():
-        ctrl.register_agent(name, agent)
-
-    # Register cloud agents (optional - requires API key)
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if api_key:
-        try:
-            from shogun.providers.anthropic_api import AnthropicClient
-            anthropic = AnthropicClient(api_key=api_key)
-            cloud_agents = create_cloud_agents(anthropic, ctrl.config)
-            for name, agent in cloud_agents.items():
-                ctrl.register_agent(name, agent)
-        except Exception as e:
-            logging.warning("Cloud agents unavailable: %s", e)
-    else:
-        logging.info(
-            "ANTHROPIC_API_KEY not set. Cloud agents (Shogun/Karo) disabled."
-        )
-
-    return ctrl
-
-
-# ------------------------------------------------------------------
-# CLI Commands
-# ------------------------------------------------------------------
-
-async def cmd_ask(args: argparse.Namespace) -> None:
-    """Execute a task."""
-    ctrl = await build_controller()
-    try:
-        result = await ctrl.ask(
-            prompt=args.prompt,
-            category=args.category,
-            agent=args.agent or "",
-        )
-        print("\n" + "=" * 60)
-        print(f"[{args.category.upper()}] 結果:")
-        print("=" * 60)
-        print(result)
-        print("=" * 60)
-    finally:
-        await ctrl.shutdown()
-
-
-async def cmd_mode(args: argparse.Namespace) -> None:
-    """Show or switch mode."""
-    ctrl = await build_controller()
-    try:
-        if args.target:
-            target_map = {
-                "a": SystemMode.MODE_A,
-                "b": SystemMode.MODE_B,
-                "cloud": SystemMode.CLOUD,
-                "idle": SystemMode.IDLE,
-            }
-            target = target_map.get(args.target.lower())
-            if not target:
-                print(f"Unknown mode: {args.target}")
-                print("Available: a, b, cloud, idle")
-                return
-            await ctrl.switch_mode(target)
-            print(f"モード切替完了: {target.value}")
-            if target == SystemMode.MODE_A:
-                print("  -> 侍大将 (Taisho) ロード完了。軍議モード。")
-            elif target == SystemMode.MODE_B:
-                print("  -> 足軽隊 (Leader/Coder/Scout) ロード完了。進軍モード。")
-        else:
-            print(f"現在のモード: {ctrl.current_mode.value}")
-    finally:
-        await ctrl.shutdown()
-
-
-async def cmd_status(args: argparse.Namespace) -> None:
-    """Show system status."""
-    ctrl = await build_controller()
-    try:
-        st = ctrl.status()
-        print("=" * 50)
-        print("  Omni-P4 Shogun-Hybrid System Status")
-        print("=" * 50)
-        print(f"  Mode        : {st['mode']}")
-        print(f"  Agents      : {', '.join(st['agents_registered'])}")
-        print(f"  Pending     : {st['pending_tasks']}")
-        print(f"  Total Tasks : {st['total_tasks']}")
-
-        # Ollama status
-        healthy = await ctrl.ollama.health()
-        print(f"  Ollama      : {'Online' if healthy else 'OFFLINE'}")
-
-        if healthy:
-            models = await ctrl.ollama.list_models()
-            print(f"  Models (DL) : {len(models)}")
-            for m in models:
-                name = m.get("name", "unknown")
-                size_gb = m.get("size", 0) / (1024**3)
-                print(f"    - {name} ({size_gb:.1f} GB)")
-        print("=" * 50)
-    finally:
-        await ctrl.shutdown()
-
-
-async def cmd_agents(args: argparse.Namespace) -> None:
-    """List all agents."""
-    ctrl = await build_controller()
-    try:
-        print("=" * 70)
-        print("  Omni-P4 Agent Registry")
-        print("=" * 70)
-        print(f"  {'Name':<12} {'Codename':<12} {'Tier':<8} {'Role'}")
-        print("-" * 70)
-        for name, agent in sorted(ctrl._agents.items()):
-            print(
-                f"  {name:<12} {agent.codename:<12} {agent.tier:<8} "
-                f"{agent.role[:40]}..."
-            )
-        print("=" * 70)
-    finally:
-        await ctrl.shutdown()
-
-
-async def cmd_health(args: argparse.Namespace) -> None:
-    """Check Ollama connectivity."""
-    ollama = OllamaClient()
-    try:
-        ok = await ollama.health()
-        if ok:
-            print("Ollama: Online")
-            running = await ollama._get_client()
-            resp = await running.get("/api/ps")
-            loaded = resp.json().get("models", [])
-            if loaded:
-                print("Loaded models:")
-                for m in loaded:
-                    print(f"  - {m.get('name', '?')} (expires: {m.get('expires_at', '?')})")
-            else:
-                print("No models currently loaded.")
-        else:
-            print("Ollama: OFFLINE")
-            print("Start with: ollama serve")
-    finally:
-        await ollama.close()
-
-
-async def cmd_models(args: argparse.Namespace) -> None:
-    """List models."""
-    ollama = OllamaClient()
-    try:
-        models = await ollama.list_models()
-        print(f"Available models ({len(models)}):")
-        for m in models:
-            name = m.get("name", "?")
-            size_gb = m.get("size", 0) / (1024**3)
-            modified = m.get("modified_at", "?")
-            print(f"  {name:<40} {size_gb:>6.1f} GB  ({modified})")
-    finally:
-        await ollama.close()
-
-
-async def cmd_unload(args: argparse.Namespace) -> None:
-    """Unload all models."""
-    ollama = OllamaClient()
-    try:
-        print("Unloading all models...")
-        await ollama.unload_all()
-        print("Done. All models unloaded from memory.")
-    finally:
-        await ollama.close()
-
-
-async def cmd_server(args: argparse.Namespace) -> None:
-    """Start FastAPI server."""
-    import uvicorn
-    from shogun.main import create_app
-
-    app = create_app()
-    config = uvicorn.Config(
-        app,
-        host=args.host,
-        port=args.port,
-        log_level="info",
+    logging.basicConfig(
+        level=level,
+        format="%(message)s",
+        handlers=[logging.StreamHandler(sys.stderr)],
     )
-    server = uvicorn.Server(config)
-    await server.serve()
+    # Suppress noisy libraries
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
-async def cmd_pipe(args: argparse.Namespace) -> None:
-    """Read from stdin and process (for IDE pipe integration)."""
-    if sys.stdin.isatty():
-        print("No pipe input detected. Use: echo 'prompt' | shogun pipe")
-        return
-    prompt = sys.stdin.read().strip()
-    if not prompt:
-        print("Empty input.")
-        return
-    args.prompt = prompt
-    args.category = args.category if hasattr(args, "category") else "code"
-    args.agent = args.agent if hasattr(args, "agent") else ""
-    await cmd_ask(args)
+def get_controller():
+    from shogun.core.controller import Controller
+    base_dir = str(Path(__file__).resolve().parent)
+    return Controller(base_dir=base_dir)
 
 
-# ------------------------------------------------------------------
-# Interactive REPL
-# ------------------------------------------------------------------
+# ─── Commands ───
 
-async def cmd_repl(args: argparse.Namespace) -> None:
+async def cmd_ask(args) -> None:
+    """Execute a task."""
+    ctrl = get_controller()
+    await ctrl.startup()
+
+    prompt = " ".join(args.prompt)
+    mode = args.mode or "battalion"
+    agent = args.agent or ""
+
+    try:
+        result = await ctrl.process_task(
+            prompt=prompt,
+            mode=mode,
+            force_agent=agent,
+        )
+        print(result)
+    except Exception as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        await ctrl.shutdown()
+
+
+async def cmd_pipe(args) -> None:
+    """Read from stdin and process."""
+    ctrl = get_controller()
+    await ctrl.startup()
+
+    stdin_text = sys.stdin.read().strip()
+    if not stdin_text:
+        print("stdin is empty", file=sys.stderr)
+        sys.exit(1)
+
+    prefix = args.prefix or "以下の入力を分析してください"
+    prompt = f"{prefix}:\n\n```\n{stdin_text}\n```"
+    mode = args.mode or "company"  # Default: company for pipe
+
+    try:
+        result = await ctrl.process_task(prompt=prompt, mode=mode)
+        print(result)
+    except Exception as e:
+        print(f"エラー: {e}", file=sys.stderr)
+        sys.exit(1)
+    finally:
+        await ctrl.shutdown()
+
+
+async def cmd_repl(args) -> None:
     """Interactive REPL mode."""
-    ctrl = await build_controller()
-    print("=" * 60)
-    print("  Omni-P4 Shogun-Hybrid REPL")
-    print("  Type 'help' for commands, 'quit' to exit")
-    print("=" * 60)
+    ctrl = get_controller()
+    await ctrl.startup()
 
-    category = "code"
-    agent = ""
+    current_mode = args.mode or "battalion"
+    current_agent = ""
+
+    print("=" * 60)
+    print("  Omni-P4 将軍システム v5.0 - 対話モード")
+    print("=" * 60)
+    print(f"  編成: {'大隊' if current_mode == 'battalion' else '中隊'}")
+    print()
+    print("  コマンド:")
+    print("    /mode [battalion|company]  モード切替")
+    print("    /agent [taisho|karo|shogun]  エージェント指定")
+    print("    /agent                    エージェント指定解除")
+    print("    /status                   ステータス表示")
+    print("    /stats                    コスト統計")
+    print("    /health                   ヘルスチェック")
+    print("    quit / exit               終了")
+    print("=" * 60)
+    print()
 
     try:
         while True:
             try:
-                prompt = input(f"\n[{category}]{f'({agent})' if agent else ''} > ").strip()
-            except (EOFError, KeyboardInterrupt):
-                print("\nSayonara!")
+                mode_label = "大隊" if current_mode == "battalion" else "中隊"
+                agent_label = f"→{current_agent}" if current_agent else ""
+                prompt_str = f"[{mode_label}{agent_label}] > "
+                line = input(prompt_str).strip()
+            except EOFError:
                 break
 
-            if not prompt:
+            if not line:
                 continue
+
+            if line.lower() in ("quit", "exit", "/quit", "/exit"):
+                print("退陣。")
+                break
 
             # REPL commands
-            if prompt.lower() == "quit" or prompt.lower() == "exit":
-                print("Sayonara!")
-                break
-            elif prompt.lower() == "help":
-                print("""
-Commands:
-  /mode [a|b|cloud]  - Switch mode
-  /cat <category>    - Set default category (recon/code/plan/think/strategy/critical)
-  /agent <name>      - Set default agent (scout/coder/leader/taisho/karo/shogun)
-  /agent             - Clear agent override
-  /status            - Show system status
-  /agents            - List agents
-  quit / exit        - Exit REPL
+            if line.startswith("/"):
+                parts = line.split(maxsplit=1)
+                cmd = parts[0].lower()
+                arg = parts[1] if len(parts) > 1 else ""
 
-Otherwise, type your prompt and press Enter.
-""")
-                continue
-            elif prompt.startswith("/mode"):
-                parts = prompt.split()
-                if len(parts) > 1:
-                    target_map = {
-                        "a": SystemMode.MODE_A,
-                        "b": SystemMode.MODE_B,
-                        "cloud": SystemMode.CLOUD,
-                    }
-                    t = target_map.get(parts[1].lower())
-                    if t:
-                        await ctrl.switch_mode(t)
-                        print(f"Mode: {t.value}")
+                if cmd == "/mode":
+                    if arg in ("battalion", "company", "大隊", "中隊"):
+                        if arg == "大隊":
+                            arg = "battalion"
+                        elif arg == "中隊":
+                            arg = "company"
+                        current_mode = arg
+                        label = "大隊" if arg == "battalion" else "中隊"
+                        print(f"  → 編成変更: {label}")
                     else:
-                        print(f"Unknown mode: {parts[1]}")
+                        label = "大隊" if current_mode == "battalion" else "中隊"
+                        print(f"  現在: {label}")
+                        print("  使用: /mode battalion|company")
+
+                elif cmd == "/agent":
+                    if arg in ("taisho", "karo", "shogun", "侍大将", "家老", "将軍"):
+                        name_map = {"侍大将": "taisho", "家老": "karo", "将軍": "shogun"}
+                        current_agent = name_map.get(arg, arg)
+                        print(f"  → エージェント固定: {current_agent}")
+                    elif not arg:
+                        current_agent = ""
+                        print("  → エージェント固定解除 (自動選択)")
+                    else:
+                        print("  使用: /agent [taisho|karo|shogun]")
+
+                elif cmd == "/status":
+                    st = ctrl.get_status()
+                    mode_label = "大隊" if st["mode"] == "battalion" else "中隊"
+                    print(f"  モード: {mode_label}")
+                    print(f"  待機タスク: {st['pending_tasks']}")
+                    print(f"  総タスク数: {st['total_tasks']}")
+                    ds = st["dashboard"]
+                    print(f"  本日完了: {ds['completed_today']}")
+                    print(f"  本日コスト: ¥{ds['total_cost_yen']:,}")
+
+                elif cmd == "/stats":
+                    print(ctrl.show_stats())
+
+                elif cmd == "/health":
+                    r1_ok = await ctrl.openvino.health()
+                    cli_ok = await ctrl.claude_cli.check_available()
+                    print(f"  侍大将 R1 (OpenVINO): {'✓' if r1_ok else '✗'}")
+                    print(f"  Claude CLI (Pro版):    {'✓' if cli_ok else '✗'}")
+                    api_ok = ctrl.api_provider is not None
+                    print(f"  Anthropic API:        {'✓' if api_ok else '✗ (KEY未設定)'}")
+
+                elif cmd == "/help":
+                    print("  /mode [battalion|company]  モード切替")
+                    print("  /agent [name]              エージェント指定")
+                    print("  /status                    ステータス")
+                    print("  /stats                     コスト統計")
+                    print("  /health                    ヘルスチェック")
+                    print("  quit                       終了")
+
                 else:
-                    print(f"Current mode: {ctrl.current_mode.value}")
-                continue
-            elif prompt.startswith("/cat"):
-                parts = prompt.split()
-                if len(parts) > 1:
-                    category = parts[1]
-                    print(f"Category: {category}")
-                else:
-                    print(f"Current category: {category}")
-                continue
-            elif prompt.startswith("/agent"):
-                parts = prompt.split()
-                if len(parts) > 1:
-                    agent = parts[1]
-                    print(f"Agent: {agent}")
-                else:
-                    agent = ""
-                    print("Agent override cleared.")
-                continue
-            elif prompt == "/status":
-                st = ctrl.status()
-                print(json.dumps(st, indent=2, ensure_ascii=False))
-                continue
-            elif prompt == "/agents":
-                for n, a in sorted(ctrl._agents.items()):
-                    print(f"  {n:<12} ({a.tier}) {a.codename}")
+                    print(f"  不明なコマンド: {cmd}")
                 continue
 
-            # Execute prompt
+            # Normal prompt
             try:
-                result = await ctrl.ask(
-                    prompt=prompt,
-                    category=category,
-                    agent=agent or "",
+                result = await ctrl.process_task(
+                    prompt=line,
+                    mode=current_mode,
+                    force_agent=current_agent,
                 )
-                print("\n" + "-" * 40)
+                print()
                 print(result)
-                print("-" * 40)
+                print()
             except Exception as e:
-                print(f"Error: {e}")
+                print(f"  エラー: {e}", file=sys.stderr)
 
     finally:
         await ctrl.shutdown()
 
 
-# ------------------------------------------------------------------
-# Main Entry Point
-# ------------------------------------------------------------------
+async def cmd_status(args) -> None:
+    ctrl = get_controller()
+    st = ctrl.get_status()
+    mode_label = "大隊" if st["mode"] == "battalion" else "中隊"
+    print(f"モード: {mode_label}")
+    print(f"待機タスク: {st['pending_tasks']}")
+    print(f"総タスク数: {st['total_tasks']}")
 
-def main() -> None:
+
+async def cmd_health(args) -> None:
+    ctrl = get_controller()
+    r1_ok = await ctrl.openvino.health()
+    cli_ok = await ctrl.claude_cli.check_available()
+    api_ok = os.environ.get("ANTHROPIC_API_KEY", "") != ""
+
+    print("ヘルスチェック:")
+    print(f"  侍大将 R1 (OpenVINO): {'✓ 稼働中' if r1_ok else '✗ 停止'}")
+    print(f"  Claude CLI (Pro版):   {'✓ 利用可能' if cli_ok else '✗ 未インストール'}")
+    print(f"  Anthropic API:       {'✓ KEY設定済' if api_ok else '✗ KEY未設定'}")
+    await ctrl.openvino.close()
+
+
+async def cmd_stats(args) -> None:
+    ctrl = get_controller()
+    print(ctrl.show_stats())
+
+
+async def cmd_mode(args) -> None:
+    ctrl = get_controller()
+    if args.target:
+        from shogun.core.task_queue import DeploymentMode
+        target = args.target
+        if target in ("大隊", "battalion"):
+            ctrl.current_mode = DeploymentMode.BATTALION
+            print("→ 大隊モードに切替")
+        elif target in ("中隊", "company"):
+            ctrl.current_mode = DeploymentMode.COMPANY
+            print("→ 中隊モードに切替")
+        else:
+            print(f"不明なモード: {target}")
+    else:
+        label = "大隊" if ctrl.current_mode.value == "battalion" else "中隊"
+        print(f"現在のモード: {label}")
+
+
+def cmd_server(args) -> None:
+    """Start FastAPI server."""
+    try:
+        import uvicorn
+        from shogun.main import create_app
+        app = create_app()
+        uvicorn.run(
+            app,
+            host=args.host or "0.0.0.0",
+            port=args.port or 8080,
+        )
+    except ImportError as e:
+        print(f"サーバー起動に必要なパッケージがありません: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+# ─── Main ───
+
+def main():
     parser = argparse.ArgumentParser(
         prog="shogun",
-        description="Omni-P4 Shogun-Hybrid CLI",
+        description="Omni-P4 将軍システム v5.0 - 階層型ハイブリッドAI開発システム",
     )
-    parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
-    subparsers = parser.add_subparsers(dest="command")
+    parser.add_argument("-v", "--verbose", action="store_true", help="詳細ログ")
+    sub = parser.add_subparsers(dest="command")
 
     # ask
-    p_ask = subparsers.add_parser("ask", help="Execute a task")
-    p_ask.add_argument("prompt", help="Task prompt")
-    p_ask.add_argument("-c", "--category", default="code",
-                       choices=["recon", "code", "plan", "think", "strategy", "critical"])
+    p_ask = sub.add_parser("ask", help="タスク実行")
+    p_ask.add_argument("prompt", nargs="+", help="タスク内容")
+    p_ask.add_argument("-m", "--mode", default="battalion",
+                       help="battalion (大隊) / company (中隊)")
     p_ask.add_argument("-a", "--agent", default="",
-                       help="Force specific agent (scout/coder/leader/taisho/karo/shogun)")
-
-    # mode
-    p_mode = subparsers.add_parser("mode", help="Show/switch mode")
-    p_mode.add_argument("target", nargs="?", help="a / b / cloud / idle")
-
-    # status
-    subparsers.add_parser("status", help="System status")
-
-    # agents
-    subparsers.add_parser("agents", help="List agents")
-
-    # health
-    subparsers.add_parser("health", help="Ollama health check")
-
-    # models
-    subparsers.add_parser("models", help="List Ollama models")
-
-    # unload
-    subparsers.add_parser("unload", help="Unload all models")
-
-    # server
-    p_server = subparsers.add_parser("server", help="Start API server")
-    p_server.add_argument("--host", default="0.0.0.0")
-    p_server.add_argument("--port", type=int, default=8400)
+                       help="エージェント指定: taisho/karo/shogun")
 
     # pipe
-    p_pipe = subparsers.add_parser("pipe", help="Read from stdin")
-    p_pipe.add_argument("-c", "--category", default="code")
-    p_pipe.add_argument("-a", "--agent", default="")
+    p_pipe = sub.add_parser("pipe", help="stdin パイプ入力")
+    p_pipe.add_argument("-m", "--mode", default="company")
+    p_pipe.add_argument("-p", "--prefix", default="以下の入力を分析してください")
 
     # repl
-    subparsers.add_parser("repl", help="Interactive REPL mode")
+    p_repl = sub.add_parser("repl", help="対話モード")
+    p_repl.add_argument("-m", "--mode", default="battalion")
+
+    # status
+    sub.add_parser("status", help="システム状態")
+
+    # health
+    sub.add_parser("health", help="ヘルスチェック")
+
+    # stats
+    sub.add_parser("stats", help="コスト統計")
+
+    # mode
+    p_mode = sub.add_parser("mode", help="モード表示/切替")
+    p_mode.add_argument("target", nargs="?", default="",
+                        help="battalion/company")
+
+    # server
+    p_server = sub.add_parser("server", help="REST APIサーバー起動")
+    p_server.add_argument("--host", default="0.0.0.0")
+    p_server.add_argument("--port", type=int, default=8080)
 
     args = parser.parse_args()
-    setup_logging(verbose=args.verbose)
+    setup_logging(args.verbose)
 
-    if not args.command:
-        # Default: REPL mode
-        asyncio.run(cmd_repl(args))
+    if args.command is None:
+        # Default: REPL
+        args.command = "repl"
+        args.mode = "battalion"
+
+    if args.command == "server":
+        cmd_server(args)
         return
 
+    # Async commands
     cmd_map = {
         "ask": cmd_ask,
-        "mode": cmd_mode,
-        "status": cmd_status,
-        "agents": cmd_agents,
-        "health": cmd_health,
-        "models": cmd_models,
-        "unload": cmd_unload,
-        "server": cmd_server,
         "pipe": cmd_pipe,
         "repl": cmd_repl,
+        "status": cmd_status,
+        "health": cmd_health,
+        "stats": cmd_stats,
+        "mode": cmd_mode,
     }
-    handler = cmd_map.get(args.command)
-    if handler:
-        asyncio.run(handler(args))
+
+    fn = cmd_map.get(args.command)
+    if fn:
+        asyncio.run(fn(args))
     else:
         parser.print_help()
 

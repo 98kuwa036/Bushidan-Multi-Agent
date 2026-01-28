@@ -4,8 +4,8 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "omni-p4-shogun"
-version = "3.0.0"
-description = "Omni-P4 Shogun-Hybrid: 階層型ハイブリッドAI開発システム"
+version = "5.0.0"
+description = "Omni-P4 将軍システム Hybrid: 階層型ハイブリッドAI開発システム"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -17,12 +17,13 @@ dependencies = [
     "pyyaml>=6.0",
     "pydantic>=2.0",
     "python-dotenv>=1.0",
-    "rich>=13.0",
 ]
 
 [project.optional-dependencies]
 cloud = ["anthropic>=0.40.0"]
+slack = ["slack-sdk>=3.30.0"]
 dev = ["pytest", "pytest-asyncio", "ruff"]
+all = ["anthropic>=0.40.0", "slack-sdk>=3.30.0"]
 
 [project.scripts]
 shogun = "shogun.cli:main"

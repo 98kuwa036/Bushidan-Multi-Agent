@@ -1,8 +1,9 @@
-"""
-Omni-P4 Shogun-Hybrid - FastAPI Server
+"""Omni-P4 将軍システム - FastAPI Server
 
-REST API for task submission, status monitoring, and agent management.
-Run: shogun server --port 8400
+REST API for CT 100 (本陣).
+Slack Bot, HA OS, メインPC全てのインターフェースが本陣経由。
+
+Run: shogun server --port 8080
 """
 
 import logging
@@ -10,244 +11,182 @@ import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-# Ensure project root on path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from shogun.core.controller import Controller, SystemMode
-from shogun.core.task_queue import Task, TaskCategory, TaskStatus
-from shogun.agents.factory import create_local_agents, create_cloud_agents
+from shogun.core.controller import Controller
 
 logger = logging.getLogger("shogun.server")
 
-# Global controller reference
 _ctrl: Controller | None = None
-
-
-async def get_controller() -> Controller:
-    global _ctrl
-    if _ctrl is None:
-        raise RuntimeError("Controller not initialized")
-    return _ctrl
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup/shutdown lifecycle."""
     global _ctrl
-    logger.info("Starting Shogun-Hybrid server...")
-
-    config_path = str(PROJECT_ROOT / "shogun" / "config" / "settings.yaml")
-    _ctrl = Controller(config_path=config_path)
-
-    # Register local agents
-    local_agents = create_local_agents(_ctrl.ollama, _ctrl.config)
-    for name, agent in local_agents.items():
-        _ctrl.register_agent(name, agent)
-
-    # Register cloud agents (optional)
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if api_key:
-        try:
-            from shogun.providers.anthropic_api import AnthropicClient
-            anthropic = AnthropicClient(api_key=api_key)
-            cloud_agents = create_cloud_agents(anthropic, _ctrl.config)
-            for name, agent in cloud_agents.items():
-                _ctrl.register_agent(name, agent)
-        except Exception as e:
-            logger.warning("Cloud agents unavailable: %s", e)
-
-    # Load pending tasks
-    await _ctrl.queue.load_from_disk()
-
-    logger.info("Server ready.")
+    logger.info("[本陣] サーバー起動...")
+    base_dir = str(Path(__file__).resolve().parent)
+    _ctrl = Controller(base_dir=base_dir)
+    await _ctrl.startup()
+    logger.info("[本陣] サーバー準備完了")
     yield
-
-    # Shutdown
-    logger.info("Shutting down server...")
-    await _ctrl.shutdown()
+    logger.info("[本陣] サーバー停止...")
+    if _ctrl:
+        await _ctrl.shutdown()
     _ctrl = None
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Omni-P4 Shogun-Hybrid",
-        description="階層型ハイブリッドAI開発システム",
-        version="3.0.0",
+        title="Omni-P4 将軍システム",
+        description="階層型ハイブリッドAI開発システム v5.0",
+        version="5.0.0",
         lifespan=lifespan,
     )
 
-    # --- Request/Response Models ---
+    # --- Models ---
 
-    class AskRequest(BaseModel):
-        prompt: str = Field(..., description="タスク内容")
-        category: str = Field("code", description="カテゴリ: recon/code/plan/think/strategy/critical")
-        agent: str = Field("", description="エージェント指定 (空欄=自動選択)")
-        context: dict = Field(default_factory=dict, description="追加コンテキスト")
+    class TaskRequest(BaseModel):
+        task: str = Field(..., description="タスク内容")
+        mode: str = Field("battalion", description="battalion / company")
+        agent: str = Field("", description="エージェント指定 (空=自動)")
 
-    class AskResponse(BaseModel):
+    class TaskResponse(BaseModel):
         task_id: str
         status: str
         agent: str
-        result: str
-
-    class ModeRequest(BaseModel):
-        mode: str = Field(..., description="a / b / cloud / idle")
-
-    class StatusResponse(BaseModel):
         mode: str
-        agents_registered: list[str]
-        pending_tasks: int
-        total_tasks: int
-        ollama_healthy: bool
-
-    class TaskResponse(BaseModel):
-        id: str
-        prompt: str
-        category: str
-        status: str
-        assigned_agent: str
+        complexity: str
+        cost_yen: int
         result: str
-        error: str
-        escalation_count: int
+
+    class AskRequest(BaseModel):
+        question: str = Field(..., description="質問 (HA OS音声用)")
+
+    class AskResponse(BaseModel):
+        answer: str
+        mode: str
+        cost: int
 
     # --- Routes ---
 
     @app.get("/")
     async def root():
-        return {"system": "Omni-P4 Shogun-Hybrid", "version": "3.0.0"}
+        return {
+            "system": "Omni-P4 将軍システム",
+            "version": "5.0.0",
+            "modes": ["battalion", "company"],
+        }
 
-    @app.post("/ask", response_model=AskResponse)
-    async def ask(req: AskRequest):
-        """Submit a task for execution."""
-        ctrl = await get_controller()
-        try:
-            cat = TaskCategory(req.category)
-        except ValueError:
-            raise HTTPException(400, f"Unknown category: {req.category}")
-
-        task = Task(prompt=req.prompt, category=cat, context=req.context)
-        if req.agent:
-            task.assigned_agent = req.agent
-        await ctrl.queue.enqueue(task)
+    @app.post("/api/task", response_model=TaskResponse)
+    async def create_task(req: TaskRequest):
+        """タスク投入 (大隊 / 中隊)."""
+        if not _ctrl:
+            raise HTTPException(503, "System not ready")
 
         try:
-            result = await ctrl.dispatch(task)
+            result = await _ctrl.process_task(
+                prompt=req.task,
+                mode=req.mode,
+                force_agent=req.agent,
+            )
         except Exception as e:
             raise HTTPException(500, str(e))
 
-        return AskResponse(
-            task_id=task.id,
-            status=task.status.value,
-            agent=task.assigned_agent,
+        # Get task info
+        tasks = _ctrl.queue.get_all_tasks()
+        task = tasks[-1] if tasks else None
+
+        return TaskResponse(
+            task_id=task.id if task else "unknown",
+            status=task.status.value if task else "done",
+            agent=task.assigned_agent if task else "",
+            mode=req.mode,
+            complexity=task.complexity.value if task else "simple",
+            cost_yen=task.cost_yen if task else 0,
             result=result,
         )
 
-    @app.get("/status", response_model=StatusResponse)
+    @app.post("/api/ask", response_model=AskResponse)
+    async def ask_company(req: AskRequest):
+        """HA OS音声コマンド受付 (中隊モード固定, ¥0)."""
+        if not _ctrl:
+            raise HTTPException(503, "System not ready")
+
+        try:
+            result = await _ctrl.process_task(
+                prompt=req.question,
+                mode="company",
+            )
+        except Exception as e:
+            raise HTTPException(500, str(e))
+
+        # Strip <think> blocks for voice response
+        answer = result
+        if "</think>" in answer:
+            answer = answer.split("</think>", 1)[1].strip()
+
+        return AskResponse(answer=answer, mode="company", cost=0)
+
+    @app.get("/api/status")
     async def status():
-        """Get system status."""
-        ctrl = await get_controller()
-        st = ctrl.status()
-        healthy = await ctrl.ollama.health()
-        return StatusResponse(
-            mode=st["mode"],
-            agents_registered=st["agents_registered"],
-            pending_tasks=st["pending_tasks"],
-            total_tasks=st["total_tasks"],
-            ollama_healthy=healthy,
-        )
+        if not _ctrl:
+            raise HTTPException(503, "System not ready")
+        return _ctrl.get_status()
 
-    @app.post("/mode")
-    async def switch_mode(req: ModeRequest):
-        """Switch operating mode."""
-        ctrl = await get_controller()
-        mode_map = {
-            "a": SystemMode.MODE_A,
-            "b": SystemMode.MODE_B,
-            "cloud": SystemMode.CLOUD,
-            "idle": SystemMode.IDLE,
-        }
-        target = mode_map.get(req.mode.lower())
-        if not target:
-            raise HTTPException(400, f"Unknown mode: {req.mode}")
+    @app.get("/api/stats")
+    async def stats():
+        if not _ctrl:
+            raise HTTPException(503, "System not ready")
+        return _ctrl.stats
 
-        await ctrl.switch_mode(target)
-        return {"mode": target.value, "message": f"Switched to {target.value}"}
-
-    @app.get("/agents")
-    async def list_agents():
-        """List registered agents."""
-        ctrl = await get_controller()
-        agents = []
-        for name, agent in sorted(ctrl._agents.items()):
-            agents.append({
-                "name": name,
-                "codename": agent.codename,
-                "tier": agent.tier,
-                "role": agent.role[:80],
-            })
-        return {"agents": agents}
-
-    @app.get("/tasks")
-    async def list_tasks():
-        """List all tasks."""
-        ctrl = await get_controller()
-        tasks = ctrl.queue.get_all_tasks()
-        return {
-            "tasks": [
-                TaskResponse(
-                    id=t.id,
-                    prompt=t.prompt[:200],
-                    category=t.category.value,
-                    status=t.status.value,
-                    assigned_agent=t.assigned_agent,
-                    result=t.result[:500] if t.result else "",
-                    error=t.error,
-                    escalation_count=t.escalation_count,
-                ).dict()
-                for t in tasks
-            ]
-        }
-
-    @app.get("/tasks/{task_id}")
-    async def get_task(task_id: str):
-        """Get a specific task."""
-        ctrl = await get_controller()
-        task = ctrl.queue.get_task(task_id)
-        if not task:
-            raise HTTPException(404, f"Task not found: {task_id}")
-        return task.to_dict()
-
-    @app.get("/health")
+    @app.get("/api/health")
     async def health():
-        """Health check."""
-        ctrl = await get_controller()
-        ollama_ok = await ctrl.ollama.health()
+        if not _ctrl:
+            return {"status": "starting"}
+        r1_ok = await _ctrl.openvino.health()
+        cli_ok = await _ctrl.claude_cli.check_available()
         return {
-            "status": "ok" if ollama_ok else "degraded",
-            "ollama": ollama_ok,
-            "mode": ctrl.current_mode.value,
+            "status": "ok" if r1_ok else "degraded",
+            "taisho_r1": r1_ok,
+            "claude_cli": cli_ok,
+            "api_fallback": _ctrl.api_provider is not None,
+            "mode": _ctrl.current_mode.value,
         }
 
-    @app.post("/unload")
-    async def unload_all():
-        """Unload all models from memory."""
-        ctrl = await get_controller()
-        await ctrl.ollama.unload_all()
-        ctrl.current_mode = SystemMode.IDLE
-        return {"message": "All models unloaded", "mode": "idle"}
+    @app.post("/api/mode")
+    async def switch_mode(mode: str):
+        if not _ctrl:
+            raise HTTPException(503, "System not ready")
+        from shogun.core.task_queue import DeploymentMode
+        try:
+            _ctrl.current_mode = DeploymentMode(mode)
+        except ValueError:
+            raise HTTPException(400, f"Unknown mode: {mode}")
+        label = "大隊" if mode == "battalion" else "中隊"
+        return {"mode": mode, "label": label}
+
+    @app.get("/api/mcp")
+    async def mcp_status():
+        if not _ctrl:
+            raise HTTPException(503, "System not ready")
+        return {"servers": _ctrl.mcp.get_status()}
+
+    @app.get("/api/dashboard")
+    async def dashboard():
+        if not _ctrl:
+            raise HTTPException(503, "System not ready")
+        return _ctrl.dashboard.get_summary()
 
     return app
 
 
-# For direct execution: python -m shogun.main
 if __name__ == "__main__":
     import uvicorn
     app = create_app()
-    uvicorn.run(app, host="0.0.0.0", port=8400)
+    uvicorn.run(app, host="0.0.0.0", port=8080)
