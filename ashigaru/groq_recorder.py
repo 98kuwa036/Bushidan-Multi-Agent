@@ -59,6 +59,12 @@ class GroqRecorder:
         self.daily_requests = 0
         self.last_request_date = datetime.now().date()
         
+        # RPM/TPM tracking for short-term rate limiting
+        self.rpm_requests = []  # List of request timestamps for RPM tracking
+        self.tpm_tokens = []    # List of (timestamp, token_count) for TPM tracking
+        self.rpm_limit = 30     # Groq free tier RPM limit
+        self.tpm_limit = 6000   # Groq free tier TPM limit
+        
     async def initialize(self) -> None:
         """Initialize Groq client."""
         if not self.api_key:
@@ -188,12 +194,15 @@ class GroqRecorder:
     
     async def _extract_knowledge_async(self) -> None:
         """Extract knowledge and family precepts from session."""
-        if not self._can_make_request():
+        # Estimate tokens for the extraction request
+        session_text = self._format_session_for_analysis()
+        estimated_tokens = len(session_text.split()) * 1.5  # Rough estimate
+        
+        if not self._can_make_request(int(estimated_tokens)):
+            logger.info("[9番足軽] レート制限のため知識抽出をスキップ")
             return
             
         try:
-            session_text = self._format_session_for_analysis()
-            
             # Extract family precepts (家訓)
             precepts = await self._extract_family_precepts(session_text)
             if precepts:
@@ -384,42 +393,116 @@ Markdown形式で出力:
         system: str = "", 
         max_tokens: int = 2000
     ) -> Optional[str]:
-        """Call Groq API with rate limiting."""
+        """Call Groq API with rate limiting and exponential backoff."""
         if not self._can_make_request():
             logger.warning("[9番足軽] Groq日別上限到達 (14,400/day)")
             return None
         
-        try:
-            messages = []
-            if system:
-                messages.append({"role": "system", "content": system})
-            messages.append({"role": "user", "content": prompt})
-            
-            response = self.client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                max_tokens=max_tokens,
-                temperature=0.3,
-            )
-            
-            self._track_request(response.usage.total_tokens if response.usage else max_tokens)
-            
-            return response.choices[0].message.content
-            
-        except Exception as e:
-            logger.error("[9番足軽] Groq API呼び出しエラー: %s", e)
-            return None
+        # Exponential backoff parameters
+        max_retries = 5
+        base_delay = 1.0  # Start with 1 second
+        max_delay = 60.0  # Max 60 seconds
+        
+        for attempt in range(max_retries):
+            try:
+                messages = []
+                if system:
+                    messages.append({"role": "system", "content": system})
+                messages.append({"role": "user", "content": prompt})
+                
+                response = self.client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=0.3,
+                )
+                
+                self._track_request(response.usage.total_tokens if response.usage else max_tokens)
+                
+                return response.choices[0].message.content
+                
+            except Exception as e:
+                error_msg = str(e).lower()
+                
+                # Check for rate limit errors
+                if "rate_limit" in error_msg or "429" in error_msg:
+                    if attempt < max_retries - 1:
+                        # Calculate delay with exponential backoff and jitter
+                        delay = min(base_delay * (2 ** attempt), max_delay)
+                        jitter = delay * 0.1 * (0.5 - abs(hash(prompt) % 100 - 50) / 100)
+                        total_delay = delay + jitter
+                        
+                        logger.warning("[9番足軽] レート制限 - %d回目再試行 (%.1f秒後)", 
+                                     attempt + 1, total_delay)
+                        await asyncio.sleep(total_delay)
+                        continue
+                    else:
+                        logger.error("[9番足軽] レート制限で最大再試行回数到達")
+                        return None
+                
+                # Check for temporary server errors (502, 503, 504)
+                elif any(code in error_msg for code in ["502", "503", "504", "timeout"]):
+                    if attempt < max_retries - 1:
+                        delay = min(base_delay * (1.5 ** attempt), max_delay / 2)
+                        logger.warning("[9番足軽] 一時的エラー - %d回目再試行 (%.1f秒後)", 
+                                     attempt + 1, delay)
+                        await asyncio.sleep(delay)
+                        continue
+                    else:
+                        logger.error("[9番足軽] 一時的エラーで最大再試行回数到達")
+                        return None
+                
+                # For other errors, don't retry
+                else:
+                    logger.error("[9番足軽] Groq API呼び出しエラー: %s", e)
+                    return None
+        
+        return None
     
-    def _can_make_request(self) -> bool:
-        """Check if we can make another Groq request today."""
+    def _can_make_request(self, estimated_tokens: int = 500) -> bool:
+        """Check if we can make another Groq request (daily, RPM, TPM limits)."""
         self._check_daily_quota()
-        return self.daily_requests < 14400  # Free tier limit
+        
+        # Check daily limit
+        if self.daily_requests >= 14400:
+            return False
+        
+        # Check RPM limit
+        now = datetime.now()
+        one_minute_ago = now - timedelta(minutes=1)
+        
+        # Clean old requests (older than 1 minute)
+        self.rpm_requests = [ts for ts in self.rpm_requests if ts > one_minute_ago]
+        
+        if len(self.rpm_requests) >= self.rpm_limit:
+            logger.debug("[9番足軽] RPM上限に近づいています (%d/%d)", len(self.rpm_requests), self.rpm_limit)
+            return False
+        
+        # Check TPM limit
+        self.tpm_tokens = [(ts, tokens) for ts, tokens in self.tpm_tokens if ts > one_minute_ago]
+        current_tokens = sum(tokens for _, tokens in self.tpm_tokens)
+        
+        if current_tokens + estimated_tokens > self.tpm_limit:
+            logger.debug("[9番足軽] TPM上限に近づいています (%d+%d > %d)", 
+                        current_tokens, estimated_tokens, self.tpm_limit)
+            return False
+        
+        return True
     
     def _track_request(self, tokens: int) -> None:
-        """Track request for daily quota."""
+        """Track request for daily, RPM, and TPM quotas."""
+        now = datetime.now()
+        
+        # Daily tracking
         self.daily_requests += 1
         self.stats["groq_requests"] += 1
         self.stats["total_tokens"] += tokens
+        
+        # RPM tracking
+        self.rpm_requests.append(now)
+        
+        # TPM tracking
+        self.tpm_tokens.append((now, tokens))
         
         if self.daily_requests % 1000 == 0:
             logger.info("[9番足軽] Groq使用状況: %d/14,400 requests", self.daily_requests)
@@ -449,6 +532,12 @@ Markdown形式で出力:
         s = self.stats
         remaining = 14400 - self.daily_requests
         
+        # Calculate current RPM/TPM usage
+        now = datetime.now()
+        one_minute_ago = now - timedelta(minutes=1)
+        current_rpm = len([ts for ts in self.rpm_requests if ts > one_minute_ago])
+        current_tpm = sum(tokens for ts, tokens in self.tpm_tokens if ts > one_minute_ago)
+        
         lines = [
             "=" * 50,
             "🎯 9番足軽 (Groq記録係) 統計",
@@ -464,7 +553,12 @@ Markdown形式で出力:
             f"  残り: {remaining}回",
             f"  累計トークン: {s['total_tokens']:,}",
             "",
+            "短期制限状況:",
+            f"  RPM (分間リクエスト): {current_rpm}/{self.rpm_limit}",
+            f"  TPM (分間トークン): {current_tpm:,}/{self.tpm_limit:,}",
+            "",
             "💰 コスト: ¥0 (Free Tier) ⭐",
+            "🛡️  レート制限対応: Exponential Backoff ✅",
             "=" * 50,
         ]
         return "\n".join(lines)

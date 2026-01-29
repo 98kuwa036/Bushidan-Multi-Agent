@@ -1,4 +1,4 @@
-# 将軍システム v5.0
+# 将軍システム v7.0 - Enhanced with 4 new features
 # Core
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
@@ -7,8 +7,15 @@ pyyaml>=6.0
 pydantic>=2.0
 python-dotenv>=1.0
 
+# New feature dependencies
+groq>=0.4.1                        # ④GroqRecorder with rate limiting
+notion-client>=2.2.1               # ②Notion integration for 家訓
+sentence-transformers>=2.2.2       # ②RAG for semantic search
+faiss-cpu>=1.7.4                   # ②Vector database for 家訓
+numpy>=1.24.0                      # ②Required for embeddings
+
 # Optional: Cloud API fallback
-# anthropic>=0.40.0
+anthropic>=0.40.0                  # ①Updated Claude Opus 20251101
 
 # Optional: Slack integration
 # slack-sdk>=3.30.0
