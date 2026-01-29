@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
-name = "shogun-hybrid"
-version = "5.0.0"
-description = "将軍システム Hybrid: 階層型ハイブリッドAI開発システム"
+name = "shogun-system"
+version = "7.0.0"
+description = "将軍システム v7.0: 「スピードより質」階層型ハイブリッドAI開発システム"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -22,8 +22,10 @@ dependencies = [
 [project.optional-dependencies]
 cloud = ["anthropic>=0.40.0"]
 slack = ["slack-sdk>=3.30.0"]
+groq = ["groq>=0.4.0"]
+notion = ["notion-client>=2.0.0"]
 dev = ["pytest", "pytest-asyncio", "ruff"]
-all = ["anthropic>=0.40.0", "slack-sdk>=3.30.0"]
+all = ["anthropic>=0.40.0", "slack-sdk>=3.30.0", "groq>=0.4.0", "notion-client>=2.0.0"]
 
 [project.scripts]
 shogun = "shogun.cli:main"

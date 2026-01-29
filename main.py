@@ -44,8 +44,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="将軍システム",
-        description="階層型ハイブリッドAI開発システム v5.0",
-        version="5.0.0",
+        description="階層型ハイブリッドAI開発システム v7.0「スピードより質」",
+        version="7.0.0",
         lifespan=lifespan,
     )
 

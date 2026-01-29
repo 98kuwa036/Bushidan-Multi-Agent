@@ -109,7 +109,7 @@ async def cmd_repl(args) -> None:
     current_agent = ""
 
     print("=" * 60)
-    print("  将軍システム v5.0 - 対話モード")
+    print("  将軍システム v7.0 - 対話モード「スピードより質」")
     print("=" * 60)
     print(f"  編成: {'大隊' if current_mode == 'battalion' else '中隊'}")
     print()
@@ -394,7 +394,7 @@ def cmd_maintenance(args) -> None:
 def main():
     parser = argparse.ArgumentParser(
         prog="shogun",
-        description="将軍システム v5.0 - 階層型ハイブリッドAI開発システム",
+        description="将軍システム v7.0 - 階層型ハイブリッドAI開発システム「スピードより質」",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="詳細ログ")
     sub = parser.add_subparsers(dest="command")

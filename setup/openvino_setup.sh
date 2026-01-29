@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 将軍システム v5.1 - OpenVINO R1 Setup (CyberAgent Edition)
+# 将軍システム v7.0 - OpenVINO R1 Setup (CyberAgent Japanese Edition)
 # =============================================================
 # CT 101 (侍大将) 内で実行。
 # CyberAgent DeepSeek-R1-Distill-Qwen-14B-Japanese を OpenVINO INT8 に変換。

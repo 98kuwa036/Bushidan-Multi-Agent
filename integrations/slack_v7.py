@@ -352,7 +352,7 @@ class ShogunSlackIntegrationV7:
             f"• API フォールバック: {self.stats['api_fallback']}回 (課金)",
             "",
             f"**合計コスト**: ¥{stats.get('total_cost_yen', 0):,}",
-            f"**月額予測**: ¥{self._estimate_monthly_cost():,} (v5.0比 -49%)"
+            f"**月額予測**: ¥{self._estimate_monthly_cost():,} (本家Claude Code比 -49%)"
         ]
         
         # Add Japanese R1 status

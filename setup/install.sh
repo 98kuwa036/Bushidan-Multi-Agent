@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 将軍システム v5.0 - Controller Installation
+# 将軍システム v7.0 - Controller Installation
 # =============================================================
 # CT 100 (本陣) で実行。Python + Node.js + MCP + CLI をセットアップ。
 #
@@ -13,7 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo "============================================="
-echo "  将軍システム v5.0 - 本陣セットアップ"
+echo "  将軍システム v7.0 - 本陣セットアップ「スピードより質」"
 echo "  Project: ${PROJECT_DIR}"
 echo "============================================="
 
@@ -92,17 +92,25 @@ echo "[7/8] 環境変数..."
 ENV_FILE="${PROJECT_DIR}/.env"
 if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" << 'ENV'
-# 将軍システム v5.0 - 環境変数
+# 将軍システム v7.0 - 環境変数
 
 # Anthropic API (将軍/家老のAPIフォールバック用)
 # ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
 
+# Groq API (9番足軽・記録係)
+# GROQ_API_KEY=gsk_xxxxx
+
+# Notion API (ナレッジDB)
+# NOTION_TOKEN=secret_xxxxx
+# NOTION_DATABASE_ID=xxxxx
+
 # GitHub
 # GITHUB_TOKEN=ghp_xxxxx
 
-# Slack (10ボット)
+# Slack (11ボット)
 # SLACK_APP_TOKEN=xapp-xxxxx
 # SLACK_TOKEN_SHOGUN=xoxb-xxxxx
+# SLACK_TOKEN_KARO=xoxb-xxxxx
 # SLACK_TOKEN_TAISHO=xoxb-xxxxx
 # SLACK_TOKEN_ASHIGARU_1=xoxb-xxxxx
 # SLACK_TOKEN_ASHIGARU_2=xoxb-xxxxx
@@ -112,6 +120,8 @@ if [ ! -f "$ENV_FILE" ]; then
 # SLACK_TOKEN_ASHIGARU_6=xoxb-xxxxx
 # SLACK_TOKEN_ASHIGARU_7=xoxb-xxxxx
 # SLACK_TOKEN_ASHIGARU_8=xoxb-xxxxx
+# SLACK_TOKEN_ASHIGARU_9=xoxb-xxxxx
+# SLACK_TOKEN_LIGHT=xoxb-xxxxx
 
 # Brave Search
 # BRAVE_API_KEY=BSAxxxxx

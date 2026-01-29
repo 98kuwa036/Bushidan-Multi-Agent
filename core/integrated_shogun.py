@@ -59,11 +59,11 @@ class PlatoonMode(Enum):
 
 
 class AgentCost:
-    """Cost per agent call (JPY) - Updated for latest models."""
-    SHOGUN_OPUS = 24      # Latest Opus 3.0 for Strategic decisions only (5/month)
-    KARO_SONNET = 5       # Latest Sonnet 4.0 for Complex tasks (Pro CLI → API)
-    TAISHO_R1 = 0         # Local Japanese R1
-    ASHIGARU_MCP = 0      # Local MCP servers
+    """Cost per agent call (JPY) - v7.0 with latest Opus 4.5 / Sonnet 4.5."""
+    SHOGUN_OPUS = 24      # Opus 4.5 for Strategic decisions only (5/month)
+    KARO_SONNET = 5       # Sonnet 4.5 for Complex tasks (Pro CLI → API)
+    TAISHO_R1 = 0         # Local Japanese R1 (CyberAgent)
+    ASHIGARU_MCP = 0      # Local MCP servers × 8
     GROQ_RECORDER = 0     # Free tier (14,400 req/day)
 
 
@@ -767,7 +767,7 @@ class IntegratedShogun:
             f"  Notion投稿:       {s['knowledge_entries']}回 ⭐NEW⭐",
             "",
             f"合計コスト: ¥{s['total_cost_yen']:,}",
-            f"月額予測: ¥{self._estimate_monthly_cost():,} (v5.0比 -49%)",
+            f"月額予測: ¥{self._estimate_monthly_cost():,} (本家Claude Code比 -49%)",
             "=" * 60,
         ]
         return "\n".join(lines)

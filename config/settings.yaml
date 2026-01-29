@@ -1,90 +1,200 @@
 # =============================================================
-# 将軍システム v5.0 - Configuration
+# 将軍システム v7.0 - Configuration
+# =============================================================
+# 「スピードより質」を重視した階層型AI開発支援システム
 # =============================================================
 
 system:
-  name: "将軍システム Hybrid"
-  version: "5.0"
+  name: "将軍システム"
+  version: "7.0"
   language: "ja"
+  philosophy: "スピードより質"
 
 # --- リポジトリ同期 ---
-# GitHubリモートの {username}/ 以降と /home/claude/ 以降を同期
-# 例: github.com/user/project → /home/claude/project
 repo:
   local_base: "/home/claude"
-  github_remote: ""  # git remote から自動取得。手動設定も可
+  github_remote: ""  # git remote から自動取得
   sync_interval_min: 5
 
-# --- 侍大将 R1 (OpenVINO) ---
+# --- 将軍 (総大将) ---
+# LLM: Claude Sonnet 4.5 (Pro CLI優先 → API補完)
+shogun:
+  codename: "Shogun"
+  role: "将軍 - 難易度判断・全体統括・Complex設計・最終報告"
+  cli_model: "sonnet"
+  api_model: "claude-sonnet-4-5-20250514"
+  cost_per_task_yen: 5
+  monthly_usage: 100
+
+# --- 家老 (参謀) ---
+# LLM: Claude Opus 4.5 (API専用・Strategic時のみ)
+karo:
+  codename: "Karo"
+  role: "家老 - 戦術立案・作業割振り・将軍への助言"
+  api_model: "claude-opus-4-5-20250514"
+  cost_per_task_yen: 24
+  monthly_usage: 5
+
+# --- 侍大将 (現場指揮・監査役) ---
+# LLM: DeepSeek-R1-Distill-Qwen-14B-Japanese (CyberAgent版)
 taisho:
   url: "http://192.168.1.11:11434"
-  model: "DeepSeek-R1-Distill-Qwen-14B"
+  model: "cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese"
+  model_url: "https://huggingface.co/cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese"
   quantization: "INT8 (OpenVINO)"
   kv_cache_precision: "u8"
   performance: "7.2 tok/s"
   memory_gb: 20
+  role: "侍大将 - 足軽統率・Simple/Medium設計・品質監査"
+  features:
+    - "日本語ペラペラ"
+    - "<think>で深い分析"
+    - "じっくり考える（60秒）= 高品質の源泉"
 
-# --- Cloud Agents ---
-cloud:
-  # Primary: claude-cli (Pro版, npm @anthropic-ai/claude-code)
-  # Fallback: Anthropic API (console.anthropic.com)
-  shogun:
-    codename: "Shogun"
-    role: "将軍 - 最終決裁・戦略判断"
-    cli_model: "opus"
-    api_model: "claude-opus-20251101"
-    cost_yen: 1350
-  karo:
-    codename: "Karo"
-    role: "家老 - 作業割振り・複雑実装"
-    cli_model: "sonnet"
-    api_model: "claude-sonnet-4-5-20250514"
-    cost_yen: 280
-
-# --- 足軽 (MCP Servers) ---
+# --- 足軽 × 9 (実行部隊) ---
 ashigaru:
-  count: 8
-  max_active: 4  # 動的選抜での最大同時実行数
+  count: 9
+  max_active: 4
   memory_each_mb: "50-150"
   host: "192.168.1.10"
-  selection_algorithm: "dynamic"  # 動的選抜アルゴリズム
+  selection_algorithm: "dynamic"
   servers:
     - id: 1
       name: "filesystem"
-      role: "ファイル操作"
+      mcp: "@modelcontextprotocol/server-filesystem"
+      role: "ファイル読み書き・検索"
     - id: 2
       name: "github"
-      role: "Git/GitHub操作"
+      mcp: "@modelcontextprotocol/server-github"
+      role: "リポジトリ操作・Issue管理"
     - id: 3
       name: "fetch"
-      role: "Web情報取得"
+      mcp: "@modelcontextprotocol/server-fetch"
+      role: "Webページ取得"
     - id: 4
       name: "memory"
-      role: "長期記憶"
+      mcp: "@modelcontextprotocol/server-memory"
+      role: "知識保存・検索"
     - id: 5
       name: "postgres"
-      role: "データベース"
+      mcp: "@modelcontextprotocol/server-postgres"
+      role: "データベース操作"
     - id: 6
       name: "puppeteer"
+      mcp: "@modelcontextprotocol/server-puppeteer"
       role: "ブラウザ自動化"
     - id: 7
       name: "brave-search"
-      role: "Web検索"
+      mcp: "@modelcontextprotocol/server-brave-search"
+      role: "最新情報検索"
     - id: 8
       name: "slack"
-      role: "チーム連携"
+      mcp: "@modelcontextprotocol/server-slack"
+      role: "Slack操作"
+    - id: 9
+      name: "groq-recorder"
+      type: "llm"
+      model: "llama-3.3-70b-versatile"
+      role: "記録係 - リアルタイム記録・60日要約・Notion転送・家訓抽出"
+
+# --- Groq (9番足軽) ---
+groq:
+  api_url: "https://api.groq.com/openai/v1"
+  model: "llama-3.3-70b-versatile"
+  cost_per_task_yen: 0
+  free_tier_requests_per_day: 14400
+  speed: "300-500 tok/s"
+
+# --- Notion統合 ---
+notion:
+  enabled: true
+  database_id: ""
+  auto_summary_days: 60
+  uses:
+    - "家訓（決定事項）の永続化"
+    - "チャンネル要約の保存"
+    - "ナレッジDB構築"
+
+# --- 60日自動要約 ---
+auto_summary:
+  enabled: true
+  retention_days: 60
+  schedule:
+    hour: 3
+    minute: 0
+  groq_model: "llama-3.3-70b-versatile"
 
 # --- Deployment Modes ---
 modes:
   battalion:
     label: "大隊"
-    description: "家老 + 将軍 + 侍大将 + 足軽 × 8"
+    description: "将軍 + 家老(諮問時) + 侍大将 + 足軽 × 9"
     api_enabled: true
+    trigger: "@shogun-bot"
   company:
     label: "中隊"
-    description: "侍大将 + 足軽 × 8 (API不使用)"
+    description: "侍大将 + 足軽 × 9 (API不使用)"
     api_enabled: false
     cost: 0
+    trigger: "@shogun-bot-light"
+  platoon:
+    label: "小隊"
+    description: "侍大将 + 必要な足軽のみ（動的選択）"
+    api_enabled: false
+    cost: 0
+    trigger: "HA OS音声"
+    response_time_sec: "30-60"
+
+# --- Platoon Mode Settings ---
+platoon_modes:
+  voice_query:
+    max_ashigaru: 2
+    response_time_target: 30
+  quick_info:
+    max_ashigaru: 1
+    response_time_target: 15
+  file_check:
+    max_ashigaru: 1
+    response_time_target: 10
+
+# --- Slack Bots (11個) ---
+slack:
+  bots:
+    - name: "shogun-bot"
+      role: "将軍"
+      mode: "battalion"
+    - name: "karo-bot"
+      role: "家老"
+    - name: "taisho-bot"
+      role: "侍大将"
+    - name: "ashigaru-1-bot"
+      role: "1番足軽 (filesystem)"
+    - name: "ashigaru-2-bot"
+      role: "2番足軽 (github)"
+    - name: "ashigaru-3-bot"
+      role: "3番足軽 (fetch)"
+    - name: "ashigaru-4-bot"
+      role: "4番足軽 (memory)"
+    - name: "ashigaru-5-bot"
+      role: "5番足軽 (postgres)"
+    - name: "ashigaru-6-bot"
+      role: "6番足軽 (puppeteer)"
+    - name: "ashigaru-7-bot"
+      role: "7番足軽 (brave-search)"
+    - name: "ashigaru-8-bot"
+      role: "8番足軽 (slack)"
+    - name: "ashigaru-9-bot"
+      role: "9番足軽 (groq記録係)"
+    - name: "shogun-bot-light"
+      role: "中隊モード専用"
+      mode: "company"
+
+# --- HA OS (音声インターフェース) ---
+ha_os:
+  url: "http://192.168.1.20:8123"
+  mode: "platoon"
+  whisper: "ローカル音声認識"
+  tts: "Piper"
 
 # --- Proxmox LXC ---
 proxmox:
@@ -93,13 +203,15 @@ proxmox:
     memory_mb: 2048
     cores: 2
     ip: "192.168.1.10"
-    role: "本陣 - タスクルーティング, MCP管理, Slack Bot"
+    role: "本陣 - タスクルーティング, MCP管理, Slack Bot × 11, Notion統合"
   ct101:
-    name: "taisho-openvino"
+    name: "taisho-r1-japanese"
     memory_mb: 20480
     cores: 6
     ip: "192.168.1.11"
-    role: "侍大将R1 - OpenVINO推論サーバー"
+    role: "侍大将R1 - OpenVINO推論サーバー (日本語版)"
+    cpu_type: "host"
+    numa: true
 
 # --- Network ---
 network:
@@ -108,56 +220,67 @@ network:
 
 # --- Cost Budget ---
 budget:
-  monthly_target_yen: 6000
-  pro_subscription_yen: 3000
-  electricity_yen: 800
+  monthly_target_yen: 3950
+  breakdown:
+    pro_subscription_yen: 3000
+    electricity_yen: 800
+    api_usage_yen: 150
+  comparison:
+    vs_opus_only: "-84%"
+    vs_claude_code: "-49%"
+
+# --- Quality Metrics ---
+quality:
+  total_score: 95.2
+  breakdown:
+    simple: 90
+    complex: 95
+    strategic: 97
+    knowledge: 98
+    security: 96
 
 # --- Monthly Maintenance (反省会) ---
 maintenance:
   schedule:
-    day_of_month: 1  # 毎月1日に実行
+    day_of_month: 1
     hour: 9
     minute: 0
     timezone: "Asia/Tokyo"
-
-  # 定期チェック項目
   checks:
     - id: "llm_versions"
       name: "LLMバージョン確認"
-      description: "クラウドLLMの最新バージョンチェック"
-      auto_update: false  # 手動確認推奨
-
-    - id: "openvino_model"
-      name: "OpenVINOモデル確認"
-      description: "侍大将R1モデルの更新確認"
+      description: "Claude CLI / API モデルの最新チェック"
       auto_update: false
-
+    - id: "r1_japanese"
+      name: "R1日本語モデル確認"
+      description: "CyberAgent版 R1 の更新確認"
+      auto_update: false
     - id: "mcp_servers"
       name: "MCPサーバー更新"
-      description: "npm MCP パッケージのアップデート"
+      description: "npm MCP パッケージの更新"
       auto_update: true
-
+    - id: "groq_status"
+      name: "Groq API確認"
+      description: "9番足軽（記録係）の動作確認"
+      auto_update: false
+    - id: "notion_sync"
+      name: "Notion同期確認"
+      description: "ナレッジDB同期状態の確認"
+      auto_update: false
     - id: "system_health"
       name: "システムヘルスチェック"
       description: "各コンポーネントの動作確認"
       auto_update: false
-
     - id: "log_cleanup"
       name: "ログクリーンアップ"
-      description: "30日以上のログファイル削除"
+      description: "30日以上のログ削除"
       auto_update: true
-
     - id: "cost_report"
       name: "月次コストレポート"
       description: "API使用量・コスト集計"
       auto_update: true
-
-  # 通知設定
   notification:
     slack_channel: "#shogun-maintenance"
-    email: ""  # オプション
-
-  # レポート保存
   reports:
     directory: "reports/maintenance"
     retention_days: 365

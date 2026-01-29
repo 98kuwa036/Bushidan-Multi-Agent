@@ -1,7 +1,7 @@
 """Enhanced Anthropic API Provider with Latest Models and Error Handling
 
 Pro版 claude-cli が制限に達した場合に使用。
-Latest Claude models with comprehensive error handling.
+Latest Claude models (Opus 4.5 / Sonnet 4.5) with comprehensive error handling.
 """
 
 import asyncio
@@ -23,17 +23,25 @@ class AnthropicAPIProvider:
     """Enhanced Anthropic Messages API client with latest models."""
 
     # Latest model mapping: role -> actual API model ID (January 2025)
+    # Updated to use latest Claude Opus 4.5 and Sonnet 4.5
     MODEL_MAP = {
-        "opus": "claude-3-opus-20240229",        # Latest Opus 3.0
-        "sonnet": "claude-3-5-sonnet-20250106",  # Latest Sonnet 4.0
-        "haiku": "claude-3-haiku-20240307",      # Latest Haiku
+        "opus": "claude-opus-4-5-20250514",      # Latest Opus 4.5
+        "sonnet": "claude-sonnet-4-5-20250514",  # Latest Sonnet 4.5
+        "haiku": "claude-3-5-haiku-20241022",    # Latest Haiku 3.5
     }
-    
-    # Cost estimates per 1K tokens (JPY)
+
+    # Cost estimates per task (JPY) - v7.0 pricing
+    COST_PER_TASK = {
+        "claude-opus-4-5-20250514": 24,      # ¥24/task (Strategic only)
+        "claude-sonnet-4-5-20250514": 5,     # ¥5/task (Complex tasks)
+        "claude-3-5-haiku-20241022": 0.5,    # ¥0.5/task
+    }
+
+    # Cost estimates per 1K tokens (JPY) for detailed tracking
     COST_ESTIMATES = {
-        "claude-3-opus-20240229": {"input": 0.02, "output": 0.06},
-        "claude-3-5-sonnet-20250106": {"input": 0.004, "output": 0.012},
-        "claude-3-haiku-20240307": {"input": 0.001, "output": 0.002},
+        "claude-opus-4-5-20250514": {"input": 0.015, "output": 0.075},
+        "claude-sonnet-4-5-20250514": {"input": 0.003, "output": 0.015},
+        "claude-3-5-haiku-20241022": {"input": 0.0008, "output": 0.004},
     }
 
     def __init__(self, api_key: str | None = None):
