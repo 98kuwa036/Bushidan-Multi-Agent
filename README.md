@@ -190,6 +190,55 @@ shogun/
 3. **本陣 (CT100)**: `pct enter 100 && bash setup/install.sh`
 4. **環境変数**: `.env` にAPIキー設定
 5. **動作確認**: `shogun health`
+6. **メンテナンス設定**: `bash setup/maintenance.sh install`
+
+## 月次メンテナンス（反省会）
+
+毎月1日に自動実行される定期メンテナンス。
+
+### チェック項目
+
+| 項目 | 内容 | 自動更新 |
+|------|------|----------|
+| LLMバージョン | Claude CLI, APIモデル | 手動推奨 |
+| OpenVINOモデル | 侍大将R1の更新確認 | 手動推奨 |
+| MCPサーバー | 足軽×8パッケージ更新 | 可能 |
+| システムヘルス | venv, 設定, ディスク | - |
+| ログクリーンアップ | 30日経過ログ削除 | 自動 |
+| コストレポート | 月間API使用量集計 | 自動 |
+
+### CLI コマンド
+
+```bash
+# メンテナンス実行
+shogun maintenance run
+
+# 過去レポート一覧
+shogun maintenance reports
+
+# 次回メンテナンス日
+shogun maintenance next
+
+# 個別チェック
+shogun maintenance check llm
+shogun maintenance check mcp
+shogun maintenance check health
+```
+
+### cron 設定
+
+```bash
+# インストール (毎月1日 9:00 JST)
+bash setup/maintenance.sh install
+
+# 状態確認
+bash setup/maintenance.sh status
+
+# 今すぐ実行
+bash setup/maintenance.sh run
+```
+
+詳細: `instructions/maintenance.md`
 
 ## 参考
 

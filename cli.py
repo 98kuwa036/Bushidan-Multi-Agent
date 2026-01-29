@@ -15,6 +15,9 @@ Usage:
     shogun health                   # ヘルスチェック
     shogun server                   # REST APIサーバー起動
     shogun pipe                     # stdin パイプ入力
+    shogun maintenance run          # 月次メンテナンス実行
+    shogun maintenance reports      # 過去レポート一覧
+    shogun maintenance next         # 次回メンテナンス日
 """
 
 import argparse
@@ -280,6 +283,112 @@ def cmd_server(args) -> None:
         sys.exit(1)
 
 
+def cmd_maintenance(args) -> None:
+    """Monthly maintenance (反省会) commands."""
+    from shogun.core.maintenance import MaintenanceManager
+
+    manager = MaintenanceManager(base_dir=Path(__file__).resolve().parent)
+    action = getattr(args, "action", "status")
+
+    if action == "run":
+        print("=" * 60)
+        print("  将軍システム - 月次メンテナンス (反省会)")
+        print("=" * 60)
+        print()
+        print("メンテナンス実行中...")
+        print()
+
+        report = manager.run_full_maintenance()
+
+        # Summary
+        summary = report["summary"]
+        print(f"総チェック数: {summary['total']}")
+        print(f"  ✓ 正常: {summary['passed']}")
+        print(f"  ⚠ 警告: {summary['warnings']}")
+        print(f"  ✗ エラー: {summary['errors']}")
+        print()
+
+        # Details
+        for check_id, result in report["checks"].items():
+            status = result.get("status", "unknown")
+            emoji = {"ok": "✓", "warning": "⚠", "error": "✗"}.get(status, "?")
+            name = result.get("name", check_id)
+            msg = result.get("message", "")
+            print(f"  {emoji} {name}: {msg}")
+
+        print()
+        print(f"レポート保存: reports/maintenance/maintenance_{report['timestamp']}.md")
+        print()
+
+    elif action == "reports":
+        reports = manager.list_reports(limit=args.limit or 10)
+        if not reports:
+            print("過去のレポートがありません。")
+            return
+
+        print("過去のメンテナンスレポート:")
+        print()
+        for r in reports:
+            s = r.get("summary", {})
+            status = "✓" if s.get("errors", 0) == 0 else "✗"
+            print(f"  {status} {r['date'][:10]}  passed:{s.get('passed',0)}  warnings:{s.get('warnings',0)}  errors:{s.get('errors',0)}")
+            print(f"      → {r['file']}")
+
+    elif action == "next":
+        next_date = manager.get_next_maintenance_date()
+        print(f"次回メンテナンス: {next_date.strftime('%Y-%m-%d %H:%M')}")
+
+    elif action == "check":
+        # Run single check
+        check_name = args.check_name
+        check_methods = {
+            "llm": manager.check_llm_versions,
+            "llm_versions": manager.check_llm_versions,
+            "openvino": manager.check_openvino_model,
+            "mcp": manager.check_mcp_servers,
+            "health": manager.check_system_health,
+            "logs": manager.cleanup_logs,
+            "cost": manager.generate_cost_report,
+        }
+        if check_name in check_methods:
+            result = check_methods[check_name]()
+            print(f"{result.get('name', check_name)}:")
+            print(f"  ステータス: {result.get('status', 'unknown')}")
+            print(f"  結果: {result.get('message', '')}")
+            if result.get("updates_available"):
+                print("  更新可能:")
+                for u in result["updates_available"]:
+                    if isinstance(u, dict):
+                        print(f"    - {u.get('package')}: {u.get('current')} → {u.get('latest')}")
+                    else:
+                        print(f"    - {u}")
+        else:
+            print(f"不明なチェック項目: {check_name}")
+            print("利用可能: llm, openvino, mcp, health, logs, cost")
+
+    else:
+        # status (default)
+        next_date = manager.get_next_maintenance_date()
+        reports = manager.list_reports(limit=1)
+
+        print("月次メンテナンス (反省会):")
+        print(f"  次回予定: {next_date.strftime('%Y-%m-%d %H:%M')}")
+
+        if reports:
+            last = reports[0]
+            s = last.get("summary", {})
+            status = "正常" if s.get("errors", 0) == 0 else "要確認"
+            print(f"  前回実行: {last['date'][:10]} ({status})")
+        else:
+            print("  前回実行: なし")
+
+        print()
+        print("コマンド:")
+        print("  shogun maintenance run       # メンテナンス実行")
+        print("  shogun maintenance reports   # 過去レポート一覧")
+        print("  shogun maintenance check mcp # 個別チェック実行")
+
+
 # ─── Main ───
 
 def main():
@@ -326,6 +435,16 @@ def main():
     p_server.add_argument("--host", default="0.0.0.0")
     p_server.add_argument("--port", type=int, default=8080)
 
+    # maintenance (反省会)
+    p_maint = sub.add_parser("maintenance", help="月次メンテナンス (反省会)")
+    p_maint_sub = p_maint.add_subparsers(dest="action")
+    p_maint_sub.add_parser("run", help="メンテナンス実行")
+    p_maint_reports = p_maint_sub.add_parser("reports", help="過去レポート一覧")
+    p_maint_reports.add_argument("-n", "--limit", type=int, default=10, help="表示件数")
+    p_maint_sub.add_parser("next", help="次回メンテナンス日")
+    p_maint_check = p_maint_sub.add_parser("check", help="個別チェック実行")
+    p_maint_check.add_argument("check_name", help="チェック項目: llm, openvino, mcp, health, logs, cost")
+
     args = parser.parse_args()
     setup_logging(args.verbose)
 
@@ -336,6 +455,10 @@ def main():
 
     if args.command == "server":
         cmd_server(args)
+        return
+
+    if args.command == "maintenance":
+        cmd_maintenance(args)
         return
 
     # Async commands

@@ -109,3 +109,53 @@ budget:
   monthly_target_yen: 6000
   pro_subscription_yen: 3000
   electricity_yen: 800
+
+# --- Monthly Maintenance (反省会) ---
+maintenance:
+  schedule:
+    day_of_month: 1  # 毎月1日に実行
+    hour: 9
+    minute: 0
+    timezone: "Asia/Tokyo"
+
+  # 定期チェック項目
+  checks:
+    - id: "llm_versions"
+      name: "LLMバージョン確認"
+      description: "クラウドLLMの最新バージョンチェック"
+      auto_update: false  # 手動確認推奨
+
+    - id: "openvino_model"
+      name: "OpenVINOモデル確認"
+      description: "侍大将R1モデルの更新確認"
+      auto_update: false
+
+    - id: "mcp_servers"
+      name: "MCPサーバー更新"
+      description: "npm MCP パッケージのアップデート"
+      auto_update: true
+
+    - id: "system_health"
+      name: "システムヘルスチェック"
+      description: "各コンポーネントの動作確認"
+      auto_update: false
+
+    - id: "log_cleanup"
+      name: "ログクリーンアップ"
+      description: "30日以上のログファイル削除"
+      auto_update: true
+
+    - id: "cost_report"
+      name: "月次コストレポート"
+      description: "API使用量・コスト集計"
+      auto_update: true
+
+  # 通知設定
+  notification:
+    slack_channel: "#shogun-maintenance"
+    email: ""  # オプション
+
+  # レポート保存
+  reports:
+    directory: "reports/maintenance"
+    retention_days: 365
