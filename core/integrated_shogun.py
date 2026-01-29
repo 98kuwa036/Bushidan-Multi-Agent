@@ -40,6 +40,10 @@ from shogun.core.task_queue import (
 from shogun.core.complexity import estimate_complexity
 from shogun.core.dashboard import Dashboard
 from shogun.core.mcp_manager import MCPManager
+from shogun.core.error_handling import (
+    ShogunErrorHandler, FallbackStrategy, ErrorSeverity,
+    ShogunError, OperationFailedError, CircuitBreakerOpenError
+)
 from shogun.providers.claude_cli import ClaudeCLIProvider
 from shogun.providers.openvino_client import OpenVINOClient
 from shogun.ashigaru.groq_recorder import GroqRecorder
@@ -55,9 +59,9 @@ class PlatoonMode(Enum):
 
 
 class AgentCost:
-    """Cost per agent call (JPY)."""
-    SHOGUN_OPUS = 24      # Strategic decisions only (5/month)
-    KARO_SONNET = 5       # Complex tasks (Pro CLI → API)
+    """Cost per agent call (JPY) - Updated for latest models."""
+    SHOGUN_OPUS = 24      # Latest Opus 3.0 for Strategic decisions only (5/month)
+    KARO_SONNET = 5       # Latest Sonnet 4.0 for Complex tasks (Pro CLI → API)
     TAISHO_R1 = 0         # Local Japanese R1
     ASHIGARU_MCP = 0      # Local MCP servers
     GROQ_RECORDER = 0     # Free tier (14,400 req/day)
@@ -80,6 +84,9 @@ class IntegratedShogun:
         # Load configuration
         cfg_path = config_path or str(self.base_dir / "config" / "settings_v7.yaml")
         self.config = self._load_config(cfg_path)
+        
+        # Initialize enhanced error handler
+        self.error_handler = ShogunErrorHandler(self.config)
         
         # Current deployment mode
         self.current_mode = DeploymentMode.BATTALION

@@ -1,86 +1,332 @@
 #!/bin/bash
-# setup_r1_japanese.sh - Japanese R1 Setup for Shogun System v7.0
+# setup_r1_japanese.sh - Enhanced Japanese R1 Setup for Shogun System v7.0
 #
 # Sets up cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese with OpenVINO
 # For Taisho (侍大将) on CT 101 (192.168.1.11)
 #
 # Usage: Run inside CT 101 (侍大将専用LXC)
 # Requires: 20GB RAM, 6 CPU cores, HugePages configured
+#
+# Enhanced with comprehensive error handling and recovery mechanisms
 
-set -e
+set -euo pipefail  # Enhanced error handling
 
-echo "========================================"
-echo "🏯 侍大将 (Taisho) - 日本語R1 セットアップ"
-echo "========================================"
-echo "Model: cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese"
-echo "Target: CT 101 (192.168.1.11)"
-echo "OpenVINO: INT8 quantization for optimal performance"
-echo "========================================"
+# Global variables for error handling
+LOG_FILE="/var/log/taisho-setup.log"
+BACKUP_DIR="/opt/backup-$(date +%Y%m%d-%H%M%S)"
+RECOVERY_INFO_FILE="/opt/recovery_info.json"
 
-# Check if running in correct container
-if [ "$(hostname)" != "taisho-r1-japanese" ]; then
-    echo "⚠️ Warning: Expected hostname 'taisho-r1-japanese', got '$(hostname)'"
-    read -p "Continue anyway? [y/N]: " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+# Enhanced logging function
+log() {
+    local level=$1
+    shift
+    local message="$*"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Color codes
+    local RED='\033[0;31m'
+    local GREEN='\033[0;32m'
+    local YELLOW='\033[1;33m'
+    local BLUE='\033[0;34m'
+    local NC='\033[0m' # No Color
+    
+    case $level in
+        "ERROR")
+            echo -e "${RED}[ERROR]${NC} $message" | tee -a "$LOG_FILE"
+            ;;
+        "WARN")
+            echo -e "${YELLOW}[WARN]${NC} $message" | tee -a "$LOG_FILE"
+            ;;
+        "INFO")
+            echo -e "${GREEN}[INFO]${NC} $message" | tee -a "$LOG_FILE"
+            ;;
+        "DEBUG")
+            echo -e "${BLUE}[DEBUG]${NC} $message" | tee -a "$LOG_FILE"
+            ;;
+        *)
+            echo "[$timestamp] $message" | tee -a "$LOG_FILE"
+            ;;
+    esac
+}
+
+# Error handler function
+error_handler() {
+    local exit_code=$?
+    local line_number=$1
+    
+    log "ERROR" "Setup failed at line $line_number with exit code $exit_code"
+    log "ERROR" "Last command: $BASH_COMMAND"
+    
+    # Save recovery information
+    cat > "$RECOVERY_INFO_FILE" << EOF
+{
+    "timestamp": "$(date -Iseconds)",
+    "exit_code": $exit_code,
+    "failed_line": $line_number,
+    "failed_command": "$BASH_COMMAND",
+    "backup_dir": "$BACKUP_DIR",
+    "log_file": "$LOG_FILE"
+}
+EOF
+    
+    log "INFO" "Recovery information saved to $RECOVERY_INFO_FILE"
+    log "INFO" "Log file available at $LOG_FILE"
+    
+    # Attempt automatic recovery for common issues
+    attempt_recovery $exit_code
+    
+    exit $exit_code
+}
+
+# Set error trap
+trap 'error_handler ${LINENO}' ERR
+
+# Recovery function for common issues
+attempt_recovery() {
+    local exit_code=$1
+    
+    log "INFO" "Attempting automatic recovery for exit code $exit_code..."
+    
+    case $exit_code in
+        130)
+            log "INFO" "Process interrupted by user - cleanup not needed"
+            ;;
+        1)
+            log "INFO" "General error - checking for partial installations"
+            cleanup_partial_installation
+            ;;
+        2)
+            log "INFO" "Command not found - checking package installation"
+            check_missing_packages
+            ;;
+        *)
+            log "WARN" "No specific recovery procedure for exit code $exit_code"
+            ;;
+    esac
+}
+
+# Cleanup partial installations
+cleanup_partial_installation() {
+    log "INFO" "Cleaning up partial installation..."
+    
+    # Stop any running services
+    if systemctl is-active --quiet taisho-japanese-r1 2>/dev/null; then
+        systemctl stop taisho-japanese-r1 || true
     fi
-fi
+    
+    # Remove incomplete model downloads
+    if [ -d "/opt/models/deepseek-r1-japanese" ] && [ ! -f "/opt/models/deepseek-r1-japanese/.download_complete" ]; then
+        log "WARN" "Removing incomplete model download"
+        rm -rf /opt/models/deepseek-r1-japanese
+    fi
+    
+    log "INFO" "Partial installation cleanup complete"
+}
 
-# Check system resources
-echo "[1/8] System resource check"
-MEM_GB=$(free -g | awk '/^Mem:/{print $2}')
-CPU_CORES=$(nproc)
+# Check for missing packages
+check_missing_packages() {
+    log "INFO" "Checking for missing packages..."
+    
+    local required_packages=("python3" "python3-pip" "python3-venv" "git" "curl" "wget")
+    local missing_packages=()
+    
+    for package in "${required_packages[@]}"; do
+        if ! dpkg -l | grep -q "^ii  $package "; then
+            missing_packages+=("$package")
+        fi
+    done
+    
+    if [ ${#missing_packages[@]} -gt 0 ]; then
+        log "WARN" "Missing packages detected: ${missing_packages[*]}"
+        log "INFO" "Attempting to install missing packages..."
+        apt update && apt install -y "${missing_packages[@]}" || {
+            log "ERROR" "Failed to install missing packages"
+            return 1
+        }
+    fi
+}
 
-echo "Available RAM: ${MEM_GB}GB (minimum: 20GB)"
-echo "CPU cores: ${CPU_CORES} (minimum: 6)"
+# Create backup of existing installation
+create_backup() {
+    if [ -d "/opt/openvino-env" ] || [ -d "/opt/models" ] || [ -f "/opt/taisho_server.py" ]; then
+        log "INFO" "Creating backup of existing installation..."
+        mkdir -p "$BACKUP_DIR"
+        
+        [ -d "/opt/openvino-env" ] && cp -r /opt/openvino-env "$BACKUP_DIR/" || true
+        [ -d "/opt/models" ] && cp -r /opt/models "$BACKUP_DIR/" || true  
+        [ -f "/opt/taisho_server.py" ] && cp /opt/taisho_server.py "$BACKUP_DIR/" || true
+        
+        log "INFO" "Backup created at $BACKUP_DIR"
+    fi
+}
 
-if [ "$MEM_GB" -lt 20 ]; then
-    echo "❌ Insufficient RAM: ${MEM_GB}GB < 20GB required"
-    exit 1
-fi
+# Enhanced system check with detailed reporting
+check_system_requirements() {
+    log "INFO" "Performing enhanced system requirements check..."
+    
+    local mem_gb=$(free -g | awk '/^Mem:/{print $2}')
+    local cpu_cores=$(nproc)
+    local disk_space_gb=$(df /opt --output=avail -BG | tail -n1 | tr -d 'G')
+    
+    log "INFO" "System specifications:"
+    log "INFO" "  RAM: ${mem_gb}GB (required: 20GB)"
+    log "INFO" "  CPU cores: ${cpu_cores} (required: 4)"
+    log "INFO" "  Disk space: ${disk_space_gb}GB (required: 50GB)"
+    log "INFO" "  Architecture: $(uname -m)"
+    
+    local requirements_met=true
+    
+    if [ "$mem_gb" -lt 20 ]; then
+        log "ERROR" "Insufficient RAM: ${mem_gb}GB < 20GB required"
+        requirements_met=false
+    fi
+    
+    if [ "$cpu_cores" -lt 4 ]; then
+        log "ERROR" "Insufficient CPU cores: ${cpu_cores} < 4 required"
+        requirements_met=false
+    fi
+    
+    if [ "$disk_space_gb" -lt 50 ]; then
+        log "ERROR" "Insufficient disk space: ${disk_space_gb}GB < 50GB required"
+        requirements_met=false
+    fi
+    
+    if [ "$(uname -m)" != "x86_64" ]; then
+        log "WARN" "Architecture $(uname -m) may not be fully supported"
+    fi
+    
+    if [ "$requirements_met" = false ]; then
+        log "ERROR" "System requirements not met - aborting installation"
+        return 1
+    fi
+    
+    log "INFO" "✅ All system requirements satisfied"
+    return 0
+}
 
-if [ "$CPU_CORES" -lt 4 ]; then
-    echo "❌ Insufficient CPU cores: ${CPU_CORES} < 4 required"
-    exit 1
-fi
+# Main execution starts here
+main() {
+    # Initialize logging
+    mkdir -p "$(dirname "$LOG_FILE")"
+    log "INFO" "========================================="
+    log "INFO" "🏯 侍大将 (Taisho) - 日本語R1 セットアップ"
+    log "INFO" "========================================="
+    log "INFO" "Model: cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese"
+    log "INFO" "Target: CT 101 (192.168.1.11)"
+    log "INFO" "OpenVINO: INT8 quantization for optimal performance"
+    log "INFO" "Enhanced with comprehensive error handling"
+    log "INFO" "========================================="
 
-echo "✅ System resources OK"
+    # Create backup if needed
+    create_backup
 
-# Update system
-echo "[2/8] System update"
-apt update
-apt install -y python3 python3-pip python3-venv git curl wget htop
+    # Check if running in correct container
+    if [ "$(hostname)" != "taisho-r1-japanese" ]; then
+        log "WARN" "Expected hostname 'taisho-r1-japanese', got '$(hostname)'"
+        read -p "Continue anyway? [y/N]: " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            log "INFO" "Installation cancelled by user"
+            exit 0
+        fi
+    fi
 
-# Create virtual environment
-echo "[3/8] Python environment setup"
-cd /opt
-python3 -m venv openvino-env
-source openvino-env/bin/activate
+    # Enhanced system requirements check
+    log "INFO" "[1/9] Enhanced system requirements check"
+    check_system_requirements
 
-# Install OpenVINO and dependencies
-echo "[4/8] OpenVINO installation"
-pip install --upgrade pip
-pip install openvino==2024.0.0 openvino-dev optimum[openvino] transformers torch
-pip install flask requests psutil huggingface_hub
+    # Update system
+    log "INFO" "[2/9] System update"
+    log "DEBUG" "Updating package lists..."
+    apt update || {
+        log "ERROR" "Failed to update package lists"
+        return 1
+    }
+    
+    log "DEBUG" "Installing required packages..."
+    apt install -y python3 python3-pip python3-venv git curl wget htop build-essential || {
+        log "ERROR" "Failed to install required packages"
+        return 1
+    }
+    log "INFO" "✅ System packages installed"
 
-echo "✅ OpenVINO installation complete"
+    # Create virtual environment
+    log "INFO" "[3/9] Python environment setup"
+    cd /opt
+    
+    if [ -d "openvino-env" ]; then
+        log "WARN" "Existing virtual environment found - removing"
+        rm -rf openvino-env
+    fi
+    
+    log "DEBUG" "Creating Python virtual environment..."
+    python3 -m venv openvino-env || {
+        log "ERROR" "Failed to create virtual environment"
+        return 1
+    }
+    
+    log "DEBUG" "Activating virtual environment..."
+    source openvino-env/bin/activate || {
+        log "ERROR" "Failed to activate virtual environment"
+        return 1
+    }
+    log "INFO" "✅ Python virtual environment ready"
 
-# Create model directory
-echo "[5/8] Model download and setup"
-mkdir -p /opt/models
-cd /opt/models
+    # Install OpenVINO and dependencies
+    log "INFO" "[4/9] OpenVINO installation"
+    log "DEBUG" "Upgrading pip..."
+    pip install --upgrade pip || {
+        log "ERROR" "Failed to upgrade pip"
+        return 1
+    }
+    
+    log "DEBUG" "Installing OpenVINO and ML dependencies..."
+    pip install openvino==2024.0.0 openvino-dev optimum[openvino] transformers torch || {
+        log "ERROR" "Failed to install OpenVINO dependencies"
+        return 1
+    }
+    
+    log "DEBUG" "Installing web server and utility dependencies..."
+    pip install flask requests psutil huggingface_hub || {
+        log "ERROR" "Failed to install server dependencies"
+        return 1
+    }
 
-# Download Japanese R1 model
-echo "🏗️ Downloading cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese (2.8GB)"
-echo "This may take 10-30 minutes depending on network speed..."
+    log "INFO" "✅ OpenVINO installation complete"
 
-huggingface-cli download \
-  cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese \
-  --local-dir deepseek-r1-japanese \
-  --local-dir-use-symlinks False
+    # Create model directory
+    log "INFO" "[5/9] Model download and setup"
+    log "DEBUG" "Creating model directory..."
+    mkdir -p /opt/models || {
+        log "ERROR" "Failed to create model directory"
+        return 1
+    }
+    cd /opt/models
 
-echo "✅ Model download complete"
+    # Download Japanese R1 model with progress tracking
+    log "INFO" "🏗️ Downloading cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese"
+    log "INFO" "Model size: ~2.8GB - This may take 10-30 minutes depending on network speed..."
+    
+    # Check if model already exists and is complete
+    if [ -f "deepseek-r1-japanese/.download_complete" ]; then
+        log "INFO" "Model already downloaded - skipping"
+    else
+        # Remove any partial download
+        [ -d "deepseek-r1-japanese" ] && rm -rf deepseek-r1-japanese
+        
+        log "DEBUG" "Starting model download..."
+        huggingface-cli download \
+          cyberagent/DeepSeek-R1-Distill-Qwen-14B-Japanese \
+          --local-dir deepseek-r1-japanese \
+          --local-dir-use-symlinks False || {
+            log "ERROR" "Model download failed"
+            return 1
+        }
+        
+        # Mark download as complete
+        touch deepseek-r1-japanese/.download_complete
+        log "INFO" "✅ Model download complete"
+    fi
 
 # Convert to OpenVINO format with INT8 quantization
 echo "[6/8] OpenVINO INT8 quantization"
@@ -393,5 +639,18 @@ echo '  curl -X POST http://192.168.1.11:11434/api/generate \'
 echo '    -H "Content-Type: application/json" \'
 echo '    -d "{\"prompt\": \"ESP32のI2S設定について教えてください\", \"max_tokens\": 200}"'
 echo ""
-echo "🏯 侍大将は深い思考(<think>)で皆様をお支えします!"
-echo "========================================"
+    log "INFO" "🏯 侍大将は深い思考(<think>)で皆様をお支えします!"
+    log "INFO" "========================================"
+    
+    # Final success message
+    log "INFO" "✅ Setup completed successfully!"
+    log "INFO" "All logs saved to: $LOG_FILE"
+    
+    return 0
+}
+
+# Execute main function
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+    exit $?
+fi

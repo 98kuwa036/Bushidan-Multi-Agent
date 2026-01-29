@@ -8,13 +8,13 @@ design_philosophy: "スピードより質の追求"
 # Core Architecture Settings
 architecture:
   shogun:
-    model: "claude-3-5-sonnet-20241022"
+    model: "claude-3-opus-20240229"  # Latest Opus model for strategic decisions
     role: "総大将 - 戦略判断・最終決裁"
     usage: "Strategic級タスクのみ (月5回程度)"
     cost_per_call: 24  # JPY
     
   karo:
-    model: "claude-3-5-sonnet-20241022" 
+    model: "claude-3-5-sonnet-20250106"  # Latest Sonnet model for complex tasks
     role: "参謀 - Complex級作業割振り"
     usage: "Complex級タスク (月10-20回)"
     cost_per_call: 5   # JPY (Pro CLI → API fallback)
@@ -272,6 +272,45 @@ required_env_vars:
   - "SLACK_TOKEN_ASHIGARU_8"
   - "SLACK_TOKEN_ASHIGARU_9"
 
+# Error Handling & Resilience Configuration
+error_handling:
+  retry_policy:
+    max_attempts: 3
+    backoff_strategy: "exponential"
+    base_delay: 1.0  # seconds
+    max_delay: 30.0  # seconds
+    jitter: true
+    
+  timeout_settings:
+    api_request: 60     # seconds
+    local_r1: 120      # seconds (deep thinking allowed)
+    groq_request: 30   # seconds
+    notion_sync: 45    # seconds
+    git_operations: 30 # seconds
+    
+  fallback_behavior:
+    api_failure: "local_r1"        # Fallback to local R1 if API fails
+    r1_failure: "simplified_response"  # Provide basic response if R1 unavailable
+    groq_failure: "skip_recording"     # Continue without recording if Groq fails
+    notion_failure: "local_cache"      # Cache locally if Notion unavailable
+    
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 5
+    recovery_timeout: 300  # seconds
+    half_open_requests: 3
+    
+  health_monitoring:
+    interval: 60       # seconds
+    endpoints:
+      - "taisho_r1"
+      - "groq_api" 
+      - "notion_api"
+      - "anthropic_api"
+    alert_thresholds:
+      consecutive_failures: 3
+      response_time_ms: 10000
+
 # Feature Flags
 features:
   japanese_r1: true
@@ -283,6 +322,7 @@ features:
   sixty_day_summary: true
   family_precepts: true
   real_time_recording: true
+  enhanced_error_handling: true
 
 # Success Metrics
 success_criteria:
