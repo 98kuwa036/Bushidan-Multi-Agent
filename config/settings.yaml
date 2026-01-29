@@ -32,7 +32,7 @@ cloud:
     codename: "Shogun"
     role: "将軍 - 最終決裁・戦略判断"
     cli_model: "opus"
-    api_model: "claude-opus-4-5-20250514"
+    api_model: "claude-opus-20251101"
     cost_yen: 1350
   karo:
     codename: "Karo"
@@ -44,8 +44,10 @@ cloud:
 # --- 足軽 (MCP Servers) ---
 ashigaru:
   count: 8
+  max_active: 4  # 動的選抜での最大同時実行数
   memory_each_mb: "50-150"
   host: "192.168.1.10"
+  selection_algorithm: "dynamic"  # 動的選抜アルゴリズム
   servers:
     - id: 1
       name: "filesystem"
