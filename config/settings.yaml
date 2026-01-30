@@ -1,17 +1,63 @@
 # =============================================================
-# 将軍システム v8.0.1 - Configuration
+# 将軍システム v8.1 - Configuration
 # =============================================================
 # 「完全自律型AI開発環境」- 実証主義・二重記憶・自律学習
 # =============================================================
 
 system:
   name: "将軍システム"
-  version: "8.0.1"
+  version: "8.1"
   language: "ja"
   philosophy: "スピードより質 + 実証主義 + 知識蓄積活用"
   subtitle: "完全自律型AI開発環境"
 
-# --- v8.0 新機能 ---
+# --- v8.1 新機能 ---
+v8_1_features:
+  automated_katun_generation:
+    enabled: true
+    description: "反省会から月次家訓を自動生成・RAG統合"
+    technology: "家老(生成) + 将軍(精査) + RAG統合"
+    schedule: "月末23:00自動実行"
+    data_sources:
+      - "月次反省会（Slack #反省会-YYYY-MM）"
+      - "陣中日記の統計分析"
+      - "演習場エラーログ"
+    features:
+      - "家老による家訓候補生成"
+      - "将軍による精査・優先順位付け"
+      - "既存家訓との重複チェック"
+      - "3ヶ月有効期限管理"
+      - "Slack自動通知"
+      - "Notion履歴保存"
+    benefits:
+      - "失敗再発率-60%削減"
+      - "判断一貫性+20%向上"
+      - "組織学習の実現"
+      - "運用知見の自動蓄積"
+    cost_impact: "+¥29/月"
+    
+  katun_hierarchy:
+    enabled: true
+    description: "家訓の階層化管理システム"
+    layers:
+      technical:
+        description: "技術家訓（既存）"
+        examples: ["React 19のServer Components優先", "I2Sバッファは1024を標準"]
+        retention: "永続"
+      operational:
+        description: "運用家訓（新規）"
+        examples: ["金曜夕方のデプロイ禁止", "リリース前の必須チェックリスト"]
+        retention: "6ヶ月"
+      monthly:
+        description: "月次家訓（新規）"
+        examples: ["2月はメモリ最適化最優先", "API呼び出し回数の削減強化"]
+        retention: "3ヶ月"
+    integration:
+      - "侍大将の全判断で自動参照"
+      - "タスク開始時の家訓確認"
+      - "家訓違反の警告機能"
+
+# --- v8.0 継続機能 ---
 v8_features:
   knowledge_base:
     enabled: true
@@ -64,7 +110,7 @@ shogun:
   codename: "Shogun"
   role: "将軍 - 難易度判断・全体統括・Complex設計・最終報告"
   cli_model: "sonnet"
-  api_model: "claude-sonnet-4-5-20250514"
+  api_model: "claude-sonnet-4-5-20250929"
   cost_per_task_yen: 5
   monthly_usage: 100
   new_features:
@@ -76,7 +122,7 @@ shogun:
 karo:
   codename: "Karo"
   role: "家老 - 戦術立案・作業割振り・将軍への助言・思考監視"
-  api_model: "claude-opus-4-5-20250514"  # v8.0: 最新版 Opus 4.5
+  api_model: "claude-opus-4-5-20251101"  # v8.1: 最新版 Opus 4.5
   cost_per_task_yen: 24
   monthly_usage: 5
   new_features:
@@ -500,17 +546,20 @@ network:
   controller_host: "0.0.0.0"
   controller_port: 8080
 
-# --- Cost Budget (v8.0) ---
+# --- Cost Budget (v8.1) ---
 budget:
-  monthly_target_yen: 4220  # v8.0: +¥270
+  monthly_target_yen: 4249  # v8.1: +¥29
   breakdown:
     pro_subscription_yen: 3000
-    electricity_yen: 950  # +¥150（CT102+104分）
-    api_usage_yen: 255  # +¥105（Opus最新版、Web Search）
-    web_search_yen: 15  # 超過分予備
+    electricity_yen: 950  # CT 100+101+102構成
+    api_usage_yen: 284  # +¥29（家訓自動生成: 家老¥24+将軍¥5）
+    web_search_yen: 15  # Ollama Web Search超過分予備
+  v8_1_additions:
+    katun_generation_yen: 29  # 家老¥24 + 将軍¥5（月1回）
   comparison:
-    vs_v7_0: "+6.8% (+¥270)"
-    vs_claude_code: "-45% (-¥3,481)"
+    vs_v8_0: "+0.7% (+¥29)"
+    vs_v7_0: "+7.5% (+¥299)"
+    vs_claude_code: "-44% (-¥3,452)"
 
 # --- Quality Metrics (v8.0 目標) ---
 quality:
@@ -624,7 +673,70 @@ maintenance:
     directory: "reports/maintenance"
     retention_days: 365
 
-# --- v8.0 Implementation Roadmap ---
+# --- v8.1 Implementation Roadmap ---
+v8_1_implementation:
+  phases:
+    phase1:
+      name: "家訓生成基盤"
+      priority: "最高"
+      duration_hours: "2-3"
+      tasks:
+        - "反省会マネージャー実装"
+        - "陣中日記統計分析強化"
+        - "演習場エラーログ集計"
+        - "基盤テスト"
+    
+    phase2:
+      name: "家訓生成エンジン"
+      priority: "最高"
+      duration_hours: "2-3"
+      tasks:
+        - "家老API統合・プロンプト最適化"
+        - "将軍精査システム"
+        - "重複チェック機能"
+        - "生成品質テスト"
+    
+    phase3:
+      name: "RAG統合・階層管理"
+      priority: "高"
+      duration_hours: "1-2"
+      tasks:
+        - "月次家訓RAG登録"
+        - "家訓階層システム"
+        - "有効期限管理"
+        - "検索・参照機能"
+    
+    phase4:
+      name: "自動化・通知"
+      priority: "高"
+      duration_hours: "1-2"
+      tasks:
+        - "月末自動実行"
+        - "Slack通知機能"
+        - "Notion記録"
+        - "cron設定"
+    
+    phase5:
+      name: "統合テスト・最適化"
+      priority: "中"
+      duration_hours: "2"
+      tasks:
+        - "エンドツーエンドテスト"
+        - "パフォーマンス最適化"
+        - "エラーハンドリング強化"
+        - "ドキュメント更新"
+  
+  total_implementation_time: "8-12時間"
+  recommended_schedule:
+    day1: "Phase 1-2（基盤・生成エンジン）4-6時間"
+    day2: "Phase 3-5（RAG・自動化・テスト）4-6時間"
+  
+  critical_path:
+    - "家老・将軍API統合"
+    - "RAG家訓統合"
+    - "月末自動実行"
+
+# --- v8.0 継続ロードマップ ---
 implementation:
   phases:
     phase1:

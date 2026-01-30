@@ -1,12 +1,12 @@
-# 将軍システム v8.0.1 - 完全自律型AI開発環境
+# 将軍システム v8.1 - 完全自律型AI開発環境
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Powered-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Version-8.0.1-green)](https://github.com/98kuwa036/codings)
+[![Version](https://img.shields.io/badge/Version-8.1-green)](https://github.com/98kuwa036/Bushidan-Multi-Agent)
 [![Claude](https://img.shields.io/badge/Claude-Opus%204.5%20%2F%20Sonnet%204.5-purple)](https://www.anthropic.com/claude)
 
 ## 概要
 
-`codings`は、日本の武家社会の階層構造をモデルにした革新的なAIエージェントシステムです。将軍（Shogun）を頂点とする組織構造で、複数のAIエージェントが協調して動作し、複雑なタスクを効率的に処理します。
+**Bushidan-Multi-Agent**は、日本の武士道精神と武家社会の階層構造をモデルにした革新的なAIエージェントシステムです。将軍（Shogun）を頂点とする組織構造で、複数のAIエージェントが協調して動作し、複雑なタスクを効率的に処理します。
 
 ## システム構成
 
@@ -78,8 +78,8 @@ rate_limiter = ExponentialBackoffHandler(
 
 ```bash
 # リポジトリのクローン
-git clone https://github.com/98kuwa036/codings.git
-cd codings
+git clone https://github.com/98kuwa036/Bushidan-Multi-Agent.git
+cd Bushidan-Multi-Agent
 
 # 将軍システムのセットアップ
 cd shogun
@@ -131,7 +131,7 @@ selected_members = ashigaru_manager.select_optimal_team(task_complexity)
 ## プロジェクト構造
 
 ```
-codings/
+Bushidan-Multi-Agent/
 ├── shogun/                    # メインAIエージェントシステム
 │   ├── agents/               # エージェント実装
 │   ├── ashigaru/            # 足軽（実行部隊）
@@ -200,9 +200,9 @@ python -m pytest tests/test_integration_v7.py
 
 ## サポート
 
-- **Issues**: [GitHub Issues](https://github.com/98kuwa036/codings/issues)
-- **Wiki**: [プロジェクトWiki](https://github.com/98kuwa036/codings/wiki)
-- **Discussions**: [GitHub Discussions](https://github.com/98kuwa036/codings/discussions)
+- **Issues**: [GitHub Issues](https://github.com/98kuwa036/Bushidan-Multi-Agent/issues)
+- **Wiki**: [プロジェクトWiki](https://github.com/98kuwa036/Bushidan-Multi-Agent/wiki)
+- **Discussions**: [GitHub Discussions](https://github.com/98kuwa036/Bushidan-Multi-Agent/discussions)
 
 ## 更新履歴
 

@@ -4,8 +4,8 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "shogun-system"
-version = "8.0.1"
-description = "将軍システム v8.0.1: 完全自律型AI開発環境 - 実証主義・二重記憶・自律学習"
+version = "8.1"
+description = "将軍システム v8.1: 完全自律型AI開発環境 - 実証主義・二重記憶・自律学習・家訓自動生成強化"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
