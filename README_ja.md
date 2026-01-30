@@ -1,7 +1,8 @@
-# codings - 将軍AIエージェントシステム
+# 将軍システム v8.0.1 - 完全自律型AI開発環境
 
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Powered-blue)](https://claude.ai/code)
-[![Version](https://img.shields.io/badge/Claude%20Opus-20251101-green)](https://github.com/anthropics/claude-3-family)
+[![Version](https://img.shields.io/badge/Version-8.0.1-green)](https://github.com/98kuwa036/codings)
+[![Claude](https://img.shields.io/badge/Claude-Opus%204.5%20%2F%20Sonnet%204.5-purple)](https://www.anthropic.com/claude)
 
 ## 概要
 

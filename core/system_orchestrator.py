@@ -28,7 +28,7 @@ from core.knowledge_base import KnowledgeBase, create_knowledge_base
 from core.activity_memory import ActivityMemory, create_activity_memory, TaskComplexity
 from core.sandbox_executor import SandboxExecutor, create_sandbox_executor
 from ashigaru.ollama_web_search import OllamaWebSearch, create_ollama_web_search
-from agents.taisho_v8 import TaishoAgent, TaishoTask, TaskPriority, create_taisho_agent
+from agents.taisho import TaishoAgent, TaishoTask, TaskPriority, create_taisho_agent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -81,7 +81,7 @@ class SystemOrchestrator:
     - Performance analytics and reporting
     """
     
-    def __init__(self, config_path: str = "config/settings_v8.yaml"):
+    def __init__(self, config_path: str = "config/settings.yaml"):
         self.config_path = Path(config_path)
         self.config: Dict[str, Any] = {}
         self.start_time = datetime.utcnow()
@@ -551,7 +551,7 @@ class SystemOrchestrator:
 
 
 # Factory function
-async def create_system_orchestrator(config_path: str = "config/settings_v8.yaml") -> SystemOrchestrator:
+async def create_system_orchestrator(config_path: str = "config/settings.yaml") -> SystemOrchestrator:
     """Create and initialize SystemOrchestrator"""
     orchestrator = SystemOrchestrator(config_path)
     
@@ -568,7 +568,7 @@ if __name__ == "__main__":
     async def test_system_orchestrator():
         """Test the system orchestrator"""
         # Initialize system
-        orchestrator = SystemOrchestrator(config_path="../config/settings_v8.yaml")
+        orchestrator = SystemOrchestrator(config_path="../config/settings.yaml")
         
         if await orchestrator.initialize():
             logger.info("System initialized successfully")

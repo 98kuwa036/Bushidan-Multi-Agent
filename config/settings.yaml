@@ -1,14 +1,56 @@
 # =============================================================
-# 将軍システム v7.0 - Configuration
+# 将軍システム v8.0.1 - Configuration
 # =============================================================
-# 「スピードより質」を重視した階層型AI開発支援システム
+# 「完全自律型AI開発環境」- 実証主義・二重記憶・自律学習
 # =============================================================
 
 system:
   name: "将軍システム"
-  version: "7.0"
+  version: "8.0.1"
   language: "ja"
-  philosophy: "スピードより質"
+  philosophy: "スピードより質 + 実証主義 + 知識蓄積活用"
+  subtitle: "完全自律型AI開発環境"
+
+# --- v8.0 新機能 ---
+v8_features:
+  knowledge_base:
+    enabled: true
+    description: "外部知識（Web検索、ドキュメント）のRAG保存・検索"
+    technology: "Qdrant + Sentence Transformers"
+    users: ["将軍", "家老", "侍大将"]
+    retention_days: 30
+  
+  activity_memory:
+    enabled: true
+    description: "侍大将（R1）自身の判断履歴・備忘録"
+    technology: "SQLite"
+    user: "侍大将専用"
+    retention_days: 90
+    benefits:
+      - "類似タスク処理時間 -57%"
+      - "月間処理時間 -8.7%"
+      - "一貫性大幅向上"
+  
+  sandbox_environment:
+    enabled: true
+    description: "コード実行・検証環境（実証主義）"
+    technology: "LXC（オンデマンド起動）"
+    effect: "品質 95→99点（+4点）"
+    languages: ["Python 3.13", "Node.js 22", "Rust 1.83"]
+    security: ["ネットワーク分離", "30秒タイムアウト", "リソース制限"]
+  
+  web_search_integration:
+    enabled: true
+    description: "最新情報取得（Ollama Web Search）"
+    technology: "10番足軽として統合"
+    cost: "¥0（無料枠）"
+    auto_rag_save: true
+  
+  thought_monitoring:
+    enabled: true
+    description: "R1の<think>中間チェック（論理矛盾検出）"
+    monitor: "家老（Opus）"
+    trigger_modes: ["Complex", "Strategic"]
 
 # --- リポジトリ同期 ---
 repo:
@@ -25,15 +67,22 @@ shogun:
   api_model: "claude-sonnet-4-5-20250514"
   cost_per_task_yen: 5
   monthly_usage: 100
+  new_features:
+    - "知識基盤参照（RAG）"
+    - "思考監視受け入れ"
 
 # --- 家老 (参謀) ---
 # LLM: Claude Opus 4.5 (API専用・Strategic時のみ)
 karo:
   codename: "Karo"
-  role: "家老 - 戦術立案・作業割振り・将軍への助言"
-  api_model: "claude-opus-4-5-20250514"
+  role: "家老 - 戦術立案・作業割振り・将軍への助言・思考監視"
+  api_model: "claude-opus-4-5-20250514"  # v8.0: 最新版 Opus 4.5
   cost_per_task_yen: 24
   monthly_usage: 5
+  new_features:
+    - "知識基盤参照（RAG）"
+    - "R1思考の中間チェック"
+    - "論理矛盾検出・再試行制御"
 
 # --- 侍大将 (現場指揮・監査役) ---
 # LLM: DeepSeek-R1-Distill-Qwen-14B-Japanese (CyberAgent版)
@@ -50,10 +99,19 @@ taisho:
     - "日本語ペラペラ"
     - "<think>で深い分析"
     - "じっくり考える（60秒）= 高品質の源泉"
+  new_features:
+    - "知識基盤参照（RAG）"
+    - "陣中日記参照・記録"
+    - "演習場連携（実行検証）"
+    - "動的パラメータ調整"
+  dynamic_parameters:
+    default_temperature: 0.7
+    audit_temperature: 0.1  # 監査時は厳密に
+    creative_temperature: 0.9  # 創造的タスク時
 
-# --- 足軽 × 9 (実行部隊) ---
+# --- 足軽 × 10 (実行部隊) ---
 ashigaru:
-  count: 9
+  count: 10  # v8.0: 10番足軽追加
   max_active: 4
   memory_each_mb: "50-150"
   host: "192.168.1.10"
@@ -96,6 +154,46 @@ ashigaru:
       type: "llm"
       model: "llama-3.3-70b-versatile"
       role: "記録係 - リアルタイム記録・60日要約・Notion転送・家訓抽出"
+    - id: 10  # v8.0 新規追加
+      name: "ollama-web-search"
+      type: "web_search"
+      api_url: "https://api.ollama.com/web-search"
+      role: "最新情報専門 - Web検索・RAG自動保存"
+      cost: "¥0（無料枠）"
+      features:
+        - "R1の知識ギャップ補完"
+        - "Claude（将軍・家老）への最新情報提供"
+        - "検索結果の自動RAG保存"
+
+# --- v8.0.1 メモリ最適化構成 ---
+memory_optimization:
+  ct_consolidation:
+    enabled: true
+    description: "CT 104を廃止、CT 100に知識基盤統合"
+    ct100_memory_mb: 2560  # 2.5GB（知識基盤統合後）
+    ct100_components:
+      - "システム: 0.5GB"
+      - "Python/Node: 0.5GB"
+      - "Qdrant（Docker）: 1GB"
+      - "SQLite: 0.1GB"
+      - "MCP × 10: 0.4GB"
+    memory_saving_gb: 3  # CT 104廃止による削減
+  
+  on_demand_sandbox:
+    enabled: true
+    description: "CT 102（演習場）をオンデマンド起動"
+    standby_memory_saving_gb: 2
+    startup_command: "pct start 102"
+    shutdown_command: "pct stop 102"
+    auto_management: true
+  
+  zram_safety:
+    enabled: true
+    description: "ピーク時バッファ用ZRAM"
+    size_gb: 2
+    compression: "lz4"
+    priority: "低（最後の手段）"
+    effective_capacity_gb: "3-4（圧縮時）"
 
 # --- Groq (9番足軽) ---
 groq:
@@ -104,6 +202,123 @@ groq:
   cost_per_task_yen: 0
   free_tier_requests_per_day: 14400
   speed: "300-500 tok/s"
+  # v8.0: レート制限対応強化
+  rate_limiting:
+    rpm_limit: 30  # リクエスト/分
+    tpm_limit: 14000  # トークン/分
+    daily_limit: 14400
+    exponential_backoff:
+      enabled: true
+      initial_delay_ms: 1000
+      max_delay_ms: 60000
+      jitter: true
+      max_retries: 5
+
+# --- Ollama Web Search (10番足軽) ---
+ollama_web_search:
+  enabled: true
+  api_key: ""  # 環境変数から取得
+  base_url: "https://api.ollama.com"
+  free_tier:
+    requests_per_month: 1000
+    cost: "¥0"
+  features:
+    search_languages: ["ja", "en"]
+    result_limit: 5
+    timeout_seconds: 30
+    auto_rag_integration: true
+
+# --- 知識基盤（RAG） ---
+knowledge_base:
+  enabled: true
+  technology: "Qdrant"
+  host: "192.168.1.10"  # CT 100に統合
+  port: 6333
+  collection_name: "shogun_knowledge"
+  embedding_model: "sentence-transformers/all-mpnet-base-v2"
+  embedding_dimension: 768
+  retention_days: 30
+  data_sources:
+    - "Ollama Web Search結果"
+    - "手動登録ドキュメント"
+    - "GitHub Issue/PR"
+  search_config:
+    score_threshold: 0.7
+    max_results: 5
+    multilingual: true
+  auto_cleanup:
+    enabled: true
+    schedule: "毎日3:00"
+
+# --- 陣中日記（Activity Memory） ---
+activity_memory:
+  enabled: true
+  technology: "SQLite"
+  database_path: "/opt/shogun/taisho_activity.db"
+  host: "192.168.1.10"  # CT 100に統合
+  retention_days: 90
+  schema:
+    tables:
+      - "activities"  # タスク履歴
+      - "decisions"   # 判断履歴
+      - "reasoning"   # 推論過程
+  data_recorded:
+    - "タスク要約"
+    - "<think>要約"
+    - "最終判断"
+    - "判断理由"
+    - "確信度"
+    - "処理時間"
+    - "使用したツール"
+  search_methods:
+    - "キーワードマッチング"
+    - "類似タスク検索"
+    - "時系列ソート"
+  benefits:
+    similar_task_speedup: "-57%"
+    monthly_time_reduction: "-8.7%"
+    consistency_improvement: "大幅向上"
+  auto_cleanup:
+    enabled: true
+    schedule: "毎日3:00"
+
+# --- 演習場（Sandbox Environment） ---
+sandbox:
+  enabled: true
+  technology: "LXC (CT 102)"
+  host: "192.168.1.12"
+  memory_mb: 2048
+  cores: 2
+  startup_mode: "on_demand"  # v8.0.1: オンデマンド起動
+  languages:
+    python:
+      version: "3.13"
+      packages: ["numpy", "pandas", "requests", "fastapi"]
+    nodejs:
+      version: "22"
+      packages: ["typescript", "express", "@types/node"]
+    rust:
+      version: "1.83"
+      features: ["cargo", "rustfmt", "clippy"]
+  security:
+    network_isolation: true
+    internet_access: false
+    resource_limits:
+      cpu_percent: 80
+      memory_mb: 1800
+      disk_mb: 1000
+    execution_timeout_seconds: 30
+  api:
+    port: 8080
+    endpoints:
+      - "/execute/python"
+      - "/execute/nodejs"
+      - "/execute/rust"
+      - "/health"
+  workflow:
+    description: "R1設計 → 演習場実行 → 成功/失敗 → フィードバック → 修正 → 再実行"
+    quality_improvement: "+4点（95→99点）"
+    philosophy: "理論から実証へ"
 
 # --- Notion統合 ---
 notion:
@@ -114,6 +329,11 @@ notion:
     - "家訓（決定事項）の永続化"
     - "チャンネル要約の保存"
     - "ナレッジDB構築"
+  # v8.0: RAG統合強化
+  rag_integration:
+    enabled: true
+    sync_to_knowledge_base: true
+    embedding_updates: "リアルタイム"
 
 # --- 60日自動要約 ---
 auto_summary:
@@ -128,18 +348,26 @@ auto_summary:
 modes:
   battalion:
     label: "大隊"
-    description: "将軍 + 家老(諮問時) + 侍大将 + 足軽 × 9"
+    description: "将軍 + 家老(諮問時) + 侍大将 + 足軽 × 10 + 演習場 + RAG + 陣中日記"
     api_enabled: true
     trigger: "@shogun-bot"
+    new_features:
+      - "知識基盤参照"
+      - "演習場検証"
+      - "陣中日記活用"
+      - "思考監視"
   company:
     label: "中隊"
-    description: "侍大将 + 足軽 × 9 (API不使用)"
+    description: "侍大将 + 足軽 × 10 + 陣中日記 (API不使用)"
     api_enabled: false
     cost: 0
     trigger: "@shogun-bot-light"
+    new_features:
+      - "陣中日記参照（高速化）"
+      - "演習場検証（品質保証）"
   platoon:
     label: "小隊"
-    description: "侍大将 + 必要な足軽のみ（動的選択）"
+    description: "侍大将 + 必要な足軽のみ（動的選択）+ 陣中日記"
     api_enabled: false
     cost: 0
     trigger: "HA OS音声"
@@ -157,7 +385,7 @@ platoon_modes:
     max_ashigaru: 1
     response_time_target: 10
 
-# --- Slack Bots (11個) ---
+# --- Slack Bots (12個) ---
 slack:
   bots:
     - name: "shogun-bot"
@@ -185,6 +413,8 @@ slack:
       role: "8番足軽 (slack)"
     - name: "ashigaru-9-bot"
       role: "9番足軽 (groq記録係)"
+    - name: "ashigaru-10-bot"  # v8.0 新規追加
+      role: "10番足軽 (ollama-web-search)"
     - name: "shogun-bot-light"
       role: "中隊モード専用"
       mode: "company"
@@ -196,48 +426,126 @@ ha_os:
   whisper: "ローカル音声認識"
   tts: "Piper"
 
-# --- Proxmox LXC ---
+# --- Proxmox LXC (v8.0.1 最適化構成) ---
 proxmox:
-  ct100:
-    name: "honmaru-control"
-    memory_mb: 2048
-    cores: 2
-    ip: "192.168.1.10"
-    role: "本陣 - タスクルーティング, MCP管理, Slack Bot × 11, Notion統合"
-  ct101:
-    name: "taisho-r1-japanese"
-    memory_mb: 20480
-    cores: 6
-    ip: "192.168.1.11"
-    role: "侍大将R1 - OpenVINO推論サーバー (日本語版)"
-    cpu_type: "host"
-    numa: true
+  optimization_version: "v8.0.1"
+  total_memory_gb: 24
+  memory_allocation:
+    standby_mode:
+      proxmox_host: 1.5
+      ct100: 2.5  # 知識基盤統合後
+      ct101: 20.0  # R1 + HugePages
+      ct102: 0  # 停止中
+      total: 24.0
+      available: 0
+    execution_mode:
+      proxmox_host: 1.5
+      ct100: 2.5
+      ct101: 20.0
+      ct102: 2.0  # 演習場稼働中
+      total: 26.0
+      physical: 24.0
+      zram_buffer: 2.0
+      effective: "26-28GB"
+  
+  containers:
+    ct100:
+      name: "honmaru-control-knowledge"  # v8.0: 知識基盤統合
+      memory_mb: 2560  # v8.0.1: 2.5GB
+      cores: 2
+      ip: "192.168.1.10"
+      role: "本陣 + 知識基盤 - タスクルーティング, MCP管理, Slack Bot × 12, Qdrant, 陣中日記"
+      services:
+        - "MCP × 10サーバー"
+        - "Slack Bot × 12"
+        - "Qdrant（Docker）"
+        - "SQLite（陣中日記）"
+        - "claude-cli（将軍）"
+        - "HA OS API"
+        - "Notion統合"
+    ct101:
+      name: "taisho-r1-japanese"
+      memory_mb: 20480
+      cores: 6
+      ip: "192.168.1.11"
+      role: "侍大将R1 - OpenVINO推論サーバー (日本語版)"
+      cpu_type: "host"
+      numa: true
+    ct102:
+      name: "sandbox-executor"  # v8.0: 演習場
+      memory_mb: 2048
+      cores: 2
+      ip: "192.168.1.12"
+      role: "演習場 - コード実行・検証（オンデマンド起動）"
+      startup_mode: "on_demand"
+      languages: ["Python 3.13", "Node.js 22", "Rust 1.83"]
+      security_isolation: true
+      internet_access: false
+    # ct104: 廃止（CT 100に統合）
+
+  hugepages:
+    total_pages: 10240  # 20GB
+    page_size: "2MB"
+    allocation: "R1推論専用"
+
+  zram:
+    enabled: true
+    size_gb: 2
+    algorithm: "lz4"
+    priority: 100
+    usage_scenario: "演習場稼働時のピーク対応"
 
 # --- Network ---
 network:
   controller_host: "0.0.0.0"
   controller_port: 8080
 
-# --- Cost Budget ---
+# --- Cost Budget (v8.0) ---
 budget:
-  monthly_target_yen: 3950
+  monthly_target_yen: 4220  # v8.0: +¥270
   breakdown:
     pro_subscription_yen: 3000
-    electricity_yen: 800
-    api_usage_yen: 150
+    electricity_yen: 950  # +¥150（CT102+104分）
+    api_usage_yen: 255  # +¥105（Opus最新版、Web Search）
+    web_search_yen: 15  # 超過分予備
   comparison:
-    vs_opus_only: "-84%"
-    vs_claude_code: "-49%"
+    vs_v7_0: "+6.8% (+¥270)"
+    vs_claude_code: "-45% (-¥3,481)"
 
-# --- Quality Metrics ---
+# --- Quality Metrics (v8.0 目標) ---
 quality:
-  total_score: 95.2
+  total_score: 99.5  # v8.0 目標
   breakdown:
-    simple: 90
-    complex: 95
-    strategic: 97
-    knowledge: 98
-    security: 96
+    simple: 94
+    medium: 99
+    complex: 99.5  # 演習場効果
+    strategic: 99   # 思考監視効果
+    knowledge: 99.5 # RAG効果
+    security: 99
+    consistency: 95 # 陣中日記効果
+  improvements_vs_v7:
+    sandbox_verification: "+4点"
+    rag_knowledge: "+0.5点"
+    activity_memory: "一貫性大幅向上"
+    thought_monitoring: "安定性向上"
+
+# --- Performance Metrics (v8.0) ---
+performance:
+  processing_time:
+    first_time_task: 70  # 秒（変化なし）
+    repeated_same_task: 30  # 秒（-57%、陣中日記効果）
+    similar_task: 53  # 秒（-24%、陣中日記効果）
+    monthly_reduction_percent: -8.7
+  
+  execution_success_rate:
+    v7_0: 95
+    v8_0: 99  # 演習場検証効果
+    improvement: "+4%"
+  
+  consistency:
+    same_question_match: "95%"  # 陣中日記効果
+    vs_v7_0: "+20%"
+    vs_claude_code: "+30%（推定）"
 
 # --- Monthly Maintenance (反省会) ---
 maintenance:
@@ -247,6 +555,7 @@ maintenance:
     minute: 0
     timezone: "Asia/Tokyo"
   checks:
+    # v7.0 継続項目
     - id: "llm_versions"
       name: "LLMバージョン確認"
       description: "Claude CLI / API モデルの最新チェック"
@@ -279,8 +588,121 @@ maintenance:
       name: "月次コストレポート"
       description: "API使用量・コスト集計"
       auto_update: true
+    # v8.0 新規項目
+    - id: "knowledge_base_health"
+      name: "知識基盤ヘルスチェック"
+      description: "Qdrant動作状況・データ品質確認"
+      auto_update: false
+    - id: "activity_memory_analysis"
+      name: "陣中日記分析"
+      description: "判断履歴の統計分析・パターン発見"
+      auto_update: false
+    - id: "sandbox_performance"
+      name: "演習場性能レポート"
+      description: "実行成功率・エラー分析"
+      auto_update: false
+    - id: "ollama_search_usage"
+      name: "Web検索使用状況"
+      description: "10番足軽の検索履歴・効果測定"
+      auto_update: false
+    - id: "memory_optimization"
+      name: "メモリ使用量最適化"
+      description: "CT統合・ZRAM使用状況の確認"
+      auto_update: false
+    - id: "rag_data_cleanup"
+      name: "RAGデータクリーンアップ"
+      description: "30日以上の知識データ削除"
+      auto_update: true
+    - id: "activity_data_cleanup"
+      name: "陣中日記クリーンアップ"
+      description: "90日以上の活動記録削除"
+      auto_update: true
+  
   notification:
     slack_channel: "#shogun-maintenance"
   reports:
     directory: "reports/maintenance"
     retention_days: 365
+
+# --- v8.0 Implementation Roadmap ---
+implementation:
+  phases:
+    phase1:
+      name: "基盤整備"
+      priority: "最高"
+      duration_hours: "2-3"
+      tasks:
+        - "Proxmox最適化（HugePages）"
+        - "CT 102（演習場）構築"
+        - "CT統合（104→100）"
+        - "動作確認"
+    
+    phase2:
+      name: "10番足軽統合"
+      priority: "最高"
+      duration_hours: "1"
+      tasks:
+        - "Ollama SDK導入"
+        - "Web検索機能実装"
+        - "RAG自動保存機能"
+        - "統合テスト"
+    
+    phase3:
+      name: "侍大将強化"
+      priority: "最高"
+      duration_hours: "2"
+      tasks:
+        - "知識基盤統合"
+        - "陣中日記実装"
+        - "演習場連携"
+        - "動的パラメータ"
+    
+    phase4:
+      name: "将軍・家老強化"
+      priority: "高"
+      duration_hours: "1.5"
+      tasks:
+        - "将軍RAG統合"
+        - "家老RAG統合"
+        - "思考監視機能"
+    
+    phase5:
+      name: "最適化・テスト"
+      priority: "高"
+      duration_hours: "3"
+      tasks:
+        - "動的パラメータ最適化"
+        - "自動クリーンアップ"
+        - "統合テスト"
+        - "ドキュメント更新"
+  
+  total_implementation_time: "9.5-10.5時間"
+  recommended_schedule:
+    day1: "Phase 1-3（基盤・足軽・侍大将）5-6時間"
+    day2: "Phase 4-5（将軍家老・最適化・テスト）4.5時間"
+  
+  critical_path:
+    - "演習場構築"
+    - "陣中日記実装"
+    - "統合テスト"
+
+# --- Expected Outcomes ---
+expected_outcomes:
+  technical:
+    - "品質99.5点（本家Claude Code超え）"
+    - "コスト¥4,220（本家比-45%）"
+    - "実証主義導入（演習場）"
+    - "二重記憶システム"
+    - "一貫性確保"
+  
+  philosophical:
+    - "スピードより質の完成形"
+    - "人間思考プロセス模倣"
+    - "継続的学習実現"
+    - "知識の民主化"
+  
+  practical:
+    - "Omni-P4開発加速"
+    - "予測可能コスト"
+    - "スケーラブル設計"
+    - "長期投資価値"
