@@ -1,0 +1,60 @@
+# Bushidan Multi-Agent System v9.1 - LiteLLM Configuration
+# OpenAI-compatible API proxy for Qwen2.5-Coder local inference
+
+model_list:
+  # Qwen2.5-Coder-32B via Ollama (Ashigaru execution layer)
+  - model_name: qwen2.5-coder
+    litellm_params:
+      model: ollama/qwen2.5-coder-32b-instruct
+      api_base: http://localhost:11434
+      temperature: 0.2
+      max_tokens: 2000
+      top_p: 0.95
+      
+  # Alternative model for fallback (if available)
+  - model_name: qwen2.5-coder-14b
+    litellm_params:
+      model: ollama/qwen2.5-coder-14b-instruct
+      api_base: http://localhost:11434
+      temperature: 0.2
+      max_tokens: 1500
+
+# Server configuration
+server:
+  port: 8000
+  host: 0.0.0.0
+
+# Logging
+logging:
+  level: INFO
+
+# Rate limiting (optional)
+rate_limit:
+  rpm: 60  # Requests per minute
+  tpm: 20000  # Tokens per minute
+
+# Model-specific settings
+model_settings:
+  qwen2.5-coder:
+    # Optimized for code generation
+    temperature: 0.2
+    top_p: 0.95
+    max_tokens: 2000
+    stop_sequences: ["<|endoftext|>", "<|im_end|>"]
+    
+    # System prompt for Japanese support
+    system_prompt: |
+      You are a skilled software engineer assistant. You can communicate in both English and Japanese.
+      When writing code, follow best practices and include clear comments.
+      日本語での会話も可能です。コードを書く際は、ベストプラクティスに従い、明確なコメントを含めてください。
+
+# Notes:
+# - This configuration assumes Ollama is running on localhost:11434
+# - Qwen2.5-Coder models support both English and Japanese (with imatrix quantization)
+# - Temperature 0.2 balances creativity with determinism for code generation
+# - Adjust max_tokens based on your VRAM capacity
+#
+# To start LiteLLM with this config:
+#   litellm --config config/litellm_config.yaml
+#
+# This will expose OpenAI-compatible API on http://localhost:8000/v1/
