@@ -33,4 +33,5 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_phrase: "@claude"
-          claude_args: "--model claude-opus-4-5-20251101"
+          # 修正箇所: claude_args ではなく model を直接指定します
+          model: "claude-opus-4-5-20251101"
