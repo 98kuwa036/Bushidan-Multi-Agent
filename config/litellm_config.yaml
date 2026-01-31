@@ -1,60 +1,134 @@
-# Bushidan Multi-Agent System v9.1 - LiteLLM Configuration
-# OpenAI-compatible API proxy for Qwen2.5-Coder local inference
+# Bushidan Multi-Agent System v9.1 - Enhanced LiteLLM Configuration
+# Multi-API proxy supporting 4-tier hybrid architecture with DSPy optimization
 
 model_list:
-  # Qwen2.5-Coder-32B via Ollama (Ashigaru execution layer)
-  - model_name: qwen2.5-coder
+  # Taisho (大将) - Primary implementation layer
+  - model_name: qwen3-coder-30b-a3b
     litellm_params:
-      model: ollama/qwen2.5-coder-32b-instruct
+      model: ollama/qwen3-coder-30b-a3b:q4_k_m
+      api_base: http://localhost:11434
+      temperature: 0.1  # Lower for more deterministic code generation
+      max_tokens: 4000  # Increased for complex implementations
+      top_p: 0.9
+      context_length: 32000  # Full context utilization
+      
+  # Fallback models (if Qwen3 unavailable)
+  - model_name: qwen2.5-coder-32b
+    litellm_params:
+      model: ollama/qwen2.5-coder-32b-instruct:q4_k_m
       api_base: http://localhost:11434
       temperature: 0.2
       max_tokens: 2000
       top_p: 0.95
       
-  # Alternative model for fallback (if available)
   - model_name: qwen2.5-coder-14b
     litellm_params:
-      model: ollama/qwen2.5-coder-14b-instruct
+      model: ollama/qwen2.5-coder-14b-instruct:q4_k_m
       api_base: http://localhost:11434
       temperature: 0.2
       max_tokens: 1500
+      top_p: 0.95
 
-# Server configuration
+# Enhanced server configuration for 4-tier architecture
 server:
   port: 8000
   host: 0.0.0.0
+  timeout: 300  # Extended timeout for complex implementations
+  max_concurrent_requests: 10
 
-# Logging
+# Enhanced logging
 logging:
   level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-# Rate limiting (optional)
+# Optimized rate limiting for 4k context compression
 rate_limit:
-  rpm: 60  # Requests per minute
-  tpm: 20000  # Tokens per minute
+  rpm: 120  # Increased for Taisho intensive usage
+  tpm: 40000  # Higher token allowance
+  context_compression_enabled: true
+  max_context_length: 4000  # Dynamic compression target
 
-# Model-specific settings
+# Enhanced model-specific settings
 model_settings:
-  qwen2.5-coder:
-    # Optimized for code generation
+  qwen3-coder-30b-a3b:
+    # Optimized for MoE efficiency and DSPy integration
+    temperature: 0.1
+    top_p: 0.9
+    max_tokens: 4000
+    stop_sequences: ["<|endoftext|>", "<|im_end|>", "```\n\n"]
+    
+    # Enhanced system prompt with DSPy optimization
+    system_prompt: |
+      You are Taisho (大将), the primary implementation specialist in a Japanese-inspired AI system.
+      You excel at:
+      - Complex software implementation using MCP operations
+      - Multi-file code generation and refactoring
+      - Following DSPy-optimized structured instructions
+      - Cost-effective local processing with unlimited compute
+      
+      Communication: English and Japanese supported
+      コミュニケーション: 英語と日本語に対応
+      
+      Focus on practical, working code with proper error handling.
+      
+  # Fallback model settings
+  qwen2.5-coder-32b:
     temperature: 0.2
     top_p: 0.95
     max_tokens: 2000
     stop_sequences: ["<|endoftext|>", "<|im_end|>"]
-    
-    # System prompt for Japanese support
     system_prompt: |
-      You are a skilled software engineer assistant. You can communicate in both English and Japanese.
-      When writing code, follow best practices and include clear comments.
-      日本語での会話も可能です。コードを書く際は、ベストプラクティスに従い、明確なコメントを含めてください。
+      You are a skilled software engineer. Generate practical, working code.
+      日本語での会話も可能です。
 
-# Notes:
-# - This configuration assumes Ollama is running on localhost:11434
-# - Qwen2.5-Coder models support both English and Japanese (with imatrix quantization)
-# - Temperature 0.2 balances creativity with determinism for code generation
-# - Adjust max_tokens based on your VRAM capacity
+# Context compression and optimization
+context_management:
+  # DSPy integration for dynamic context optimization
+  enable_compression: true
+  compression_ratio: 0.7  # Target 70% of max context
+  
+  # Smart truncation strategies
+  truncation_strategy: "sliding_window"  # or "summarize", "selective"
+  preserve_patterns:
+    - "class "
+    - "def "
+    - "import "
+    - "from "
+    - "# TODO"
+    - "# FIXME"
+
+# Multi-API integration for hybrid architecture
+external_apis:
+  gemini:
+    # Karo (家老) - Tactical coordination
+    endpoint: "https://generativelanguage.googleapis.com/v1beta/"
+    model: "gemini-2.0-flash-exp"
+    temperature: 0.3
+    max_tokens: 2000
+    
+  groq:
+    # Alternative Karo for speed-critical tasks
+    endpoint: "https://api.groq.com/openai/v1/"
+    model: "llama-3.3-70b-versatile"  
+    temperature: 0.2
+    max_tokens: 1000
+
+# Enhanced notes for v9.1:
+# - Primary focus: Qwen3-Coder-30B-A3B for Taisho (大将) layer
+# - MoE architecture provides 24 tok/s on CPU with ~18GB Q4_K_M quantization
+# - Context compression keeps requests under 4k for optimal performance
+# - DSPy integration optimizes prompts for each model type
+# - Supports both Proxmox deployment and Ubuntu direct installation
 #
-# To start LiteLLM with this config:
+# Installation commands:
+#   # Install Ollama and model
+#   curl -fsSL https://ollama.com/install.sh | sh
+#   ollama pull qwen3-coder-30b-a3b:q4_k_m
+#   
+#   # Start LiteLLM proxy
 #   litellm --config config/litellm_config.yaml
+#   
+#   # Verify API endpoint
+#   curl http://localhost:8000/v1/models
 #
-# This will expose OpenAI-compatible API on http://localhost:8000/v1/
+# This exposes OpenAI-compatible API optimized for the 4-tier architecture
