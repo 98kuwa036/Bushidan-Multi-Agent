@@ -1,0 +1,606 @@
+# =============================================================
+# 将軍システム v9.3.2 - Configuration
+# =============================================================
+# "Universal Multi-LLM Framework" - シンプル・実用性・汎用性
+# Major Update: New routing logic with Groq/Qwen decision tree
+# =============================================================
+
+system:
+  name: "Bushidan Multi-Agent System"
+  version: "9.3.2"
+  language: "ja"
+  philosophy: "シンプル・イズ・ベスト + 実用性第一 + 汎用性の追求"
+  subtitle: "Universal Multi-LLM Framework with Enhanced Routing"
+
+# --- v9.3.2 Major Changes ---
+v9_3_2_updates:
+  architecture_changes:
+    - "New routing: Shogun → Groq OR Qwen3"
+    - "Groq path: Instant, no local Qwen wakeup"
+    - "Qwen path: Local → Cloud Qwen3-plus → Gemini 3 Flash"
+    - "Gemini 2.0 Flash → Gemini 3 Flash upgrade"
+    - "Local Qwen3 context_length: 4096 optimization"
+    - "Groq added to MCP 足軽 members"
+    - "Claude Prompt Caching enabled"
+  
+  philosophy:
+    description: "運用黄金律の進化 - インテリジェントなルーティング"
+    principles:
+      - "Simple → Groq (爆速・Qwen起こさない)"
+      - "Heavy → Local Qwen3 (コスト¥0・大容量)"
+      - "Struggling → Cloud Qwen3-plus (Alibaba Cloud)"
+      - "Critical → Gemini 3 Flash (最終防衛線)"
+      - "Strategic → Claude Sonnet (大局判断)"
+      - "Review → Opus (品質保証)"
+
+# --- リポジトリ同期 ---
+repo:
+  local_base: "/home/claude"
+  github_remote: ""  # git remote から自動取得
+  sync_interval_min: 5
+
+# --- 将軍 (総大将) - Strategic Layer ---
+# LLM: Claude Sonnet 4.5 (Pro CLI優先 → API補完) + Opus 4 (Premium Review)
+shogun:
+  codename: "Shogun"
+  role: "将軍 - 難易度判断・ルーティング決定・最終品質保証"
+  
+  # Models
+  cli_model: "sonnet"
+  api_model: "claude-sonnet-4-5-20250929"
+  opus_model: "claude-opus-4-20250514"
+  
+  # NEW v9.3.2: Prompt Caching Configuration
+  prompt_caching:
+    enabled: true
+    cache_control: "ephemeral"  # Cache system prompts
+    cache_ttl_minutes: 5
+    benefits:
+      - "90% cost reduction for repeated contexts"
+      - "Faster response times"
+      - "Efficient system prompt reuse"
+  
+  # NEW v9.3.2: Routing Decision Logic
+  routing_logic:
+    enabled: true
+    description: "将軍による知的タスク振り分け"
+    decision_tree:
+      simple_query:
+        target: "groq"
+        reason: "爆速応答・ローカルQwen起こさない"
+        latency_target_ms: 500
+      standard_implementation:
+        target: "qwen3_local"
+        reason: "コスト¥0・4096コンテキスト最適"
+        fallback_chain: ["qwen3_cloud", "gemini3_flash"]
+      complex_architecture:
+        target: "qwen3_local"
+        reason: "大容量コンテキスト・並列処理"
+        fallback_chain: ["qwen3_cloud", "gemini3_flash"]
+      strategic_decision:
+        target: "shogun_self"
+        reason: "Claude Sonnetの深い洞察力"
+        no_delegation: true
+  
+  cost_per_task_yen: 5
+  monthly_usage: 100
+  
+  # Adaptive Review System (v9.3.1 継続)
+  review_system:
+    enabled: true
+    description: "3段階適応型品質レビュー"
+    levels:
+      basic:
+        model: "sonnet"
+        cost_yen: 0
+        time_seconds: 5
+        quality_score: "90-93"
+        use_cases: ["Simple", "Medium"]
+      detailed:
+        model: "sonnet"
+        cost_yen: "0-5"
+        time_seconds: 10
+        quality_score: "95-97"
+        use_cases: ["Complex"]
+      premium:
+        model: "opus-4"
+        cost_yen: 10
+        time_seconds: 15
+        quality_score: "98-99.5"
+        use_cases: ["Strategic", "High-risk code", "Security issues"]
+    
+    opus_triggers:
+      - "task_complexity: STRATEGIC"
+      - "risk_level: HIGH or CRITICAL"
+      - "security_vulnerabilities: detected"
+      - "code_contains: ['security', 'authentication', 'payment', 'database']"
+      - "user_request: explicit"
+
+# --- 家老 (参謀) - Tactical Layer ---
+# LLM: Gemini 3 Flash (NEW v9.3.2 UPGRADE)
+karo:
+  codename: "Karo"
+  role: "家老 - タスク分解・戦術調整・最終防衛線"
+  
+  # NEW v9.3.2: Gemini 3 Flash
+  main_api:
+    provider: "google"
+    model: "gemini-3.0-flash"  # UPGRADED from 2.0
+    cost_per_task_yen: 0.04  # Slightly lower than 2.0
+    api_endpoint: "https://generativelanguage.googleapis.com/v1beta"
+    strengths:
+      - "日本語能力さらに向上"
+      - "速度: 2.0比1.3倍高速"
+      - "推論精度: +15%"
+      - "長文コンテキスト処理改善"
+    new_features:
+      - "Multi-turn conversation optimization"
+      - "Enhanced code understanding"
+      - "Better structured output"
+  
+  monthly_usage: 2400
+  role_in_routing: "最終防衛線（Local/Cloud Qwen失敗時）"
+  
+  v9_3_2_features:
+    - "Qwen失敗時の自動引き継ぎ"
+    - "構造化タスク分解"
+    - "エラーリカバリー統合"
+
+# --- 侍大将 (実装責任者) - Execution Layer ---
+# LLM: Qwen3-Coder-30B (Local Proxmox)
+taisho:
+  codename: "Taisho"
+  role: "侍大将 - 主力実装・MCP統合・ローカル推論"
+  
+  # Local Configuration
+  local:
+    url: "http://192.168.1.11:11434"
+    model: "qwen3-coder-30b"
+    quantization: "Q4_K_M"
+    vram_usage_gb: 18
+    performance: "24 tok/s (CPU推論)"
+    
+    # NEW v9.3.2: Context Length Optimization
+    context_length: 4096  # 最適化設定
+    context_strategy:
+      description: "4096トークン最適化で推論速度・精度バランス"
+      benefits:
+        - "推論速度: 8192比1.5倍高速"
+        - "メモリ効率: -40%"
+        - "品質維持: 実装タスクで十分"
+      management:
+        - "LiteLLM動的圧縮"
+        - "重要部分優先保持"
+        - "自動要約・削減"
+  
+  strengths:
+    - "コスト¥0（ローカル推論）"
+    - "コード特化（実装品質高い）"
+    - "MCP統合シームレス"
+  
+  use_cases:
+    - "標準的な実装タスク"
+    - "ファイル操作・Git連携"
+    - "軽〜中程度のリファクタリング"
+
+# --- 侍大将影武者 (Shadow Implementation) - Cloud Backup ---
+# NEW v9.3.2: Alibaba Cloud Qwen3-Coder-Plus
+taisho_kagemusha:
+  codename: "Taisho Kagemusha"
+  role: "侍大将影武者 - クラウドバックアップ・高難度実装"
+  
+  cloud_config:
+    provider: "alibaba_cloud_model_studio"
+    model: "qwen3-coder-plus"
+    api_endpoint: "https://dashscope.aliyuncs.com/api/v1"
+    api_key_env: "ALIBABA_CLOUD_API_KEY"
+    
+    context_length: 32768  # ローカルの8倍
+    cost_per_1m_tokens:
+      input: 0.50  # CNY
+      output: 2.00  # CNY
+    estimated_cost_per_task_yen: 3  # 約¥3/タスク
+  
+  capabilities:
+    superior_to_local:
+      - "長文コンテキスト処理 (32k vs 4k)"
+      - "複雑なアーキテクチャ理解"
+      - "大規模リファクタリング"
+      - "マルチファイル同時編集"
+    
+    activation_triggers:
+      - "local_qwen_failure: 2回連続失敗"
+      - "context_overflow: 4096超過"
+      - "complex_task: アーキテクチャ級"
+      - "user_explicit: 明示的要求"
+  
+  fallback_strategy:
+    description: "3層防衛: Local → Cloud Qwen → Gemini 3 Flash"
+    step1: "Local Qwen3 (cost ¥0, latency 2-5s)"
+    step2: "Cloud Qwen3-plus (cost ¥3, latency 3-8s)"
+    step3: "Gemini 3 Flash (cost ¥0.04, latency 1-3s)"
+
+# --- Groq (爆速エージェント) - MCP Member ---
+# NEW v9.3.2: Groq added to 足軽 MCP members
+groq:
+  codename: "Groq Ashigaru"
+  role: "足軽 - 爆速応答・軽量タスク専門"
+  
+  api_config:
+    api_url: "https://api.groq.com/openai/v1"
+    model: "llama-3.3-70b-versatile"
+    api_key_env: "GROQ_API_KEY"
+  
+  performance:
+    speed: "300-500 tok/s"  # 圧倒的速度
+    cost_per_task_yen: 0  # 無料
+    latency_ms: 300-800
+  
+  free_tier:
+    requests_per_day: 14400
+    requests_per_minute: 30
+    tokens_per_minute: 14000
+  
+  optimal_use_cases:
+    - "単純な質問応答"
+    - "軽量なコード生成"
+    - "即座のフィードバック"
+    - "プロトタイプ作成"
+  
+  routing_priority:
+    description: "Shogun判断でSimpleタスク → Groq直行"
+    benefits:
+      - "Qwen起動不要（省電力）"
+      - "待機時間ゼロ"
+      - "ユーザー体験向上"
+  
+  rate_limiting:
+    rpm_limit: 30
+    tpm_limit: 14000
+    daily_limit: 14400
+    exponential_backoff:
+      enabled: true
+      initial_delay_ms: 1000
+      max_delay_ms: 60000
+      jitter: true
+      max_retries: 5
+
+# --- 足軽 × MCP (実行部隊) ---
+# NEW v9.3.2: Groq added as MCP member
+ashigaru:
+  count: 5  # Groq追加で4→5
+  max_active: 5
+  memory_each_mb: "50-150"
+  host: "192.168.1.10"
+  selection_algorithm: "dynamic_intelligent"  # v9.3.2 enhanced
+  
+  servers:
+    - id: 1
+      name: "filesystem"
+      mcp: "@modelcontextprotocol/server-filesystem"
+      role: "ファイル読み書き・検索"
+    
+    - id: 2
+      name: "git"
+      mcp: "@modelcontextprotocol/server-git"
+      role: "バージョン管理"
+    
+    - id: 3
+      name: "memory"
+      mcp: "@modelcontextprotocol/server-memory"
+      role: "知識保持・Web検索キャッシュ（7日間）"
+      storage: "shogun_memory.jsonl"
+      features:
+        - "重要決定事項記録"
+        - "技術選定理由保存"
+        - "Web検索結果キャッシュ"
+        - "人間可読（JSONL）"
+        - "git管理可能"
+    
+    - id: 4
+      name: "web-search-smart"
+      type: "custom"
+      role: "スマートWeb検索（Tavily + Playwright）"
+      features:
+        - "Tavily: URL特定"
+        - "Playwright: 狙い撃ち抽出"
+        - "Memory MCP統合"
+    
+    - id: 5
+      name: "groq"
+      type: "api_agent"  # NEW
+      role: "爆速応答・軽量タスク処理"
+      model: "llama-3.3-70b-versatile"
+      features:
+        - "300-500 tok/s超高速"
+        - "Simple質問即答"
+        - "軽量コード生成"
+        - "Qwen省電力運用"
+
+# --- 記憶システム（3層アーキテクチャ）---
+memory_system:
+  enabled: true
+  description: "人間の記憶を模倣した3層構造"
+  
+  short_term:
+    layer: "Slack Thread"
+    retention: "Thread存続中（数日）"
+    management: "自動"
+    usage: "会話文脈維持"
+  
+  medium_term:
+    layer: "Memory MCP（shogun_memory.jsonl）"
+    retention: "永続（サイズ管理）"
+    management: "将軍が自動記録"
+    storage_path: "~/shogun_memory.jsonl"
+    content:
+      - "重要な決定事項"
+      - "技術選定理由"
+      - "プロジェクト方針"
+      - "Web検索結果（7日間キャッシュ）"
+      - "ルーティング判断履歴（v9.3.2 NEW）"
+    features:
+      - "人間可読（JSONL）"
+      - "git管理可能"
+      - "高速検索（grep、jq）"
+      - "複雑性ゼロ"
+  
+  long_term:
+    layer: "Notion Database"
+    retention: "永続"
+    management: "手動キュレーション"
+    usage: "プロジェクトドキュメント・設計書・振り返り"
+
+# --- Network ---
+network:
+  controller_host: "0.0.0.0"
+  controller_port: 8080
+
+# --- Cost Budget (v9.3.2 with Routing Optimization) ---
+budget:
+  monthly_target_yen: 3580  # v9.3.2: +¥60 (Alibaba Cloud buffer)
+  
+  breakdown:
+    pro_subscription_yen: 3000  # Claude Pro
+    claude_api_yen: 140          # API超過分
+    opus_premium_review_yen: 100 # 月10回 Strategic級
+    gemini_api_yen: 120          # Gemini 3 Flash（やや安価）
+    alibaba_cloud_yen: 60        # Qwen3-plus fallback（月20回想定）
+    groq_yen: 0                  # 無料
+    tavily_yen: 0                # 無料枠内
+    electricity_yen: 160         # Groq追加で省電力+¥10
+  
+  cost_optimization_strategies:
+    groq_utilization:
+      description: "Simpleタスク → Groq で大幅削減"
+      estimated_simple_tasks_per_month: 800
+      cost_before: 200  # Gemini使用時
+      cost_after: 0     # Groq無料
+      savings_yen: 200
+    
+    local_qwen_priority:
+      description: "標準実装 → Local Qwen優先"
+      estimated_medium_tasks_per_month: 400
+      local_success_rate: 0.85  # 85%成功
+      cloud_fallback_rate: 0.15  # 15%クラウド
+      monthly_fallback_cost: 60  # ¥3 × 20回
+    
+    gemini3_efficiency:
+      description: "Gemini 3 Flash 効率化"
+      cost_per_task_reduction: 0.01  # -¥0.01/タスク
+      monthly_savings: 24
+  
+  total_optimization_impact:
+    v9_3_vs_v9_3_2: "+¥60 (+1.7%)"
+    reason: "Alibaba Cloud追加だが、Groq節約で相殺"
+    net_benefit: "速度大幅向上・信頼性↑・コストほぼ同等"
+  
+  comparison:
+    vs_v9_3_base: "+1.7% (+¥60)"
+    vs_claude_code: "-53%"
+    vs_opus_only: "-87%"
+
+# --- Quality Metrics (v9.3.2 maintained) ---
+quality:
+  total_score: 96-97
+  breakdown:
+    simple: 92-94    # Groq（Llama3.3高品質）
+    medium: 95-97    # Local Qwen3
+    complex: 96-98   # Cloud Qwen3-plus / Gemini 3
+    strategic: 98-99.5  # Opus Premium
+  
+  quality_assurance:
+    code_complexity_analysis: "enabled"
+    security_validation: "enabled"
+    risk_assessment: "enabled"
+    automatic_opus_upgrade: "HIGH/CRITICAL risk detected"
+
+# --- Performance Metrics (v9.3.2 目標) ---
+performance:
+  processing_time_seconds:
+    simple: 2      # Groq爆速（5s → 2s改善）
+    medium: 12     # Local Qwen3最適化（15s → 12s）
+    complex: 28    # Cloud Qwen3-plus / Gemini 3（30s → 28s）
+    strategic: 45  # 変化なし
+  
+  latency_optimization:
+    groq_impact:
+      description: "Simple処理を60%高速化"
+      before_ms: 5000
+      after_ms: 2000
+      improvement: "60%削減"
+    
+    context_4k_impact:
+      description: "Local Qwen3 コンテキスト最適化"
+      throughput_improvement: "20%向上"
+      memory_reduction: "40%削減"
+
+# --- Deployment Modes ---
+modes:
+  battalion:
+    label: "大隊"
+    description: "将軍 + 家老 + 侍大将 + 影武者 + Groq + 全MCP"
+    api_enabled: true
+    trigger: "@shogun-bot"
+    cost_per_month_yen: 3580
+  
+  company:
+    label: "中隊"
+    description: "家老 + 侍大将 + Groq（Slack経由）"
+    api_enabled: true
+    cost: "Gemini API + Groq（無料）"
+    trigger: "@shogun-bot-light"
+  
+  platoon:
+    label: "小隊"
+    description: "侍大将 + 必要な足軽のみ（HA OS経由）"
+    api_enabled: false
+    cost: 0
+    trigger: "HA OS音声"
+    response_time_sec: "30-60"
+
+# --- Slack Bots ---
+slack:
+  bots:
+    - name: "shogun-bot"
+      role: "将軍"
+      mode: "battalion"
+    - name: "shogun-bot-light"
+      role: "中隊モード専用"
+      mode: "company"
+
+# --- HA OS (音声インターフェース) ---
+ha_os:
+  url: "http://192.168.1.20:8123"
+  mode: "platoon"
+  whisper: "ローカル音声認識"
+  tts: "Piper"
+
+# --- Proxmox LXC (v9.3.2 構成) ---
+proxmox:
+  optimization_version: "v9.3.2"
+  total_memory_gb: 24
+  containers:
+    ct100:
+      name: "honmaru-control"
+      memory_mb: 2560
+      cores: 2
+      ip: "192.168.1.10"
+      role: "本陣 - MCP管理, Slack Bot, Memory MCP, Groq統合"
+    
+    ct101:
+      name: "taisho-qwen3-coder"
+      memory_mb: 20480
+      cores: 6
+      ip: "192.168.1.11"
+      role: "侍大将 - Qwen3-Coder-30B推論（4096 context）"
+
+# --- 運用黄金律 (v9.3.2 Enhanced) ---
+golden_rules:
+  instant_response:
+    rule: "単純質問は Groq（爆速足軽）"
+    reason: "300-500 tok/s・待機ゼロ・Qwen起こさない"
+    cost: "¥0"
+    latency: "0.3-0.8秒"
+  
+  standard_implementation:
+    rule: "標準実装は Local Qwen3（4096 context最適化）"
+    reason: "コスト¥0・実用十分・MCP統合"
+    fallback: "→ Cloud Qwen3-plus → Gemini 3 Flash"
+  
+  complex_architecture:
+    rule: "複雑設計は Cloud Qwen3-plus or Gemini 3 Flash"
+    reason: "長文コンテキスト・高精度推論"
+    cost: "¥3 or ¥0.04"
+  
+  strategic_design:
+    rule: "戦略判断は Claude Sonnet（将軍）"
+    reason: "深い洞察力・倫理的判断"
+    cost: "¥0-5"
+  
+  final_inspection:
+    rule: "Critical品質保証は Opus（Premium Review）"
+    reason: "98-99.5点品質保証"
+    cost: "¥10"
+
+# --- Security Enhancements (v9.3.2 NEW) ---
+security:
+  enabled: true
+  description: "コードセキュリティ強化策"
+  
+  strategies:
+    input_validation:
+      enabled: true
+      checks:
+        - "SQL injection patterns"
+        - "Command injection risks"
+        - "Path traversal attempts"
+        - "XSS vulnerabilities"
+    
+    secret_scanning:
+      enabled: true
+      patterns:
+        - "API keys (hardcoded)"
+        - "Passwords in plain text"
+        - "Private keys"
+        - "Tokens and credentials"
+      action: "block_and_alert"
+    
+    dependency_audit:
+      enabled: true
+      frequency: "pre_deployment"
+      tools:
+        - "pip-audit"
+        - "safety"
+        - "bandit"
+    
+    code_signing:
+      enabled: true
+      gpg_key_id: "shogun_signing_key"
+      verify_commits: true
+
+# --- Prompt Consistency (v9.3.2 NEW) ---
+prompt_consistency:
+  enabled: true
+  description: "プロンプト一貫性確保策"
+  
+  strategies:
+    template_system:
+      enabled: true
+      templates_path: "config/prompt_templates/"
+      versioning: true
+      categories:
+        - "task_decomposition"
+        - "code_generation"
+        - "quality_review"
+        - "error_analysis"
+    
+    dspy_integration:
+      enabled: true
+      optimization: "automatic"
+      learning: true
+      metrics_tracking: true
+    
+    style_guide:
+      language: "English for code comments"
+      structure: "Clear, concise, action-oriented"
+      context_inclusion: "Always provide relevant context"
+
+# --- Expected Outcomes (v9.3.2) ---
+expected_outcomes:
+  technical:
+    - "品質: 96-97点（維持）"
+    - "コスト: ¥3,580（+¥60, +1.7%）"
+    - "速度: Simple 60%高速化、Medium 20%高速化"
+    - "信頼性: 3層フォールバック（成功率99.5%）"
+  
+  operational:
+    - "Groq活用で即座レスポンス"
+    - "Local Qwen省電力運用"
+    - "Cloud fallback安心感"
+    - "コストほぼ同等で性能向上"
+  
+  strategic:
+    - "運用黄金律の完成形"
+    - "適材適所の完璧実現"
+    - "スケーラビリティ確保"
