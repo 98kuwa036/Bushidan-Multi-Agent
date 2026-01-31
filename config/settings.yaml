@@ -61,18 +61,62 @@ repo:
   sync_interval_min: 5
 
 # --- 将軍 (総大将) - Strategic Layer ---
-# LLM: Claude 3.5 Sonnet (Pro CLI優先 → API補完)
+# LLM: Claude 3.5 Sonnet (Pro CLI優先 → API補完) + Opus 4 (Premium Review)
 shogun:
   codename: "Shogun"
   role: "将軍 - 大局的設計図作成・難解エラー最終判断・品質保証"
   cli_model: "sonnet"
   api_model: "claude-sonnet-4-5-20250929"
+  opus_model: "claude-opus-4-20250514"  # Premium review model 🏆
   cost_per_task_yen: 5
   monthly_usage: 100
   v9_3_features:
     - "DSPy最適化統合"
     - "Memory MCP自動記録"
     - "倫理的判断・セキュリティチェック"
+    - "Opus Premium Review（Strategic級・高リスクコード）" 🏆
+  
+  # Adaptive Review System (v9.3.1)
+  review_system:
+    enabled: true
+    description: "3段階適応型品質レビュー"
+    levels:
+      basic:
+        model: "sonnet"
+        cost_yen: 0  # Pro枠内
+        time_seconds: 5
+        quality_score: "90-93"
+        use_cases: ["Simple", "Medium"]
+      detailed:
+        model: "sonnet"
+        cost_yen: "0-5"  # API使用時
+        time_seconds: 10
+        quality_score: "95-97"
+        use_cases: ["Complex"]
+      premium:
+        model: "opus-4"
+        cost_yen: 10
+        time_seconds: 15
+        quality_score: "98-99"
+        use_cases: ["Strategic", "High-risk code", "Security issues"]
+    
+    # Automatic Opus upgrade triggers
+    opus_triggers:
+      - "task_complexity: STRATEGIC"
+      - "risk_level: HIGH or CRITICAL"
+      - "security_vulnerabilities: detected"
+      - "code_contains: ['security', 'authentication', 'payment', 'database']"
+      - "user_request: explicit"
+    
+    # Quality metrics collection
+    quality_metrics:
+      enabled: true
+      features:
+        - "Code complexity analysis (cyclomatic, cognitive, nesting)"
+        - "Security validation (SQL injection, command injection, secrets)"
+        - "Risk level assessment (LOW/MEDIUM/HIGH/CRITICAL)"
+        - "Performance indicators tracking"
+        - "Review history and learning"
 
 # --- 家老 (参謀) - Tactical Layer ---
 # LLM: Gemini 2.0 Flash (メイン) / Groq (サブ)
@@ -213,27 +257,70 @@ network:
   controller_host: "0.0.0.0"
   controller_port: 8080
 
-# --- Cost Budget (v9.3) ---
+# --- Cost Budget (v9.3.1 with Opus Premium Review) ---
 budget:
-  monthly_target_yen: 3420  # v9.3: -20%削減
+  monthly_target_yen: 3520  # v9.3.1: +¥100 for Opus Premium Review
   breakdown:
     pro_subscription_yen: 3000
     claude_api_yen: 140
+    opus_premium_review_yen: 100  # 月10回 Strategic級 🏆
     gemini_api_yen: 130
     tavily_yen: 0  # 無料枠内
     electricity_yen: 150
+  
+  opus_review_scenarios:
+    conservative: 
+      frequency: "月10回"
+      cost_yen: 100
+      total_yen: 3520
+      vs_v9_3: "+3% (+¥100)"
+      quality_improvement: "+1-2点 (Strategic級 98-99点達成)"
+    balanced:
+      frequency: "月30回"
+      cost_yen: 300
+      total_yen: 3720
+      vs_v9_3: "+9% (+¥300)"
+    aggressive:
+      frequency: "月50回"
+      cost_yen: 500
+      total_yen: 3920
+      vs_v9_3: "+15% (+¥500)"
+  
+  recommended_scenario: "conservative"  # 月10回（+¥100）で最大効果
+  
   comparison:
-    vs_v8_1: "-20% (-¥829)"
-    vs_claude_code: "-56%"
+    vs_v8_1: "-17% (-¥729)"
+    vs_claude_code: "-54%"
+    vs_v9_3_base: "+3% (+¥100)"
 
-# --- Quality Metrics (v9.3 目標) ---
+# --- Quality Metrics (v9.3.1 with Opus Premium Review) ---
 quality:
-  total_score: 95-96  # v9.3 目標（実用十分）
+  total_score: 96-97  # v9.3.1: +1-2点 (Opus効果)
   breakdown:
-    simple: 90-93
-    medium: 95-97
-    complex: 95-97
-    strategic: 97-99
+    simple: 90-93    # Sonnet Basic
+    medium: 95-97    # Sonnet Basic
+    complex: 96-98   # Sonnet Detailed (+1点)
+    strategic: 98-99.5  # Opus Premium (+1-1.5点) 🏆
+  
+  review_quality_by_level:
+    basic_review:
+      quality: "90-93"
+      model: "Sonnet"
+      cost: "¥0"
+    detailed_review:
+      quality: "95-97"
+      model: "Sonnet Enhanced"
+      cost: "¥0-5"
+    premium_review:
+      quality: "98-99.5"
+      model: "Opus 4" 🏆
+      cost: "¥10"
+  
+  quality_assurance:
+    code_complexity_analysis: "enabled"
+    security_validation: "enabled"
+    risk_assessment: "enabled"
+    automatic_opus_upgrade: "HIGH/CRITICAL risk detected"
 
 # --- Performance Metrics (v9.3 目標) ---
 performance:
