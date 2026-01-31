@@ -18,7 +18,7 @@ v9_3_core_features:
     description: "4段ハイブリッド・アーキテクチャ"
     philosophy: "クラウドの知能・速度 + ローカルの物量・コスト0"
     layers:
-      shogun: "Claude 3.5 Sonnet - 大局的設計図・難解エラー判断"
+      shogun: "Claude 4.5 Sonnet - 大局的設計図・難解エラー判断"
       karo: "Gemini 2.0 Flash/Groq - 中間管理・爆速コードレビュー"
       taisho: "Qwen3-Coder-30B-A3B (Local) - 実務実装・MCP駆使"
       ashigaru: "動的選択 - 補助・並列処理"
