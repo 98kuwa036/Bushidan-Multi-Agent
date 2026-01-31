@@ -1,58 +1,59 @@
 # =============================================================
-# 将軍システム v9.3 - Configuration
+# 将軍システム v9.3.2 - Configuration
 # =============================================================
-# "Universal Multi-LLM Framework" - シンプル・実用性・汎用性
+# "Universal Multi-LLM Framework" - 完全版ハイブリッド・アーキテクチャ
 # =============================================================
 
 system:
   name: "Bushidan Multi-Agent System"
-  version: "9.3"
+  version: "9.3.2"
   language: "ja"
   philosophy: "シンプル・イズ・ベスト + 実用性第一 + 汎用性の追求"
-  subtitle: "Universal Multi-LLM Framework"
+  subtitle: "4-Tier Hybrid Architecture with Intelligent Routing"
 
-# --- v9.3 核心機能 ---
-v9_3_core_features:
-  four_tier_hybrid:
+# --- v9.3.2 革新的機能 ---
+v9_3_2_innovations:
+  intelligent_routing:
     enabled: true
-    description: "4段ハイブリッド・アーキテクチャ"
-    philosophy: "クラウドの知能・速度 + ローカルの物量・コスト0"
-    layers:
-      shogun: "Claude 4.5 Sonnet - 大局的設計図・難解エラー判断"
-      karo: "Gemini 2.0 Flash/Groq - 中間管理・爆速コードレビュー"
-      taisho: "Qwen3-Coder-30B-A3B (Local) - 実務実装・MCP駆使"
-      ashigaru: "動的選択 - 補助・並列処理"
+    description: "運用黄金律に基づくインテリジェント・ルーティング"
+    golden_rules:
+      - "Simple → Groq (instant, free, DON'T wake Qwen)"
+      - "Heavy → Local Qwen3 (local volume, ¥0)"
+      - "Difficult → Cloud/Gemini (quality backup)"
+      - "Strategic → Shogun (final authority)"
+    complexity_judgment:
+      simple: "Questions, lookups (<50 chars, no code) → Groq"
+      medium: "Standard implementation (code keywords) → Local Qwen3"
+      complex: "Multi-component (multiple files) → Local → Cloud → Gemini"
+      strategic: "Design decisions (strategic keywords) → Shogun"
   
-  dspy_optimization:
+  three_tier_fallback:
     enabled: true
-    description: "プロンプト最適化層"
-    technology: "DSPy（構造化指示コンパイル）"
-    effect: "日本語意図→構造化指示への自動変換"
-    effectiveness_boost: "30-40%"
-    features:
-      - "将軍・家老の日本語意図を構造化"
-      - "大将が最もミスしにくい指示へ変換"
-      - "翻訳レイヤーで日本語の壁を突破"
+    description: "3段階フォールバック・チェーン（99.5%信頼性）"
+    chains:
+      simple:
+        primary: "Groq (300-500 tok/s, free)"
+        fallback: "Gemini 3 Flash"
+      medium_complex:
+        primary: "Local Qwen3 (4096 context, ¥0)"
+        shadow: "Cloud Qwen3-plus (32k context, ¥3)"
+        final_defense: "Gemini 3 Flash (¥0.04)"
   
-  litellm_middleware:
+  prompt_caching:
     enabled: true
-    description: "統合ミドルウェア"
+    description: "Claude Prompt Caching（90%コスト削減）"
+    technology: "Anthropic Prompt Caching API"
     features:
-      - "複数API・ローカルOllamaを一元化"
-      - "4k以内コンテキスト動的圧縮"
-      - "大将の脳を推論のみに集中させる"
-    context_limit: 4000
+      - "システムプロンプト自動キャッシュ"
+      - "5分間TTL（Time To Live）"
+      - "キャッシュヒット90%削減"
+    estimated_savings: "¥140 → ¥14/月"
   
-  smart_web_search:
+  power_optimization:
     enabled: true
-    description: "スマート Web 検索"
-    technology: "Tavily + Playwright"
-    features:
-      - "Tavily で大まかに調査→URL特定"
-      - "Playwright で狙い撃ち抽出（1,000-2,000文字）"
-      - "Memory MCP に7日間キャッシュ"
-    content_reduction: "90%削減"
-    free_tier: "Tavily 1,000回/月"
+    description: "電力最適化（Qwen起動制御）"
+    strategy: "Simple タスクは Groq で処理し Qwen を起こさない"
+    estimated_savings: "¥200/月（電力コスト）"
 
 # --- リポジトリ同期 ---
 repo:
@@ -60,407 +61,335 @@ repo:
   github_remote: ""  # git remote から自動取得
   sync_interval_min: 5
 
-# --- 将軍 (総大将) - Strategic Layer ---
-# LLM: Claude 3.5 Sonnet (Pro CLI優先 → API補完) + Opus 4 (Premium Review)
+# --- 将軍 (Shogun) - Strategic Layer ---
 shogun:
   codename: "Shogun"
-  role: "将軍 - 大局的設計図作成・難解エラー最終判断・品質保証"
-  cli_model: "sonnet"
-  api_model: "claude-sonnet-4-5-20250929"
-  opus_model: "claude-opus-4-20250514"  # Premium review model 🏆
-  cost_per_task_yen: 5
-  monthly_usage: 100
-  v9_3_features:
-    - "DSPy最適化統合"
-    - "Memory MCP自動記録"
-    - "倫理的判断・セキュリティチェック"
-    - "Opus Premium Review（Strategic級・高リスクコード）" 🏆
+  role: "将軍 - 大局的設計図・難解エラー最終判断・品質保証"
+  model: "claude-sonnet-4-5-20250929"
+  opus_model: "claude-opus-4-20250514"
   
-  # Adaptive Review System (v9.3.1)
+  # Prompt Caching (v9.3.2)
+  prompt_caching:
+    enabled: true
+    cache_ttl_minutes: 5
+    system_prompt_caching: true
+  
+  # Pro CLI + API管理
+  pro_cli:
+    enabled: true
+    monthly_limit: 2000
+    model: "sonnet"
+  
+  api:
+    fallback: true
+    model: "claude-sonnet-4-5-20250929"
+  
+  # Adaptive Review System
   review_system:
     enabled: true
-    description: "3段階適応型品質レビュー"
     levels:
       basic:
+        target: ["simple", "medium"]
         model: "sonnet"
-        cost_yen: 0  # Pro枠内
+        cost_yen: 0
         time_seconds: 5
-        quality_score: "90-93"
-        use_cases: ["Simple", "Medium"]
+        quality: "90-93"
       detailed:
+        target: ["complex"]
         model: "sonnet"
-        cost_yen: "0-5"  # API使用時
+        cost_yen: "0-5"
         time_seconds: 10
-        quality_score: "95-97"
-        use_cases: ["Complex"]
+        quality: "95-97"
       premium:
+        target: ["strategic"]
         model: "opus-4"
         cost_yen: 10
         time_seconds: 15
-        quality_score: "98-99"
-        use_cases: ["Strategic", "High-risk code", "Security issues"]
-    
-    # Automatic Opus upgrade triggers
-    opus_triggers:
-      - "task_complexity: STRATEGIC"
-      - "risk_level: HIGH or CRITICAL"
-      - "security_vulnerabilities: detected"
-      - "code_contains: ['security', 'authentication', 'payment', 'database']"
-      - "user_request: explicit"
-    
-    # Quality metrics collection
-    quality_metrics:
-      enabled: true
-      features:
-        - "Code complexity analysis (cyclomatic, cognitive, nesting)"
-        - "Security validation (SQL injection, command injection, secrets)"
-        - "Risk level assessment (LOW/MEDIUM/HIGH/CRITICAL)"
-        - "Performance indicators tracking"
-        - "Review history and learning"
+        quality: "98-99.5"
+  
+  # Opus Premium Review triggers
+  opus_triggers:
+    - "task_complexity == STRATEGIC"
+    - "risk_level in [HIGH, CRITICAL]"
+    - "security_vulnerabilities detected"
+    - "security keywords: auth, payment, database"
+    - "user_request == true"
 
-# --- 家老 (参謀) - Tactical Layer ---
-# LLM: Gemini 2.0 Flash (メイン) / Groq (サブ)
+# --- 家老 (Karo) - Tactical Layer ---
 karo:
   codename: "Karo"
-  role: "家老 - 中間管理・検分・タスク分解・爆速コードレビュー"
-  main_api:
-    provider: "google"
-    model: "gemini-2.0-flash"
-    cost_per_task_yen: 0.05
-    strengths: ["日本語最高級", "速度極めて高速", "コスト極安", "安定性Google保証"]
-  sub_api:
-    provider: "groq"
-    model: "llama-3.3-70b-versatile"
-    cost_per_task_yen: 0
-    strengths: ["瞬発力", "300-500 tok/s"]
-  monthly_usage: 2400
-  selection_strategy: "将軍が動的選定（単純生成→Groq、複雑検分→Gemini）"
-  v9_3_features:
-    - "DSPy指示最適化"
-    - "大将への構造化指示生成"
-    - "結果統合・日本語コメント追加"
+  role: "家老 - タスク分解・最終防御線"
+  
+  # 動的選択（Groq vs Gemini 3）
+  dynamic_selection:
+    enabled: true
+    groq:
+      model: "llama-3.3-70b-versatile"
+      use_case: "Simple tasks (instant speed)"
+      speed: "300-500 tok/s"
+      cost_yen: 0
+      rate_limit: "30/min (free tier)"
+    
+    gemini3:
+      model: "gemini-3.0-flash"
+      use_case: "Final defense line (fallback)"
+      improvements_vs_2_0:
+        speed: "1.3x faster"
+        reasoning: "+15% accuracy"
+        japanese: "Enhanced support"
+      cost_yen: 0.04
+  
+  # Groq が使われない時
+  groq_inactive_when:
+    - "task_complexity != SIMPLE"
+    - "Groq rate limited"
+    - "Groq API unavailable"
 
-# --- 大将 (実装責任者) - Execution Layer ---
-# LLM: Qwen3-Coder-30B-A3B (Local Proxmox)
+# --- 大将 (Taisho) - Implementation Layer ---
 taisho:
   codename: "Taisho"
-  role: "大将 - 実務実装・MCP操作・泥臭い作業"
-  url: "http://192.168.1.11:11434"
-  model: "qwen3-coder-30b-a3b"
-  quantization: "Q4_K_M（推奨）"
-  vram_usage_gb: 18
-  performance: "24 tok/s（CPU推論でも実用的）"
-  moe_active_params: "3.3B（推論時）"
-  strengths:
-    - "32B級知能を24GB RAMで動作"
-    - "コード特化（実装品質高い）"
-    - "コスト¥0（ローカル推論）"
-    - "無制限コンテキスト（大容量作業）"
-  v9_3_features:
-    - "DSPy翻訳レイヤー（日本語→構造化指示）"
-    - "MCP統合（Filesystem・Git・Memory・Web Search）"
-    - "LiteLLM経由4k以内コンテキスト圧縮"
-  use_cases:
-    - "重い実装（数十ファイル参照）"
-    - "100回以上の試行錯誤デバッグ"
-    - "無料・大容量コンテキストの活用"
-
-# --- 足軽 × MCP (実行部隊) ---
-ashigaru:
-  count: 4  # v9.3: Core MCP 4つに簡素化
-  max_active: 4
-  memory_each_mb: "50-150"
-  host: "192.168.1.10"
-  selection_algorithm: "dynamic"
-  servers:
-    - id: 1
-      name: "filesystem"
-      mcp: "@modelcontextprotocol/server-filesystem"
-      role: "ファイル読み書き・検索"
-    - id: 2
-      name: "git"
-      mcp: "@modelcontextprotocol/server-git"
-      role: "バージョン管理"
-    - id: 3
-      name: "memory"
-      mcp: "@modelcontextprotocol/server-memory"
-      role: "知識保持・Web検索キャッシュ（7日間）"
-      storage: "shogun_memory.jsonl"
-      features:
-        - "重要決定事項記録"
-        - "技術選定理由保存"
-        - "Web検索結果キャッシュ"
-        - "人間可読（JSONL）"
-        - "git管理可能"
-    - id: 4
-      name: "web-search-smart"
-      type: "custom"
-      role: "スマートWeb検索（Tavily + Playwright）"
-      features:
-        - "Tavily: URL特定"
-        - "Playwright: 狙い撃ち抽出"
-        - "Memory MCP統合"
-
-# --- 記憶システム（3層アーキテクチャ）---
-memory_system:
-  enabled: true
-  description: "人間の記憶を模倣した3層構造"
+  role: "大将 - 実務実装・MCP駆使"
   
+  # Primary: Local Qwen3
+  local:
+    model: "qwen3-coder-30b-instruct"
+    endpoint: "http://localhost:11434"
+    context_length: 4096  # v9.3.2: Reduced from 8192+ for 1.5x speed
+    quantization: "Q4_K_M"
+    vram_usage: "20-22GB"
+    expected_speed: "36 tok/s (1.5x improvement)"
+    cost_yen: 0
+    power_cost_yen: 5  # per task
+    optimizations:
+      - "Context 8k → 4k (1.5x speed)"
+      - "Memory -40% reduction"
+      - "MoE 3.3B active params"
+  
+  # Shadow: Cloud Qwen3-plus (Kagemusha)
+  kagemusha:
+    enabled: true
+    model: "qwen3-coder-plus"
+    provider: "Alibaba Cloud Model Studio"
+    context_length: 32000  # 8x local
+    activation_triggers:
+      - "Local Qwen3 fails"
+      - "Context > 4096 tokens"
+      - "Complex task requiring more capacity"
+    cost_yen: 3  # per task
+    description: "影武者（Shadow backup）for seamless continuation"
+  
+  # Final fallback: Gemini 3 Flash
+  final_defense:
+    model: "gemini-3.0-flash"
+    activation: "When both Local & Cloud Qwen3 fail"
+    cost_yen: 0.04
+
+# --- 足軽 (Ashigaru) - Execution Layer ---
+ashigaru:
+  codename: "Ashigaru"
+  role: "足軽 - MCP実行・並列処理"
+  
+  # Groq added as Ashigaru member (v9.3.2)
+  members:
+    - name: "filesystem"
+      type: "MCP"
+      role: "ファイル読み書き"
+    
+    - name: "git"
+      type: "MCP"
+      role: "バージョン管理"
+    
+    - name: "memory"
+      type: "MCP"
+      role: "知識保持・Web検索キャッシュ"
+      features:
+        - "決定事項記録"
+        - "Web検索結果7日間キャッシュ"
+        - "JSONL形式（人間可読）"
+    
+    - name: "web_search"
+      type: "MCP"
+      role: "最新情報取得"
+      technology: "Tavily + Playwright"
+      features:
+        - "精密抽出（1,000-2,000文字）"
+        - "90%削減効果"
+        - "Memory MCP統合"
+    
+    - name: "groq"
+      type: "API"  # v9.3.2: Groq added as Ashigaru
+      role: "瞬速実行（Simple tasks）"
+      model: "llama-3.3-70b-versatile"
+      features:
+        - "300-500 tok/s"
+        - "Free tier (14,400/day)"
+        - "Power-saving (don't wake Qwen)"
+
+# --- インフラ設定 ---
+infrastructure:
+  mode: "hybrid"  # v9.3.2: Cloud + Local
+  description: "クラウドの知能・速度 + ローカルの物量・コスト0"
+  
+  local:
+    hardware: "HP ProDesk 600 G4"
+    cpu: "Intel Core i5-8500 (6C/6T)"
+    ram: "24GB DDR4"
+    gpu: "RTX 3060 12GB or RTX 3090 24GB"
+    os: "Ubuntu 24.04 LTS"
+  
+  ollama:
+    endpoint: "http://localhost:11434"
+    models:
+      - "qwen3-coder-30b-instruct:q4_k_m"
+  
+  litellm:
+    endpoint: "http://localhost:8000"
+    features:
+      - "Context compression (<4k)"
+      - "Multi-API integration"
+      - "Ollama OpenAI-compatible proxy"
+
+# --- パフォーマンス目標 ---
+performance_targets:
+  v9_3_2:
+    simple:
+      time_seconds: 2  # Groq (60% faster vs v9.3.1)
+      route: "Groq"
+      cost_yen: 0
+    
+    medium:
+      time_seconds: 12  # Local Qwen3 (20% faster)
+      route: "Local Qwen3"
+      cost_yen: 0
+    
+    complex:
+      time_seconds: 28  # Local → Cloud → Gemini
+      route: "3-tier fallback"
+      cost_yen: "0-3"
+    
+    strategic:
+      time_seconds: 45  # Shogun
+      route: "Shogun"
+      cost_yen: "0-5"
+  
+  improvements_vs_v9_3_1:
+    simple: "60% faster (5s → 2s)"
+    medium: "20% faster (15s → 12s)"
+    reliability: "99.5% (3-tier fallback)"
+
+# --- コスト目標 ---
+cost_targets:
+  v9_3_1:
+    monthly_yen: 3520
+  
+  v9_3_2:
+    monthly_yen: 3580  # +¥60 (+1.7%)
+    breakdown:
+      claude_pro: 3000
+      claude_api: 140
+      opus_premium: 100
+      gemini_3_flash: 120  # -¥10 vs 2.0
+      alibaba_cloud: 60  # ~20 fallbacks/month
+      groq: 0  # free
+      electricity: 160  # -¥200 savings (Groq)
+    
+    net_benefits:
+      groq_power_savings: -200  # Don't wake Qwen for simple
+      speed_improvements: "20-60% faster"
+      reliability: "99.5% success rate"
+      value: "Much better performance for minimal cost increase"
+
+# --- 品質目標 ---
+quality_targets:
+  v9_3_1:
+    overall: "95-96"
+    strategic: "98-99"
+  
+  v9_3_2:
+    overall: "96-97"  # +1-2 points
+    simple: "90-93"  # Groq quality
+    medium: "95-97"  # Local Qwen3
+    complex: "96-98"  # 3-tier fallback
+    strategic: "98-99.5"  # Opus Premium
+
+# --- 開発環境 ---
+development:
+  primary_interface: "Slack"
+  modes:
+    battalion: "Full system (Shogun + Karo + Taisho + Ashigaru)"
+    company: "Slack mode (Karo + Taisho + Ashigaru)"
+    platoon: "HA OS mode (Taisho + Dynamic Ashigaru)"
+  
+  logging:
+    level: "INFO"
+    format: "structured"
+    outputs: ["console", "file"]
+
+# --- セキュリティ ---
+security:
+  secrets_detection: true
+  code_validation: true
+  security_keywords_monitoring:
+    - "auth"
+    - "authentication"
+    - "payment"
+    - "database"
+    - "credential"
+  
+  opus_review_on_security: true  # Auto-trigger Opus for security-sensitive code
+
+# --- 記憶システム (3層) ---
+memory_system:
   short_term:
-    layer: "Slack Thread"
-    retention: "Thread存続中（数日）"
-    management: "自動"
-    usage: "会話文脈維持"
+    location: "Slack Thread"
+    duration: "数日（Thread存続中）"
+    management: "自動（Slack標準機能）"
   
   medium_term:
-    layer: "Memory MCP（shogun_memory.jsonl）"
-    retention: "永続（サイズ管理）"
+    location: "Memory MCP (shogun_memory.jsonl)"
+    duration: "数週間〜数ヶ月"
     management: "将軍が自動記録"
-    storage_path: "~/shogun_memory.jsonl"
     content:
       - "重要な決定事項"
       - "技術選定理由"
-      - "プロジェクト方針"
       - "Web検索結果（7日間キャッシュ）"
-    features:
-      - "人間可読（JSONL）"
-      - "git管理可能"
-      - "高速検索（grep、jq）"
-      - "複雑性ゼロ"
   
   long_term:
-    layer: "Notion Database"
-    retention: "永続"
-    management: "手動キュレーション"
-    usage: "プロジェクトドキュメント・設計書・振り返り"
+    location: "Notion Database"
+    duration: "永続"
+    management: "手動キュレーション（月次）"
+    content:
+      - "プロジェクトドキュメント"
+      - "設計書"
+      - "振り返り"
 
-# --- Groq (サブ家老) ---
-groq:
-  api_url: "https://api.groq.com/openai/v1"
-  model: "llama-3.3-70b-versatile"
-  cost_per_task_yen: 0
-  free_tier_requests_per_day: 14400
-  speed: "300-500 tok/s"
-  rate_limiting:
-    rpm_limit: 30
-    tpm_limit: 14000
-    daily_limit: 14400
-    exponential_backoff:
-      enabled: true
-      initial_delay_ms: 1000
-      max_delay_ms: 60000
-      jitter: true
-      max_retries: 5
+# --- v9.3.2 実装優先度 ---
+implementation_priority:
+  phase_1: "Core clients (Groq, Gemini 3, Alibaba Qwen, optimized Qwen3, Claude cached)"
+  phase_2: "Intelligent router integration"
+  phase_3: "Core component updates (Shogun, Karo, Taisho)"
+  phase_4: "System orchestrator & main.py"
+  phase_5: "Testing & documentation"
 
-# --- Network ---
-network:
-  controller_host: "0.0.0.0"
-  controller_port: 8080
-
-# --- Cost Budget (v9.3.1 with Opus Premium Review) ---
-budget:
-  monthly_target_yen: 3520  # v9.3.1: +¥100 for Opus Premium Review
-  breakdown:
-    pro_subscription_yen: 3000
-    claude_api_yen: 140
-    opus_premium_review_yen: 100  # 月10回 Strategic級 🏆
-    gemini_api_yen: 130
-    tavily_yen: 0  # 無料枠内
-    electricity_yen: 150
-  
-  opus_review_scenarios:
-    conservative: 
-      frequency: "月10回"
-      cost_yen: 100
-      total_yen: 3520
-      vs_v9_3: "+3% (+¥100)"
-      quality_improvement: "+1-2点 (Strategic級 98-99点達成)"
-    balanced:
-      frequency: "月30回"
-      cost_yen: 300
-      total_yen: 3720
-      vs_v9_3: "+9% (+¥300)"
-    aggressive:
-      frequency: "月50回"
-      cost_yen: 500
-      total_yen: 3920
-      vs_v9_3: "+15% (+¥500)"
-  
-  recommended_scenario: "conservative"  # 月10回（+¥100）で最大効果
-  
-  comparison:
-    vs_v8_1: "-17% (-¥729)"
-    vs_claude_code: "-54%"
-    vs_v9_3_base: "+3% (+¥100)"
-
-# --- Quality Metrics (v9.3.1 with Opus Premium Review) ---
-quality:
-  total_score: 96-97  # v9.3.1: +1-2点 (Opus効果)
-  breakdown:
-    simple: 90-93    # Sonnet Basic
-    medium: 95-97    # Sonnet Basic
-    complex: 96-98   # Sonnet Detailed (+1点)
-    strategic: 98-99.5  # Opus Premium (+1-1.5点) 🏆
-  
-  review_quality_by_level:
-    basic_review:
-      quality: "90-93"
-      model: "Sonnet"
-      cost: "¥0"
-    detailed_review:
-      quality: "95-97"
-      model: "Sonnet Enhanced"
-      cost: "¥0-5"
-    premium_review:
-      quality: "98-99.5"
-      model: "Opus 4" 🏆
-      cost: "¥10"
-  
-  quality_assurance:
-    code_complexity_analysis: "enabled"
-    security_validation: "enabled"
-    risk_assessment: "enabled"
-    automatic_opus_upgrade: "HIGH/CRITICAL risk detected"
-
-# --- Performance Metrics (v9.3 目標) ---
-performance:
-  processing_time_seconds:
-    simple: 5   # 家老（Groq）瞬発力
-    medium: 15  # 大将実装特化
-    complex: 30  # 大将+足軽並列
-    strategic: 45  # 将軍主導
-  
-  vs_v8_1:
-    speedup: "3.4x"
-    monthly_time_reduction: "-71%"
-
-# --- Deployment Modes ---
-modes:
-  battalion:
-    label: "大隊"
-    description: "将軍 + 家老 + 大将 + 足軽 + 全MCP"
-    api_enabled: true
-    trigger: "@shogun-bot"
-    cost_per_month_yen: 3420
-  
-  company:
-    label: "中隊"
-    description: "家老 + 大将 + 足軽（Slack経由）"
-    api_enabled: true
-    cost: "Gemini API分のみ"
-    trigger: "@shogun-bot-light"
-  
-  platoon:
-    label: "小隊"
-    description: "大将 + 必要な足軽のみ（HA OS経由）"
-    api_enabled: false
-    cost: 0
-    trigger: "HA OS音声"
-    response_time_sec: "30-60"
-
-# --- Slack Bots ---
-slack:
-  bots:
-    - name: "shogun-bot"
-      role: "将軍"
-      mode: "battalion"
-    - name: "shogun-bot-light"
-      role: "中隊モード専用"
-      mode: "company"
-
-# --- HA OS (音声インターフェース) ---
-ha_os:
-  url: "http://192.168.1.20:8123"
-  mode: "platoon"
-  whisper: "ローカル音声認識"
-  tts: "Piper"
-
-# --- Proxmox LXC (v9.3 簡素化構成) ---
-proxmox:
-  optimization_version: "v9.3"
-  total_memory_gb: 24
-  containers:
-    ct100:
-      name: "honmaru-control"
-      memory_mb: 2560
-      cores: 2
-      ip: "192.168.1.10"
-      role: "本陣 - MCP管理, Slack Bot, Memory MCP"
-    ct101:
-      name: "taisho-qwen3-coder"
-      memory_mb: 20480
-      cores: 6
-      ip: "192.168.1.11"
-      role: "大将 - Qwen3-Coder-30B-A3B推論"
-
-# --- 運用黄金律 ---
-golden_rules:
-  simple_generation:
-    rule: "単純な生成は家老（Groq）"
-    reason: "瞬発力が必要なコード片はGroqに投げ、待ち時間をゼロに"
-  
-  heavy_implementation:
-    rule: "重い実装は大将（Local）"
-    reason: "数十ファイル参照や100回以上の試行錯誤は無料・大容量の大将に"
-  
-  strategic_design:
-    rule: "戦略的設計は将軍（Claude）"
-    reason: "アーキテクチャ判断・難解エラーはClaudeの深い洞察力で"
-
-# --- v9.3 Implementation Roadmap ---
-implementation:
-  phases:
-    phase1:
-      name: "基盤構築"
-      duration_hours: "4-6"
-      tasks:
-        - "Ollama + Qwen3-Coder-30B-A3B"
-        - "LiteLLM Proxy設定"
-        - "動作確認"
-    
-    phase2:
-      name: "MCP統合"
-      duration_hours: "6-8"
-      tasks:
-        - "Filesystem MCP"
-        - "Git MCP"
-        - "Memory MCP"
-        - "Smart Web Search MCP"
-    
-    phase3:
-      name: "階層統合"
-      duration_hours: "6-8"
-      tasks:
-        - "将軍層実装"
-        - "家老層実装"
-        - "大将層実装"
-        - "統合テスト"
-    
-    phase4:
-      name: "最適化"
-      duration_hours: "4-6"
-      tasks:
-        - "DSPy統合"
-        - "並列化実装"
-        - "Slack統合"
-        - "ドキュメント整備"
-  
-  total_implementation_time: "20-28時間"
-
-# --- Expected Outcomes ---
+# --- 想定される成果 ---
 expected_outcomes:
-  technical:
-    - "品質95-96点（実用十分）"
-    - "コスト¥3,420（-20%削減）"
-    - "処理速度3.4倍改善"
-    - "複雑性80%削減"
+  speed:
+    simple: "2s (60% improvement)"
+    medium: "12s (20% improvement)"
+    complex: "28s (maintaining quality)"
   
-  philosophical:
-    - "シンプル・イズ・ベストの実現"
-    - "実用性第一の徹底"
-    - "汎用性の確保"
+  cost:
+    monthly: "¥3,580 (+1.7% acceptable)"
+    savings_vs_claude_only: "-54%"
   
-  practical:
-    - "毎日使える道具"
-    - "2.5-3.5日で実装可能"
-    - "月1時間の保守で運用可能"
+  reliability:
+    success_rate: "99.5%"
+    fallback_chain_depth: 3
+  
+  quality:
+    overall: "96-97 points"
+    strategic_with_opus: "98-99.5 points"
+  
+  power_efficiency:
+    groq_power_savings: "¥200/month"
+    qwen_sleep_ratio: "~30% (Simple tasks)"
