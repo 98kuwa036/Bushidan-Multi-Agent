@@ -58,6 +58,7 @@ class Taisho:
     def __init__(self, orchestrator):
         self.orchestrator = orchestrator
         self.qwen_client = QwenClient(
+            config=orchestrator.config,
             api_base=orchestrator.config.get("qwen_api_base", "http://localhost:11434"),
             model_name="qwen3-coder-30b-a3b"
         )
@@ -65,6 +66,16 @@ class Taisho:
         self.memory_mcp = None
         self.filesystem_mcp = None
         self.git_mcp = None
+        
+        # Enhanced v9.3: Error handling layers
+        from utils.self_healing import SelfHealingExecutor
+        from utils.dspy_validators import DSPyValidator
+        
+        self.self_healing = SelfHealingExecutor(
+            llm_client=self.qwen_client,
+            max_correction_attempts=3
+        )
+        self.validator = DSPyValidator(max_backtracks=2)
         
     async def initialize(self) -> None:
         """Initialize Taisho and MCP connections"""
@@ -362,25 +373,126 @@ class Taisho:
         return files_created
     
     async def _validate_implementation(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """Basic validation of implementation results"""
+        """
+        Enhanced validation using DSPy validators (Layer 3)
+        
+        Validates:
+        - Code presence and formatting
+        - No Japanese comments (English only)
+        - Complete implementation (no TODOs/placeholders)
+        - Proper imports
+        - Error handling
+        """
         
         validation = {
             "valid": True,
             "files_count": len(result.get("files_created", [])),
-            "issues": []
+            "issues": [],
+            "validation_details": []
         }
         
-        # Basic checks
+        # Basic check
         if validation["files_count"] == 0:
             validation["valid"] = False
             validation["issues"].append("No files were created")
+            return validation
         
-        # TODO: Add more sophisticated validation
-        # - Syntax checking
-        # - Import validation
-        # - Basic testing
+        # Enhanced v9.3: DSPy validation with automatic retry
+        try:
+            implementation_text = result.get("implementation", "")
+            
+            # Define validation rules for code implementation
+            validation_rules = [
+                "code_block_present",
+                "no_japanese_comments",
+                "proper_formatting",
+                "complete_implementation",
+                "imports_present"
+            ]
+            
+            # Validate with retry and refinement
+            validation_passed, validated_output, attempts = await self.validator.validate_with_retry(
+                llm_client=self.qwen_client,
+                output=implementation_text,
+                validation_rules=validation_rules,
+                original_prompt=f"Implementation for task",
+                task_context={"task_type": "code_implementation"}
+            )
+            
+            validation["valid"] = validation_passed
+            validation["validation_attempts"] = attempts
+            
+            if not validation_passed:
+                validation["issues"].append(f"Quality validation failed after {attempts} attempts")
+                
+                # Get validator stats for debugging
+                validator_stats = self.validator.get_validation_stats()
+                validation["validation_details"] = validator_stats
+            else:
+                logger.info(f"✅ Implementation validated successfully (attempts: {attempts})")
+                
+                # Update result with validated output if refined
+                if attempts > 1:
+                    result["implementation"] = validated_output
+                    logger.info(f"📝 Implementation refined through {attempts} validation cycles")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Advanced validation failed, using basic checks: {e}")
+            # Fallback to basic validation on error
+            validation["issues"].append(f"Advanced validation error: {e}")
         
         return validation
+    
+    async def execute_code_with_healing(
+        self,
+        code: str,
+        task_description: str = "",
+        allow_installation: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Execute code with Layer 2 self-healing
+        
+        Args:
+            code: Code to execute
+            task_description: Description for error correction context
+            allow_installation: Allow automatic dependency installation
+        
+        Returns:
+            Execution result with success status and output
+        """
+        
+        logger.info("🔧 Executing code with self-healing enabled")
+        
+        try:
+            execution_result = await self.self_healing.run_and_fix(
+                code=code,
+                task_description=task_description,
+                language="python",
+                allow_installation=allow_installation
+            )
+            
+            if execution_result.success:
+                logger.info(f"✅ Code executed successfully (attempt {execution_result.attempt_number})")
+                return {
+                    "status": "success",
+                    "stdout": execution_result.stdout,
+                    "execution_time": execution_result.execution_time,
+                    "attempts": execution_result.attempt_number
+                }
+            else:
+                logger.error(f"❌ Code execution failed: {execution_result.stderr}")
+                return {
+                    "status": "failed",
+                    "error": execution_result.stderr,
+                    "attempts": execution_result.attempt_number
+                }
+        
+        except Exception as e:
+            logger.error(f"❌ Self-healing execution system error: {e}")
+            return {
+                "status": "system_error",
+                "error": str(e)
+            }
     
     async def _commit_changes(self, task: ImplementationTask, result: Dict[str, Any]) -> None:
         """Commit changes using Git MCP"""
