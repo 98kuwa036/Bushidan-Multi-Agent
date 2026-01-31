@@ -1,0 +1,395 @@
+# =============================================================
+# 将軍システム v9.3.2 - Configuration
+# =============================================================
+# "Universal Multi-LLM Framework" - 完全版ハイブリッド・アーキテクチャ
+# =============================================================
+
+system:
+  name: "Bushidan Multi-Agent System"
+  version: "9.3.2"
+  language: "ja"
+  philosophy: "シンプル・イズ・ベスト + 実用性第一 + 汎用性の追求"
+  subtitle: "4-Tier Hybrid Architecture with Intelligent Routing"
+
+# --- v9.3.2 革新的機能 ---
+v9_3_2_innovations:
+  intelligent_routing:
+    enabled: true
+    description: "運用黄金律に基づくインテリジェント・ルーティング"
+    golden_rules:
+      - "Simple → Groq (instant, free, DON'T wake Qwen)"
+      - "Heavy → Local Qwen3 (local volume, ¥0)"
+      - "Difficult → Cloud/Gemini (quality backup)"
+      - "Strategic → Shogun (final authority)"
+    complexity_judgment:
+      simple: "Questions, lookups (<50 chars, no code) → Groq"
+      medium: "Standard implementation (code keywords) → Local Qwen3"
+      complex: "Multi-component (multiple files) → Local → Cloud → Gemini"
+      strategic: "Design decisions (strategic keywords) → Shogun"
+  
+  three_tier_fallback:
+    enabled: true
+    description: "3段階フォールバック・チェーン（99.5%信頼性）"
+    chains:
+      simple:
+        primary: "Groq (300-500 tok/s, free)"
+        fallback: "Gemini 3 Flash"
+      medium_complex:
+        primary: "Local Qwen3 (4096 context, ¥0)"
+        shadow: "Cloud Qwen3-plus (32k context, ¥3)"
+        final_defense: "Gemini 3 Flash (¥0.04)"
+  
+  prompt_caching:
+    enabled: true
+    description: "Claude Prompt Caching（90%コスト削減）"
+    technology: "Anthropic Prompt Caching API"
+    features:
+      - "システムプロンプト自動キャッシュ"
+      - "5分間TTL（Time To Live）"
+      - "キャッシュヒット90%削減"
+    estimated_savings: "¥140 → ¥14/月"
+  
+  power_optimization:
+    enabled: true
+    description: "電力最適化（Qwen起動制御）"
+    strategy: "Simple タスクは Groq で処理し Qwen を起こさない"
+    estimated_savings: "¥200/月（電力コスト）"
+
+# --- リポジトリ同期 ---
+repo:
+  local_base: "/home/claude"
+  github_remote: ""  # git remote から自動取得
+  sync_interval_min: 5
+
+# --- 将軍 (Shogun) - Strategic Layer ---
+shogun:
+  codename: "Shogun"
+  role: "将軍 - 大局的設計図・難解エラー最終判断・品質保証"
+  model: "claude-sonnet-4-5-20250929"
+  opus_model: "claude-opus-4-20250514"
+  
+  # Prompt Caching (v9.3.2)
+  prompt_caching:
+    enabled: true
+    cache_ttl_minutes: 5
+    system_prompt_caching: true
+  
+  # Pro CLI + API管理
+  pro_cli:
+    enabled: true
+    monthly_limit: 2000
+    model: "sonnet"
+  
+  api:
+    fallback: true
+    model: "claude-sonnet-4-5-20250929"
+  
+  # Adaptive Review System
+  review_system:
+    enabled: true
+    levels:
+      basic:
+        target: ["simple", "medium"]
+        model: "sonnet"
+        cost_yen: 0
+        time_seconds: 5
+        quality: "90-93"
+      detailed:
+        target: ["complex"]
+        model: "sonnet"
+        cost_yen: "0-5"
+        time_seconds: 10
+        quality: "95-97"
+      premium:
+        target: ["strategic"]
+        model: "opus-4"
+        cost_yen: 10
+        time_seconds: 15
+        quality: "98-99.5"
+  
+  # Opus Premium Review triggers
+  opus_triggers:
+    - "task_complexity == STRATEGIC"
+    - "risk_level in [HIGH, CRITICAL]"
+    - "security_vulnerabilities detected"
+    - "security keywords: auth, payment, database"
+    - "user_request == true"
+
+# --- 家老 (Karo) - Tactical Layer ---
+karo:
+  codename: "Karo"
+  role: "家老 - タスク分解・最終防御線"
+  
+  # 動的選択（Groq vs Gemini 3）
+  dynamic_selection:
+    enabled: true
+    groq:
+      model: "llama-3.3-70b-versatile"
+      use_case: "Simple tasks (instant speed)"
+      speed: "300-500 tok/s"
+      cost_yen: 0
+      rate_limit: "30/min (free tier)"
+    
+    gemini3:
+      model: "gemini-3.0-flash"
+      use_case: "Final defense line (fallback)"
+      improvements_vs_2_0:
+        speed: "1.3x faster"
+        reasoning: "+15% accuracy"
+        japanese: "Enhanced support"
+      cost_yen: 0.04
+  
+  # Groq が使われない時
+  groq_inactive_when:
+    - "task_complexity != SIMPLE"
+    - "Groq rate limited"
+    - "Groq API unavailable"
+
+# --- 大将 (Taisho) - Implementation Layer ---
+taisho:
+  codename: "Taisho"
+  role: "大将 - 実務実装・MCP駆使"
+  
+  # Primary: Local Qwen3
+  local:
+    model: "qwen3-coder-30b-instruct"
+    endpoint: "http://localhost:11434"
+    context_length: 4096  # v9.3.2: Reduced from 8192+ for 1.5x speed
+    quantization: "Q4_K_M"
+    vram_usage: "20-22GB"
+    expected_speed: "36 tok/s (1.5x improvement)"
+    cost_yen: 0
+    power_cost_yen: 5  # per task
+    optimizations:
+      - "Context 8k → 4k (1.5x speed)"
+      - "Memory -40% reduction"
+      - "MoE 3.3B active params"
+  
+  # Shadow: Cloud Qwen3-plus (Kagemusha)
+  kagemusha:
+    enabled: true
+    model: "qwen3-coder-plus"
+    provider: "Alibaba Cloud Model Studio"
+    context_length: 32000  # 8x local
+    activation_triggers:
+      - "Local Qwen3 fails"
+      - "Context > 4096 tokens"
+      - "Complex task requiring more capacity"
+    cost_yen: 3  # per task
+    description: "影武者（Shadow backup）for seamless continuation"
+  
+  # Final fallback: Gemini 3 Flash
+  final_defense:
+    model: "gemini-3.0-flash"
+    activation: "When both Local & Cloud Qwen3 fail"
+    cost_yen: 0.04
+
+# --- 足軽 (Ashigaru) - Execution Layer ---
+ashigaru:
+  codename: "Ashigaru"
+  role: "足軽 - MCP実行・並列処理"
+  
+  # Groq added as Ashigaru member (v9.3.2)
+  members:
+    - name: "filesystem"
+      type: "MCP"
+      role: "ファイル読み書き"
+    
+    - name: "git"
+      type: "MCP"
+      role: "バージョン管理"
+    
+    - name: "memory"
+      type: "MCP"
+      role: "知識保持・Web検索キャッシュ"
+      features:
+        - "決定事項記録"
+        - "Web検索結果7日間キャッシュ"
+        - "JSONL形式（人間可読）"
+    
+    - name: "web_search"
+      type: "MCP"
+      role: "最新情報取得"
+      technology: "Tavily + Playwright"
+      features:
+        - "精密抽出（1,000-2,000文字）"
+        - "90%削減効果"
+        - "Memory MCP統合"
+    
+    - name: "groq"
+      type: "API"  # v9.3.2: Groq added as Ashigaru
+      role: "瞬速実行（Simple tasks）"
+      model: "llama-3.3-70b-versatile"
+      features:
+        - "300-500 tok/s"
+        - "Free tier (14,400/day)"
+        - "Power-saving (don't wake Qwen)"
+
+# --- インフラ設定 ---
+infrastructure:
+  mode: "hybrid"  # v9.3.2: Cloud + Local
+  description: "クラウドの知能・速度 + ローカルの物量・コスト0"
+  
+  local:
+    hardware: "HP ProDesk 600 G4"
+    cpu: "Intel Core i5-8500 (6C/6T)"
+    ram: "24GB DDR4"
+    gpu: "RTX 3060 12GB or RTX 3090 24GB"
+    os: "Ubuntu 24.04 LTS"
+  
+  ollama:
+    endpoint: "http://localhost:11434"
+    models:
+      - "qwen3-coder-30b-instruct:q4_k_m"
+  
+  litellm:
+    endpoint: "http://localhost:8000"
+    features:
+      - "Context compression (<4k)"
+      - "Multi-API integration"
+      - "Ollama OpenAI-compatible proxy"
+
+# --- パフォーマンス目標 ---
+performance_targets:
+  v9_3_2:
+    simple:
+      time_seconds: 2  # Groq (60% faster vs v9.3.1)
+      route: "Groq"
+      cost_yen: 0
+    
+    medium:
+      time_seconds: 12  # Local Qwen3 (20% faster)
+      route: "Local Qwen3"
+      cost_yen: 0
+    
+    complex:
+      time_seconds: 28  # Local → Cloud → Gemini
+      route: "3-tier fallback"
+      cost_yen: "0-3"
+    
+    strategic:
+      time_seconds: 45  # Shogun
+      route: "Shogun"
+      cost_yen: "0-5"
+  
+  improvements_vs_v9_3_1:
+    simple: "60% faster (5s → 2s)"
+    medium: "20% faster (15s → 12s)"
+    reliability: "99.5% (3-tier fallback)"
+
+# --- コスト目標 ---
+cost_targets:
+  v9_3_1:
+    monthly_yen: 3520
+  
+  v9_3_2:
+    monthly_yen: 3580  # +¥60 (+1.7%)
+    breakdown:
+      claude_pro: 3000
+      claude_api: 140
+      opus_premium: 100
+      gemini_3_flash: 120  # -¥10 vs 2.0
+      alibaba_cloud: 60  # ~20 fallbacks/month
+      groq: 0  # free
+      electricity: 160  # -¥200 savings (Groq)
+    
+    net_benefits:
+      groq_power_savings: -200  # Don't wake Qwen for simple
+      speed_improvements: "20-60% faster"
+      reliability: "99.5% success rate"
+      value: "Much better performance for minimal cost increase"
+
+# --- 品質目標 ---
+quality_targets:
+  v9_3_1:
+    overall: "95-96"
+    strategic: "98-99"
+  
+  v9_3_2:
+    overall: "96-97"  # +1-2 points
+    simple: "90-93"  # Groq quality
+    medium: "95-97"  # Local Qwen3
+    complex: "96-98"  # 3-tier fallback
+    strategic: "98-99.5"  # Opus Premium
+
+# --- 開発環境 ---
+development:
+  primary_interface: "Slack"
+  modes:
+    battalion: "Full system (Shogun + Karo + Taisho + Ashigaru)"
+    company: "Slack mode (Karo + Taisho + Ashigaru)"
+    platoon: "HA OS mode (Taisho + Dynamic Ashigaru)"
+  
+  logging:
+    level: "INFO"
+    format: "structured"
+    outputs: ["console", "file"]
+
+# --- セキュリティ ---
+security:
+  secrets_detection: true
+  code_validation: true
+  security_keywords_monitoring:
+    - "auth"
+    - "authentication"
+    - "payment"
+    - "database"
+    - "credential"
+  
+  opus_review_on_security: true  # Auto-trigger Opus for security-sensitive code
+
+# --- 記憶システム (3層) ---
+memory_system:
+  short_term:
+    location: "Slack Thread"
+    duration: "数日（Thread存続中）"
+    management: "自動（Slack標準機能）"
+  
+  medium_term:
+    location: "Memory MCP (shogun_memory.jsonl)"
+    duration: "数週間〜数ヶ月"
+    management: "将軍が自動記録"
+    content:
+      - "重要な決定事項"
+      - "技術選定理由"
+      - "Web検索結果（7日間キャッシュ）"
+  
+  long_term:
+    location: "Notion Database"
+    duration: "永続"
+    management: "手動キュレーション（月次）"
+    content:
+      - "プロジェクトドキュメント"
+      - "設計書"
+      - "振り返り"
+
+# --- v9.3.2 実装優先度 ---
+implementation_priority:
+  phase_1: "Core clients (Groq, Gemini 3, Alibaba Qwen, optimized Qwen3, Claude cached)"
+  phase_2: "Intelligent router integration"
+  phase_3: "Core component updates (Shogun, Karo, Taisho)"
+  phase_4: "System orchestrator & main.py"
+  phase_5: "Testing & documentation"
+
+# --- 想定される成果 ---
+expected_outcomes:
+  speed:
+    simple: "2s (60% improvement)"
+    medium: "12s (20% improvement)"
+    complex: "28s (maintaining quality)"
+  
+  cost:
+    monthly: "¥3,580 (+1.7% acceptable)"
+    savings_vs_claude_only: "-54%"
+  
+  reliability:
+    success_rate: "99.5%"
+    fallback_chain_depth: 3
+  
+  quality:
+    overall: "96-97 points"
+    strategic_with_opus: "98-99.5 points"
+  
+  power_efficiency:
+    groq_power_savings: "¥200/month"
+    qwen_sleep_ratio: "~30% (Simple tasks)"
