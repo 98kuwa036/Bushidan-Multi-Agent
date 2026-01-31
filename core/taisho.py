@@ -1,8 +1,14 @@
 """
-Bushidan Multi-Agent System v9.1 - Taisho (Implementation Layer)
+Bushidan Multi-Agent System v9.3 - Taisho (Implementation Layer)
 
 The Taisho serves as the primary implementation layer using Qwen3-Coder-30B-A3B.
 Handles actual code generation, file operations, and heavy computational tasks.
+
+v9.3 Enhancements:
+- Qwen3-Coder-30B-A3B integration (MoE, 32B-class intelligence in 24GB RAM)
+- DSPy translation layer for Japanese→structured instructions
+- LiteLLM middleware for 4k context compression
+- Cost ¥0 local inference with unlimited context capacity
 """
 
 import asyncio
