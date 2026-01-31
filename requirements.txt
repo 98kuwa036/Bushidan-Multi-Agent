@@ -10,7 +10,7 @@ pyyaml>=6.0
 asyncio-throttle>=1.0.2      # Rate limiting for API calls
 
 # AI Model APIs (required for 4-tier architecture)
-anthropic>=0.3.0              # Claude 3.5 Sonnet for Shogun (将軍)
+anthropic>=0.34.0             # Claude 3.5 Sonnet + Opus 4 for Shogun (将軍) - Updated for Opus support
 google-generativeai>=0.3.0    # Gemini 2.0 Flash for Karo (家老)
 groq>=0.4.0                  # Alternative Karo for speed-critical tasks
 litellm>=1.0.0               # OpenAI-compatible API for Taisho (大将)
