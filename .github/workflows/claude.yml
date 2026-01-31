@@ -34,4 +34,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           trigger_phrase: "@claude"
           # 修正箇所: claude_args ではなく model を直接指定します
-          model: "claude-opus-4-5-20251101"
+          model: "claude-sonnet-4-5-20250929"
