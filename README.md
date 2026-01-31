@@ -38,16 +38,17 @@
 ### コンセプト
 「シンプル・イズ・ベスト」「実用性第一」「汎用性の追求」を基本哲学とした、Universal Multi-LLMフレームワーク。
 
-### 基本構成
+### 基本構成（4段構え）
 
 ```
-🎌 将軍（Shogun）- Claude Sonnet 4.5 - 戦略判断・品質保証
-├── 🏛️ 家老（Karo）- Gemini 2.0 Flash - タスク分解・統合
-└── 🏃 足軽（Ashigaru）- Qwen2.5-Coder-32B - 実装・実行
+🎌 将軍（Shogun）- Claude 3.5 Sonnet - 大局的設計・難解エラー判断
+├── 🏛️ 家老（Karo）- Gemini 2.0 Flash/Groq - 中間管理・検分・爆速レビュー
+├── 🏯 大将（Taisho）- Qwen3-Coder-30B-A3B (Local) - 実務・実装・MCP駆使
+└── 🏃 足軽（Ashigaru）- 動的選択 - 補助・並列処理
     ├── Filesystem MCP - ファイル操作
-    ├── Git MCP - バージョン管理
-    ├── Memory MCP - 知識保持
-    └── Smart Web Search MCP - 最新情報取得
+    ├── Git MCP - バージョン管理  
+    ├── Memory MCP - 知識保持・Web検索キャッシュ
+    └── Smart Web Search MCP - Tavily+Playwright統合
 ```
 
 ---
@@ -62,22 +63,23 @@
 
 ### 主要改革
 
-1. **完全API駆動**: Proxmox/LXC廃止 → Ubuntu単体
-2. **Gemini 2.0 Flash中心**: 総合バランス最適
-3. **ローカルLLMは足軽のみ**: 日本語imatrix対応
-4. **3層記憶システム**: Slack + Memory MCP + Notion
-5. **スマートWeb検索**: Tavily + Playwright統合
+1. **4段ハイブリッド**: クラウド知能+ローカル物量の完全使い分け
+2. **大将層追加**: Qwen3-Coder-30B-A3B（Local Proxmox）で実装専念
+3. **DSPy統合**: 日本語意図→構造化指示への自動変換
+4. **LiteLLM強化**: 4k以内コンテキスト圧縮・複数API統合
+5. **運用黄金律**: 単純→家老(Groq瞬発)、重い実装→大将(無料大容量)
 
-### 処理フロー
+### 処理フロー（4段階）
 
 ```mermaid
 graph LR
-    A[Slack入力] --> B[将軍判断]
+    A[入力] --> B[将軍判断]
     B --> C[家老分解]
-    C --> D[足軽実行]
-    D --> E[家老統合]
-    E --> F[将軍承認]
-    F --> G[結果返却]
+    C --> D[大将実装]
+    D --> E[足軽補助]
+    E --> F[家老統合]
+    F --> G[将軍承認]
+    G --> H[結果返却]
 ```
 
 ---
@@ -221,12 +223,12 @@ python cli.py --task "アーキテクチャ設計" --complexity strategic
 
 ### ⏱️ 処理時間（v9.1目標）
 
-| タスク種別 | 処理時間 | v8.1比較 |
-|---|---|---|
-| **Simple** | 10秒 | -60% |
-| **Medium** | 25秒 | -44% |
-| **Complex** | 40秒 | -43% |
-| **Strategic** | 60秒 | -33% |
+| 階層 | 処理時間 | 担当 | 特徴 |
+|---|---|---|---|
+| **Simple** | 5秒 | 家老(Groq) | 瞬発力・軽量 |
+| **Medium** | 15秒 | 大将 | 実装特化 |
+| **Complex** | 30秒 | 大将+足軽 | 並列処理 |
+| **Strategic** | 45秒 | 将軍主導 | 設計判断 |
 
 ### 🎯 品質保証
 

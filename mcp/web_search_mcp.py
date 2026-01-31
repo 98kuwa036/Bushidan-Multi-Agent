@@ -1,8 +1,8 @@
 """
-Bushidan Multi-Agent System v9.1 - Web Search MCP
+Bushidan Multi-Agent System v9.1 - Smart Web Search MCP
 
-Smart web search using Tavily + Playwright for efficient information gathering.
-Integrates with Memory MCP for 7-day caching.
+Enhanced web search using Tavily API + Playwright for targeted content extraction.
+Integrates with Memory MCP for 7-day caching and supports the 4-tier architecture.
 """
 
 import asyncio
@@ -16,15 +16,17 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-class WebSearchMCP:
+class SmartWebSearchMCP:
     """
-    Smart Web Search MCP - Efficient web information gathering
+    Smart Web Search MCP ⭐⭐⭐⭐⭐ - Enhanced for v9.1
     
-    Features:
-    - Tavily Search API for URL identification
-    - Playwright for targeted content extraction
-    - Memory MCP integration for 7-day caching
-    - 90% content reduction through smart extraction
+    Enhanced Features:
+    - Tavily Search API for precise URL discovery
+    - Playwright for targeted content extraction (1,000-2,000 chars) ⭐
+    - Memory MCP integration (7-day cache) ⭐
+    - 90% content reduction through smart extraction ⭐
+    - Context-aware extraction for different query types
+    - Free tier optimization: 1,000 searches/month
     """
     
     def __init__(self, tavily_api_key: str):

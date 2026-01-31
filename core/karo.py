@@ -1,17 +1,19 @@
 """
-Bushidan Multi-Agent System v9.1 - Karo (Tactical Layer)
+Bushidan Multi-Agent System v9.1 - Karo (Enhanced Tactical Layer)
 
-The Karo serves as the tactical coordination layer using Gemini 2.0 Flash.
-Handles task decomposition, Ashigaru coordination, and result integration.
+The Karo serves as the enhanced tactical coordination layer supporting 4-tier architecture.
+Now coordinates between Taisho (implementation) and Ashigaru (support) with dynamic selection.
 """
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
+from enum import Enum
 
 from utils.logger import get_logger
 from utils.gemini_client import GeminiClient
+from utils.dspy_client import DSPyClient
 from core.ashigaru import Ashigaru
 from core.system_orchestrator import SystemOrchestrator
 
@@ -19,35 +21,54 @@ from core.system_orchestrator import SystemOrchestrator
 logger = get_logger(__name__)
 
 
+class TaskDelegation(Enum):
+    """Task delegation strategies in 4-tier architecture"""
+    TAISHO_PRIMARY = "taisho_primary"      # Heavy implementation to Taisho
+    ASHIGARU_PARALLEL = "ashigaru_parallel"  # Light tasks to Ashigaru
+    HYBRID_COORDINATION = "hybrid_coordination"  # Taisho + Ashigaru coordination
+
+
 @dataclass
-class Subtask:
-    """Individual subtask for Ashigaru execution"""
+class EnhancedSubtask:
+    """Enhanced subtask for 4-tier coordination"""
     id: str
     content: str
     dependencies: List[str]
-    ashigaru_type: str  # filesystem, git, web_search, etc.
+    delegation_target: str  # "taisho", "ashigaru", "parallel"
+    complexity: str  # "simple", "medium", "complex"
     priority: int = 1
+    estimated_time: int = 30  # seconds
+    groq_eligible: bool = False  # Can use Groq for speed
 
 
 class Karo:
     """
-    家老 (Karo) - Tactical Coordination Layer
+    家老 (Karo) - Enhanced Tactical Coordination Layer
     
-    Primary responsibilities:
-    1. Task decomposition and analysis
-    2. Subtask generation for Ashigaru
-    3. Parallel execution coordination
-    4. Result integration and synthesis
-    5. Memory MCP consultation for context
+    Enhanced responsibilities for 4-tier architecture:
+    1. Dynamic delegation (Groq for speed vs Gemini for quality)
+    2. Taisho coordination for heavy implementation
+    3. Ashigaru coordination for parallel support
+    4. DSPy-optimized task decomposition
+    5. Context compression and optimization
+    6. Memory MCP integration with web search caching
     """
     
     def __init__(self, orchestrator: SystemOrchestrator):
         self.orchestrator = orchestrator
+        
+        # Dynamic API selection (Gemini primary, Groq for speed)
         self.gemini_client = GeminiClient(
             api_key=orchestrator.config.gemini_api_key
         )
+        self.groq_client = None  # Initialize if needed for speed-critical tasks
+        
+        # Enhanced components
+        self.dspy_client = DSPyClient()
+        self.taisho = None  # Will be set by orchestrator
         self.ashigaru: Optional[Ashigaru] = None
         self.memory_mcp = None
+        self.web_search_mcp = None
         
     async def initialize(self) -> None:
         """Initialize Karo and Ashigaru systems"""
