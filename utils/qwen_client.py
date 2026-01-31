@@ -1,15 +1,22 @@
 """
-Bushidan Multi-Agent System v9.1 - Qwen Client
+Bushidan Multi-Agent System v9.3 - Enhanced Qwen Client
 
-Qwen2.5-Coder-32B client wrapper for Ashigaru (Execution Layer).
-Connects to local Ollama via LiteLLM proxy.
+Qwen3-Coder-30B-A3B client with integrated error handling.
+Now uses LiteLLM Router for automatic fallbacks and retries.
+
+v9.3 Enhancements:
+- LiteLLM Router integration (Layer 1 error handling)
+- Automatic fallback to cloud APIs on local failure
+- Circuit breaker pattern for reliability
+- Usage tracking and cost monitoring
 """
 
 import asyncio
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from utils.logger import get_logger
+from utils.litellm_router import LiteLLMRouter
 
 
 logger = get_logger(__name__)
@@ -17,64 +24,89 @@ logger = get_logger(__name__)
 
 class QwenClient:
     """
-    Qwen2.5-Coder-32B client for Ashigaru execution tasks
+    Enhanced Qwen3-Coder-30B-A3B client with self-healing capabilities
     
-    Uses local Ollama + LiteLLM proxy for cost-free inference.
-    Japanese imatrix quantization for improved Japanese language support.
+    Uses LiteLLM Router for:
+    - Automatic fallback: Local Qwen → Cloud Groq/Gemini
+    - Retry with exponential backoff
+    - Circuit breaker for failed endpoints
+    - Cost tracking and optimization
     """
     
-    def __init__(self, endpoint: str = "http://localhost:8000"):
-        self.endpoint = endpoint
-        self.model_name = "qwen2.5-coder"
+    def __init__(self, config: Dict[str, Any], api_base: str = "http://localhost:11434", model_name: str = "qwen3-coder-30b-a3b"):
+        """
+        Initialize enhanced Qwen client
+        
+        Args:
+            config: System configuration with API keys
+            api_base: Ollama/LiteLLM endpoint
+            model_name: Model name
+        """
+        self.api_base = api_base
+        self.model_name = model_name
         self.calls_made = 0
+        
+        # Initialize LiteLLM Router with fallback support
+        self.router = LiteLLMRouter({
+            "qwen_api_base": api_base,
+            "gemini_api_key": config.get("gemini_api_key"),
+            "groq_api_key": config.get("groq_api_key")
+        })
+        
+        logger.info(f"✅ Enhanced Qwen client initialized with fallback support")
         
     async def generate(
         self,
         messages: List[Dict[str, str]],
         max_tokens: int = 1500,
-        temperature: float = 0.2
+        temperature: float = 0.2,
+        enable_fallback: bool = True
     ) -> str:
         """
-        Generate response using Qwen2.5-Coder via LiteLLM proxy
+        Generate response with automatic error handling and fallback
         
-        Optimized for code generation and implementation tasks.
+        Args:
+            messages: Chat messages
+            max_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            enable_fallback: Enable fallback to cloud APIs on failure
+        
+        Returns:
+            Generated text content
+        
+        Raises:
+            Exception: If all models in fallback chain fail
         """
         
         try:
-            logger.info("🏃 Using Qwen2.5-Coder (Japanese imatrix)")
+            logger.info(f"🔄 Qwen client generating (fallback: {enable_fallback})")
             self.calls_made += 1
             
-            # Use OpenAI-compatible API via LiteLLM
-            import httpx
+            # Use router with fallback chain
+            if enable_fallback:
+                fallback_chain = ["taisho-main", "karo-groq", "karo-gemini"]
+            else:
+                fallback_chain = ["taisho-main"]  # No fallback
             
-            payload = {
-                "model": self.model_name,
-                "messages": messages,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "stream": False
-            }
+            result = await self.router.completion(
+                model="taisho-main",
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                fallback_chain=fallback_chain
+            )
             
-            async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    f"{self.endpoint}/v1/chat/completions",
-                    json=payload,
-                    timeout=60.0
-                )
-                
-                if response.status_code == 200:
-                    result = response.json()
-                    return result["choices"][0]["message"]["content"]
-                else:
-                    raise Exception(f"API call failed with status {response.status_code}")
+            # Log successful generation
+            model_used = result.get("model", "unknown")
+            tier = result.get("tier", "unknown")
+            logger.info(f"✅ Generated using {model_used} ({tier})")
+            
+            return result["content"]
                     
-        except ImportError:
-            logger.error("❌ httpx library not installed")
-            return "Qwen client error - httpx not available"
         except Exception as e:
-            logger.error(f"❌ Qwen API call failed: {e}")
-            # Return a helpful error message instead of crashing
-            return f"Qwen execution failed: {str(e)}. Please check Ollama and LiteLLM services."
+            logger.error(f"❌ All generation attempts failed: {e}")
+            # Return helpful error instead of crashing
+            return f"Generation failed after trying all available models: {str(e)}"
     
     async def health_check(self) -> bool:
         """Check if Qwen service is available"""
