@@ -86,7 +86,7 @@ class Taisho:
     フォールバック2: Gemini 3.0 Flash (防衛, ¥0.04)
     """
 
-    VERSION = "9.3.2"
+    VERSION = "9.4"
     LOCAL_CONTEXT_LIMIT = 4096  # ローカルQwen3最適化コンテキスト
 
     def __init__(self, orchestrator: "SystemOrchestrator"):

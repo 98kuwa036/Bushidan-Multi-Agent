@@ -87,7 +87,7 @@ class SystemOrchestrator:
     - BDIフレームワーク統合
     """
 
-    VERSION = "9.3.2"
+    VERSION = "9.4"
 
     def __init__(self, config: SystemConfig):
         self.config = config

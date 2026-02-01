@@ -1,37 +1,39 @@
-# 🏯 Bushidan Multi-Agent System v9.3.2
+# 🏯 武士団マルチエージェントシステム v9.4
 
-[![Version](https://img.shields.io/badge/Version-9.3.2-green)](https://github.com/98kuwa036/Bushidan-Multi-Agent)
+[![Version](https://img.shields.io/badge/Version-9.4-green)](https://github.com/98kuwa036/Bushidan-Multi-Agent)
 [![Claude](https://img.shields.io/badge/Claude-Sonnet%204.5%20%2B%20Opus%204-purple)](https://www.anthropic.com/claude)
 [![Gemini](https://img.shields.io/badge/Gemini-3.0%20Flash-blue)](https://ai.google.dev/)
 [![Qwen3](https://img.shields.io/badge/Qwen3-Coder--30B-orange)](https://qwenlm.github.io/)
 [![Groq](https://img.shields.io/badge/Groq-Llama%203.3%2070B-red)](https://groq.com/)
+[![BDI](https://img.shields.io/badge/BDI-Framework-yellow)](docs/bdi_framework.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![Japanese](https://img.shields.io/badge/Lang-日本語-red)](README_ja.md)
 
-## 🌟 v9.3.2の革新: インテリジェント・ルーティング
+## 🌟 v9.4の革新: BDIフレームワーク統合
 
-**Bushidan Multi-Agent System v9.3.2** は、**運用黄金律に基づくインテリジェント・ルーティング**で、クラウドとローカルを完璧に使い分ける4段ハイブリッド・アーキテクチャです。
+**Bushidan Multi-Agent System v9.4** は、**BDI（Belief-Desire-Intention）フレームワーク**を全コアコンポーネントに統合した、形式的マルチエージェント推論システムです。
 
-### 🚀 v9.3.2 ハイライト
+### 🚀 v9.4 ハイライト
 
+- **🧠 BDIフレームワーク**: 信念-願望-意図に基づく形式的推論を全階層に統合
+- **📝 日本語ログ**: 全コンポーネントで自然な日本語ログ出力
 - **🎯 インテリジェント・ルーティング**: 複雑度に応じた最適モデル自動選択
 - **⚡ Groq統合**: Simple タスクは爆速・無料（300-500 tok/s）
 - **🔄 3段階フォールバック**: Local Qwen3 → Cloud Qwen3-plus → Gemini 3 Flash（99.5%信頼性）
 - **💰 Prompt Caching**: Claude API 90%コスト削減
 - **🏯 影武者システム**: クラウドQwen3-plus が Local の影武者として待機
-- **📊 Gemini 3.0 Flash**: 1.3倍速度向上・+15%精度改善
 
 ---
 
 ## 📋 目次
 
 - [システム概要](#システム概要)
+- [BDIフレームワーク](#bdiフレームワーク)
+- [4層アーキテクチャ](#4層アーキテクチャ)
 - [インテリジェント・ルーティング](#インテリジェント・ルーティング)
-- [4段アーキテクチャ](#4段アーキテクチャ)
 - [運用黄金律](#運用黄金律)
 - [インストール](#インストール)
 - [使用方法](#使用方法)
-- [記憶システム](#記憶システム)
 - [パフォーマンス](#パフォーマンス)
 - [コスト分析](#コスト分析)
 
@@ -39,14 +41,14 @@
 
 ## 🏯 システム概要
 
-### 布陣：インテリジェント4段ハイブリッド・アーキテクチャ
+### 布陣：BDI統合4層ハイブリッド・アーキテクチャ
 
 ```
-┌──────────────────────────────────────────────────────┐
-│ 🎌 将軍（Shogun）- Claude Sonnet 4.5 + Opus 4       │
-│    役割: 複雑度判断・戦略的設計・最終品質検品        │
-│    特徴: Prompt Caching（90%削減）+ Pro CLI優先    │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ 🎌 将軍（Shogun）- Claude Sonnet 4.5 + Opus 4 + BDI          │
+│    役割: 複雑度判断・戦略的設計・最終品質検品                 │
+│    BDI: 信念(システム状態) + 願望(品質/コスト/セキュリティ)  │
+└──────────────────────────────────────────────────────────────┘
                            ↓
         ┌──────────────────┴──────────────────┐
         │    複雑度判断による動的ルーティング    │
@@ -58,22 +60,64 @@
           │                │                │
           ↓                ↓                ↓
 ┌─────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│ 🚀 Groq         │ │ 🏯 Local Qwen3   │ │ 🏯 Local Qwen3   │
-│ Llama 3.3 70B   │ │ Coder-30B (4k)   │ │ → Cloud Qwen3+   │
-│ 300-500 tok/s   │ │ 実務・実装       │ │ → Gemini 3 Flash│
-│ 無料・瞬発力    │ │ コスト¥0         │ │ 3段階フォールバック│
+│ ⚡ Groq         │ │ 👔 家老 + BDI    │ │ ⚔️ 大将 + BDI    │
+│ Llama 3.3 70B   │ │ 戦術調整層       │ │ 3段階フォールバック│
+│ 300-500 tok/s   │ │ 並列分解・調整   │ │ Local→Cloud→Gemini│
+│ 無料・瞬発力    │ │ Groq/Gemini統合  │ │ 99.5%信頼性      │
 └─────────────────┘ └──────────────────┘ └──────────────────┘
           │                │                │
           └────────────────┴────────────────┘
                            ↓
-┌──────────────────────────────────────────────────────┐
-│ 🏃 足軽（Ashigaru）+ MCP Servers                     │
-│    ├── Filesystem MCP - ファイル操作                │
-│    ├── Git MCP - バージョン管理                     │
-│    ├── Memory MCP - 知識保持・7日間キャッシュ       │
-│    ├── Smart Web Search MCP - Tavily + Playwright  │
-│    └── Groq MCP - 高速推論補助                      │
-└──────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ 👣 足軽（Ashigaru）+ MCP Servers × 8                          │
+│    ├── Filesystem MCP - ファイル操作                         │
+│    ├── Git MCP - バージョン管理                              │
+│    ├── Memory MCP - 知識保持・7日間キャッシュ                 │
+│    ├── Smart Web Search MCP - Tavily + Playwright           │
+│    ├── PostgreSQL MCP - データベース操作                     │
+│    ├── Puppeteer MCP - ブラウザ自動化                        │
+│    ├── Brave Search MCP - Web検索                           │
+│    └── Slack MCP - チーム連携                                │
+└──────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🧠 BDIフレームワーク
+
+### Belief-Desire-Intention アーキテクチャ
+
+v9.4では、Rao & Georgeff (1995) のBDI理論に基づく形式的マルチエージェント推論を実装しています。
+
+#### 各層のBDI統合
+
+| 層 | 信念 (Belief) | 願望 (Desire) | 意図 (Intention) |
+|---|---|---|---|
+| **将軍** | システム状態、クライアント可用性 | 品質維持、コスト最適化、セキュリティ | 戦略的アクション |
+| **家老** | タスク分解可能性、並列化可否 | 効率的分解、並列最大化 | 調整計画 |
+| **大将** | コンテキストサイズ、フォールバック状態 | 正確実装、自己修復 | 実装計画 |
+
+#### BDIサイクル
+
+```
+1. 知覚 (Perceive)   → タスクと環境から信念を更新
+2. 熟慮 (Deliberate) → 追求すべき願望を選択
+3. 計画 (Plan)       → ルーティング決定・実行計画策定
+4. 実行 (Execute)    → 適切なエージェントで実行
+5. 再考 (Reconsider) → 結果に基づき信念を更新
+```
+
+#### BDI状態取得
+
+```python
+# 全階層のBDI状態を取得
+bdi_states = orchestrator.get_bdi_states()
+
+# 将軍のBDI状態
+shogun_bdi = bdi_states["shogun"]
+print(f"信念数: {shogun_bdi['beliefs']['count']}")
+print(f"願望数: {shogun_bdi['desires']['count']}")
+print(f"意図数: {shogun_bdi['intentions']['count']}")
 ```
 
 ---
@@ -95,11 +139,9 @@
 - 💰 コスト¥0（無料枠14,400回/日）
 - 🔋 電力節約（Qwen を起こさない）
 
-**例**: 「I2S設定は？」「このエラーの意味は？」
-
 ---
 
-#### 2. Medium → Local Qwen3（実装特化・¥0）
+#### 2. Medium → 家老 + 大将（BDI調整）
 **条件**:
 - 標準的なコード実装
 - ファイル操作を伴う作業
@@ -107,13 +149,8 @@
 
 **効果**:
 - 🏯 コスト¥0（ローカル推論）
-- 🚀 12秒目標（4k最適化）
+- 🧠 BDI推論による最適分解
 - 📦 MCP統合（Filesystem/Git/Memory）
-
-**例**: 「Pythonで在庫管理システム実装」
-
-**フォールバック**: コンテキストオーバーフロー検出時
-→ **影武者起動**: Alibaba Cloud Qwen3-plus（32k context）
 
 ---
 
@@ -136,57 +173,33 @@ Gemini 3 Flash (1M context, ¥0.04) [最終防御線]
 
 ---
 
-#### 4. Strategic → Shogun（将軍直轄）
+#### 4. Strategic → 将軍（将軍直轄 + BDI）
 **条件**:
 - アーキテクチャ設計
 - 重要な技術選定
 - 倫理的判断
 
 **フロー**:
-1. Claude Sonnet 4.5で戦略分析
-2. Opus 4で最終品質検品（Critical時）
+1. BDI知覚でタスク分析
+2. 願望選択（セキュリティ優先）
+3. Claude Sonnet 4.5で戦略分析
+4. Opus 4で最終品質検品
 
 ---
 
-## 🎖️ 運用黄金律（v9.3.2）
+## 🎖️ 運用黄金律（v9.4）
 
 ### 1. Simple は Groq（瞬発力）
 **戦略**: 軽量タスクは爆速・無料のGroqで処理し、Qwen を起こさない
 
-**効果**:
-- ⚡ 60%高速化（5秒 → 2秒）
-- 💰 API コスト¥0
-- 🔋 電力節約 ¥200/月
-
----
-
-### 2. Heavy は Local Qwen3（物量）
-**戦略**: 数十ファイル参照や100回以上の試行錯誤は、無料・ローカルで
-
-**効果**:
-- 💰 コスト¥0（推論無料）
-- 🏯 4096 context 最適化（1.5倍高速）
-- 📦 MCP フル活用
-
----
+### 2. Heavy は Local Qwen3 + BDI（物量）
+**戦略**: 数十ファイル参照はBDI推論で最適分解、無料・ローカルで
 
 ### 3. Difficult は Cloud/Gemini（品質保証）
 **戦略**: ローカルで解決不能な場合、クラウドにエスカレーション
 
-**効果**:
-- 🔄 99.5%信頼性（3段フォールバック）
-- 🏯 影武者待機（Qwen3-plus 32k）
-- 🛡️ 最終防御線（Gemini 3 Flash 1M context）
-
----
-
-### 4. Strategic は Shogun（権威）
-**戦略**: 重要判断は将軍の洞察力で
-
-**効果**:
-- 🧠 Claude最高級分析
-- 🏆 Opus 4最終検品（Critical時）
-- 📊 98-99.5点品質保証
+### 4. Strategic は Shogun + BDI（権威）
+**戦略**: 重要判断はBDI形式推論で最適化された将軍の洞察力で
 
 ---
 
@@ -210,7 +223,7 @@ Gemini 3 Flash (1M context, ¥0.04) [最終防御線]
 
 ### 🔧 セットアップ手順
 
-#### Phase 1: 基盤構築（4-6時間）
+#### Phase 1: 基盤構築
 ```bash
 # リポジトリクローン
 git clone https://github.com/98kuwa036/Bushidan-Multi-Agent.git
@@ -218,18 +231,14 @@ cd Bushidan-Multi-Agent
 
 # Ollama + Qwen3-Coder設定
 curl -fsSL https://ollama.com/install.sh | sh
-
-# Qwen3-Coder-30B（Q4_K_M量子化）
 ollama pull qwen3-coder-30b:q4_k_m
 
-# LiteLLM Proxy
-pip install litellm
-litellm --config config/litellm_config.yaml
+# Python依存関係
+pip install -r requirements.txt
 ```
 
-#### Phase 2: API Key設定（30分）
+#### Phase 2: API Key設定
 ```bash
-# 環境変数設定
 cp .env.example .env
 
 # 必須API Key
@@ -240,34 +249,14 @@ ALIBABA_API_KEY=your_alibaba_key        # Qwen3-plus (影武者)
 TAVILY_API_KEY=your_tavily_key          # Web検索
 ```
 
-#### Phase 3: MCP統合（6-8時間）
+#### Phase 3: システム起動
 ```bash
-# MCP環境準備
-npm install @modelcontextprotocol/sdk
-pip install playwright
-playwright install chromium
-
-# Python依存関係
-pip install -r requirements.txt
-
-# MCPサーバー起動確認
-python mcp/memory_mcp.py
-python mcp/web_search_mcp.py
-```
-
-#### Phase 4: システム起動（1時間）
-```bash
-# v9.3.2設定移行
-cp config/settings_v9.3.2.yaml config/settings.yaml
-
 # システム起動
 python main.py
 
 # 動作確認
 python cli.py --task "Hello World を実装" --complexity simple
 ```
-
-**総所要時間**: 12-16時間（Phase 1-4）
 
 ---
 
@@ -280,240 +269,75 @@ python cli.py --task "Hello World を実装" --complexity simple
 # インタラクティブモード
 python cli.py --interactive
 
-# 単発タスク（自動ルーティング）
+# 単発タスク（自動ルーティング + BDI推論）
 python cli.py --task "Python在庫管理システム実装"
 
 # 複雑度明示指定
 python cli.py --task "アーキテクチャ設計" --complexity strategic
 ```
 
-#### Slack Bot（推奨）
-```bash
-# 大隊モード（フル機能）
-@shogun-bot プロジェクト設計をお願いします
+#### プログラマティック使用
+```python
+from core.system_orchestrator import SystemOrchestrator, SystemConfig, SystemMode
 
-# 中隊モード（軽量・Slack経由）
-@shogun-bot-light コードレビューお願いします
+# 設定作成
+config = SystemConfig(
+    mode=SystemMode.BATTALION,
+    claude_api_key="...",
+    gemini_api_key="...",
+    tavily_api_key="..."
+)
 
-# 小隊モード（HA OS経由）
-音声: "将軍、今日のタスクは？"
+# オーケストレーター初期化
+orchestrator = SystemOrchestrator(config)
+await orchestrator.initialize()
+
+# タスク処理
+result = await orchestrator.process_task("Pythonで在庫管理システムを実装")
+
+# BDI状態確認
+bdi_states = orchestrator.get_bdi_states()
 ```
-
----
-
-### 🏛️ 運用モード
-
-#### 1. 大隊モード（Battalion）
-- **構成**: 将軍 + 家老 + 大将 + 影武者 + 全MCP + Groq
-- **用途**: 複雑な開発・戦略判断
-- **コスト**: ¥3,580/月
-- **インターフェース**: @shogun-bot
-
-#### 2. 中隊モード（Company）- Slack
-- **構成**: Gemini 3 + Local Qwen3 + Groq + Memory MCP
-- **用途**: 日常的な開発作業  
-- **インターフェース**: @shogun-bot-light
-- **コスト**: ¥120/月（Gemini API分のみ）
-
-#### 3. 小隊モード（Platoon）- HA OS
-- **構成**: Local Qwen3 + 動的MCP
-- **用途**: 音声クエリ・IoT連携
-- **応答**: 30-60秒
-- **コスト**: ¥0
-
----
-
-## 📚 記憶システム
-
-### 3層記憶アーキテクチャ
-
-人間の記憶を模倣した3層構造で、「忘却問題」を完全解決します。
-
-#### Layer 1: Short-term（Slack Thread）
-- **保持**: Thread存続中（数日）
-- **用途**: 会話文脈維持
-- **実装**: Slack標準機能
-- **例**: Thread内なら「さっきの件」で通じる
-
-#### Layer 2: Medium-term（Memory MCP）⭐⭐⭐⭐⭐
-- **ファイル**: `shogun_memory.jsonl`
-- **保持**: 永続（サイズ管理）
-- **用途**: 
-  - 重要決定事項
-  - 技術選定理由
-  - **Web検索結果（7日間キャッシュ）**⭐
-  - プロジェクト方針
-- **検索**: grep, jq高速検索
-- **特徴**:
-  - ✓ 人間が読める（JSONL）
-  - ✓ git管理可能
-  - ✓ 検索高速
-  - ✓ **複雑性ゼロ**⭐
-
-#### Layer 3: Long-term（Notion）
-- **保持**: 永続
-- **用途**: プロジェクトドキュメント・設計書
-- **管理**: 月次手動キュレーション
-
-### 記憶統合効果
-
-**シナリオ: I2S設定の変遷**
-
-1. **1週間前**: 
-   - User: 「I2S設定どうする？」
-   - Bot: 検討 → buffer_size=1024決定
-   - → Memory MCPに記録
-
-2. **3日前（同じThread）**:
-   - User: 「I2S設定を確認」
-   - Bot: Slack Thread参照
-   - → 「このThreadで決定済み」
-
-3. **今日（新Thread）**:
-   - User: 「I2S設定は？」
-   - Bot: Memory MCP検索
-   - → 「過去の決定: buffer_size=1024」
-
-4. **3ヶ月後**:
-   - プロジェクトレビュー
-   - → NotionにI2S設計書として体系化
 
 ---
 
 ## 📊 パフォーマンス
 
-### ⏱️ 処理時間（v9.3.2目標）
+### ⏱️ 処理時間（v9.4目標）
 
 | 階層 | 処理時間 | 担当 | 特徴 |
 |---|---|---|---|
 | **Simple** | **2秒** ⚡ | Groq | 瞬発力・無料・爆速 |
-| **Medium** | **12秒** | Local Qwen3 | 実装特化・4k最適化 |
+| **Medium** | **12秒** | 家老+大将+BDI | 実装特化・BDI最適化 |
 | **Complex** | **28秒** | 3段フォールバック | 99.5%信頼性 |
-| **Strategic** | **45秒** | 将軍 + Opus検品 | 最高品質保証 |
-
-**vs v9.3**: 
-- Simple: **60%高速化**（5秒 → 2秒）
-- Medium: **20%高速化**（15秒 → 12秒）
-
-**vs v8.1**: 3.4倍高速（処理時間-71%削減）
-
----
+| **Strategic** | **45秒** | 将軍+BDI+Opus | 最高品質保証 |
 
 ### 🎯 品質保証
 
-| 指標 | v9.3.1 | v9.3.2目標 | 改善 |
+| 指標 | v9.3.2 | v9.4 | 改善 |
 |---|---|---|---|
 | **品質** | 96-97点 | 96-97点 | 維持 |
-| **信頼性** | 95% | **99.5%** | **+4.5%** |
-| **一貫性** | 95% | 95% | 維持 |
-
-**品質担保の仕組み**:
-- ✅ 3段フォールバック（信頼性99.5%）
-- ✅ Opus 4最終検品（Strategic級 98-99.5点）
-- ✅ Code Complexity分析・Security検証
+| **信頼性** | 99.5% | 99.5% | 維持 |
+| **BDI推論** | - | ✅ | **新規** |
+| **日本語ログ** | 部分的 | **全面** | **新規** |
 
 ---
 
 ## 💰 コスト分析
 
-### 📊 v9.3.2コスト構成
+### 📊 v9.4コスト構成
 
 | 項目 | 金額 | 説明 |
 |---|---|---|
 | **Claude Pro** | ¥3,000 | Pro CLI（月2,000回）+ Prompt Caching |
 | **Claude API** | ¥14 | Caching効果90%削減（¥140→¥14） |
 | **Opus Premium** | ¥100 | Strategic級検品（月10回） |
-| **Gemini 3 Flash** | ¥120 | 最終防御線（-¥10 vs 2.0） |
+| **Gemini 3 Flash** | ¥120 | 最終防御線 |
 | **Alibaba Qwen3+** | ¥60 | 影武者・月20回想定 |
 | **Groq API** | ¥0 | 無料枠14,400回内 |
 | **Tavily API** | ¥0 | 無料枠1,000回内 |
 | **電力** | ¥160 | Groq節約効果（-¥40） |
-| **合計** | **¥3,454** | **-2% vs v9.3.1** |
-
-**実質コスト削減**:
-- Prompt Caching: -¥126/月
-- Groq電力節約: -¥40/月
-- Gemini 3.0効率化: -¥10/月
-- **合計削減**: -¥176/月
-
-**純増分**:
-- Alibaba Cloud: +¥60/月
-
-**ネット効果**: **-¥116/月（-3.2%削減）**
-
----
-
-### 💡 比較優位性
-
-| 比較対象 | コスト | v9.3.2優位点 |
-|---|---|---|
-| **Claude単独** | ¥7,700 | **-55%** 安価・専門性・記憶 |
-| **GPT-4 Team** | ¥8,400 | **-59%** 安価・日本語・汎用性 |
-| **v9.3.1** | ¥3,520 | **-2%** 安価・60%高速・99.5%信頼性 |
-| **v8.1** | ¥4,249 | **-19%** 安価・3.4倍高速 |
-
----
-
-## 🗺️ ロードマップ
-
-### 実装スケジュール
-
-**Week 1**: v9.3.2 RC1実装（Phase 1-4）
-**Week 2**: 実プロジェクト検証・ルーティング最適化  
-**Week 3-4**: 安定版リリース（v9.3.2）
-**Month 2-3**: Groq/Gemini3 効果測定
-**Month 4-6**: 新モデル評価・進化
-
-### 長期展開
-
-- **コミュニティ展開**: GitHub公開検討
-- **ドキュメント整備**: 他ユーザー向け
-- **継続進化**: 
-  - Gemini 3.5 Flash（リリース時）
-  - Claude Opus 5（リリース時）
-  - Qwen3.5（リリース時）
-
----
-
-## 🔧 開発・貢献
-
-### 🛠️ 開発環境
-```bash
-# 開発依存関係
-pip install -e .[dev]
-
-# テスト実行
-python -m pytest tests/
-
-# コード品質
-ruff check .
-black .
-mypy .
-```
-
-### 📝 v9.3.2コーディング規約
-- **Python**: PEP 8 + Black
-- **型ヒント**: 必須
-- **ドキュメント**: Docstring必須
-- **テスト**: カバレッジ80%+
-- **シンプル性**: 「Simple is Better」
-
----
-
-## 📚 リソース
-
-### 📖 ドキュメント
-- **[v9.3.2 実装ガイド](docs/v9.3.2_IMPLEMENTATION_GUIDE.md)** - Phase 2統合手順
-- **[Opus Review System](docs/opus_review_system.md)** - 品質検品システム
-- **設定ガイド** - 詳細セットアップ
-- **MCP統合ガイド** - MCP実装詳細
-- **記憶システム** - 3層記憶詳細
-- **トラブルシューティング** - 問題解決
-
-### 🆘 サポート
-- **Issues**: バグ報告・機能要望
-- **Discussions**: 質問・議論
-- **Wiki**: コミュニティ情報
+| **合計** | **¥3,454** | v9.3.2と同等 |
 
 ---
 
@@ -521,34 +345,38 @@ mypy .
 
 | バージョン | 日付 | 主要変更 |
 |---|---|---|
-| **v9.3.2** | 2025-01-31 | 🆕インテリジェント・ルーティング・Groq統合・3段フォールバック |
+| **v9.4** | 2026-02-01 | 🆕 BDIフレームワーク全層統合・日本語ログ全面化 |
+| **v9.3.2** | 2025-01-31 | インテリジェント・ルーティング・Groq統合 |
 | **v9.3.1** | 2025-01-31 | Opus Premium Review・Quality Metrics |
-| **v9.3** | 2025-01-31 | 4段ハイブリッド・DSPy統合・Qwen3-Coder-30B |
-| **v9.1** | 2025-01-31 | 汎用Multi-LLMフレームワーク・大幅簡素化 |
-| **v8.1** | 2025-01-30 | 家訓自動生成・組織学習機能 |
-| **v8.0** | 2025-01-15 | 演習場・二重記憶システム |
-| **v7.0** | 2024-12-01 | 階層型指揮システム |
+| **v9.3** | 2025-01-31 | 4段ハイブリッド・DSPy統合 |
+| **v9.1** | 2025-01-31 | 汎用Multi-LLMフレームワーク |
 
 ---
 
-## 🏆 総括
+## 🏆 v9.4総括
 
-### v9.3.2の達成
-✓ **インテリジェント・ルーティング**の確立（運用黄金律の完全実装）
-✓ **Groq統合** - Simple タスク60%高速化（5秒→2秒）
-✓ **3段フォールバック** - 99.5%信頼性達成
-✓ **Prompt Caching** - Claude API 90%コスト削減（¥140→¥14）
-✓ **Gemini 3.0 Flash** - 1.3倍速度向上・+15%精度改善
-✓ **影武者システム** - クラウドQwen3-plus 32k 待機
-✓ **電力最適化** - Groq活用で¥200/月節約
+### 達成事項
+- ✅ **BDIフレームワーク** - 全3層に形式的推論を統合
+- ✅ **日本語ログ** - 全コンポーネントで自然な日本語出力
+- ✅ **インテリジェント・ルーティング** - 運用黄金律の完全実装
+- ✅ **3段フォールバック** - 99.5%信頼性達成
+- ✅ **Prompt Caching** - 90%コスト削減
 
-### 設計哲学の実現
-✓ **適材適所の完璧な配置** - Simple→Groq、Heavy→Local、Difficult→Cloud、Strategic→Shogun
-✓ **99.5%信頼性** - 単一障害点の排除（3段フォールバック）
-✓ **コスト最適化** - ¥3,454/月（v9.3.1比-2%）
-✓ **汎用性の追求** - ドメイン・言語非依存
+### 設計哲学
+- ✅ **形式的推論** - BDIによる論理的意思決定
+- ✅ **適材適所** - Simple→Groq、Heavy→Local、Difficult→Cloud
+- ✅ **高信頼性** - 単一障害点の排除（3段フォールバック）
+- ✅ **コスト最適化** - ¥3,454/月
 
-**v9.3.2は「インテリジェンス」と「信頼性」の完璧なバランスを達成しました。**
+**v9.4は「形式的推論」と「実用性」の完璧なバランスを達成しました。**
+
+---
+
+## 📚 リソース
+
+- **[v9.4 実装ガイド](docs/v9.4_IMPLEMENTATION_GUIDE.md)** - 統合手順
+- **[BDI Framework](docs/bdi_framework.md)** - BDI詳細
+- **[Opus Review System](docs/opus_review_system.md)** - 品質検品システム
 
 ---
 
@@ -560,10 +388,7 @@ mypy .
 
 <div align="center">
 
-**🏯 運用黄金律で挑む、インテリジェント4段ハイブリッド 🏯**
-
-[![Star History](https://img.shields.io/github/stars/98kuwa036/Bushidan-Multi-Agent.svg)](https://github.com/98kuwa036/Bushidan-Multi-Agent)
-[![Contributors](https://img.shields.io/github/contributors/98kuwa036/Bushidan-Multi-Agent.svg)](https://github.com/98kuwa036/Bushidan-Multi-Agent/graphs/contributors)
+**🏯 BDI形式推論で挑む、インテリジェント4層ハイブリッド 🏯**
 
 **Generated with [Claude Code](https://claude.ai/code)**
 

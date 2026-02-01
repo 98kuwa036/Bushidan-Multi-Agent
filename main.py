@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """
-Bushidan Multi-Agent System v9.3.2 - Main Entry Point
+Bushidan Multi-Agent System v9.4 - Main Entry Point
 
+武士団マルチエージェントシステム v9.4
 Universal Multi-LLM Framework based on Samurai hierarchy.
-4-Tier Hybrid Architecture with Intelligent Routing.
+4-Tier Hybrid Architecture with Intelligent Routing + BDI Framework.
 
-v9.3.2 Features:
+v9.4 Features:
+- BDI Framework integration (Belief-Desire-Intention)
 - Intelligent Router for optimal task delegation
 - Prompt Caching for 90% cost reduction
 - 3-tier fallback chain (99.5% reliability)
+- Full Japanese logging support
 - Power-saving optimization
 """
 
@@ -23,35 +26,36 @@ from utils.config import load_config
 from utils.logger import setup_logger
 
 
-VERSION = "9.3.2"
+VERSION = "9.4"
 
 
 def print_banner() -> None:
-    """Print Bushidan v9.3.2 startup banner"""
+    """Print Bushidan v9.4 startup banner"""
 
     banner = f"""
 ╔══════════════════════════════════════════════════════════════╗
-║        🏯 Bushidan Multi-Agent System v{VERSION}              ║
-║        "Universal Multi-LLM Framework"                       ║
+║        🏯 武士団マルチエージェントシステム v{VERSION}             ║
+║        "Universal Multi-LLM Framework + BDI"                 ║
 ╠══════════════════════════════════════════════════════════════╣
-║  4-Tier Hierarchy:                                           ║
-║    🎌 Shogun (Strategic)   - Claude Sonnet + Opus           ║
-║    🏛️ Karo (Tactical)      - Groq + Gemini 3.0 Flash        ║
-║    🏯 Taisho (Implementation) - Qwen3 + Kagemusha           ║
-║    👣 Ashigaru (Execution)  - MCP Servers                   ║
+║  4層階層 (4-Tier Hierarchy):                                  ║
+║    🎌 将軍 (Shogun)   - Claude Sonnet + Opus + BDI          ║
+║    👔 家老 (Karo)     - Groq + Gemini 3.0 + BDI             ║
+║    ⚔️ 大将 (Taisho)   - Qwen3 + 影武者 + BDI                ║
+║    👣 足軽 (Ashigaru) - MCP Servers × 8                     ║
 ╠══════════════════════════════════════════════════════════════╣
-║  v9.3.2 Innovations:                                         ║
+║  v9.4 新機能:                                                 ║
+║    🧠 BDI Framework (信念-願望-意図 形式推論)                ║
 ║    ⚡ Intelligent Routing (60% faster simple tasks)         ║
 ║    💾 Prompt Caching (90% cost reduction)                   ║
 ║    🔗 3-tier Fallback (99.5% reliability)                   ║
-║    🔋 Power Optimization (¥200/month savings)               ║
+║    📝 Japanese Logging (全コンポーネント日本語)              ║
 ╚══════════════════════════════════════════════════════════════╝
 """
     print(banner)
 
 
 async def main() -> None:
-    """Main entry point for Bushidan v9.3.2."""
+    """Main entry point for Bushidan v9.4."""
 
     # Setup logging
     logger = setup_logger(f"bushidan_v{VERSION}")

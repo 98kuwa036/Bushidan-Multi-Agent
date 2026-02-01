@@ -90,7 +90,7 @@ class Karo:
     - Groq簡易タスク即時応答
     """
 
-    VERSION = "9.3.2"
+    VERSION = "9.4"
 
     def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator
