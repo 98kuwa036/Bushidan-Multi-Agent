@@ -1,25 +1,28 @@
 """
-Bushidan Multi-Agent System v9.3 - Taisho (Implementation Layer)
+Bushidan Multi-Agent System v9.3.2 - Taisho (Implementation Layer)
 
-The Taisho serves as the primary implementation layer using Qwen3-Coder-30B-A3B.
+The Taisho serves as the primary implementation layer with 3-tier fallback chain.
 Handles actual code generation, file operations, and heavy computational tasks.
 
-v9.3 Enhancements:
-- Qwen3-Coder-30B-A3B integration (MoE, 32B-class intelligence in 24GB RAM)
-- DSPy translation layer for Japanese→structured instructions
-- LiteLLM middleware for 4k context compression
-- Cost ¥0 local inference with unlimited context capacity
+v9.3.2 Enhancements:
+- 3-tier fallback chain: Local Qwen3 → Cloud Qwen3 (Kagemusha) → Gemini 3 Flash
+- Qwen3-Coder-30B optimization with 4k context (1.5x speed)
+- Cloud Qwen3-plus (Kagemusha) for context overflow (32k capacity)
+- Gemini 3.0 Flash as final defense line
+- Self-healing execution (Layer 2)
+- DSPy validation (Layer 3)
 """
 
 import asyncio
 import logging
+import json
+import time
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
 
 from utils.logger import get_logger
-from utils.qwen_client import QwenClient
-from core.mcp_manager import MCPManager
+from core.system_orchestrator import SystemOrchestrator
 
 
 logger = get_logger(__name__)
@@ -39,430 +42,570 @@ class ImplementationTask:
     content: str
     mode: ImplementationMode
     context: Optional[Dict[str, Any]] = None
-    files_needed: List[str] = None
-    dependencies: List[str] = None
+    files_needed: Optional[List[str]] = None
+    dependencies: Optional[List[str]] = None
+
+
+class FallbackStatus(Enum):
+    """Status of fallback chain execution"""
+    LOCAL_SUCCESS = "local_qwen3_success"
+    CLOUD_SUCCESS = "cloud_qwen3_success"
+    GEMINI_SUCCESS = "gemini3_success"
+    ALL_FAILED = "all_failed"
 
 
 class Taisho:
     """
-    大将 (Taisho) - Implementation Layer
-    
+    大将 (Taisho) - Implementation Layer v9.3.2
+
     Primary responsibilities:
-    1. Heavy implementation tasks using local Qwen3-Coder-30B-A3B
-    2. MCP-driven file operations and system interactions
-    3. Multi-file code generation and refactoring
-    4. Cost-effective processing with unlimited local compute
-    5. Parallel task execution for complex projects
+    1. Heavy implementation tasks with 3-tier fallback chain
+    2. Local Qwen3 (4k context, ¥0) as primary
+    3. Cloud Qwen3-plus (Kagemusha, 32k context) for overflow
+    4. Gemini 3.0 Flash as final defense
+    5. MCP-driven file operations
+    6. Self-healing code execution (Layer 2)
+    7. DSPy validation (Layer 3)
+
+    v9.3.2 Fallback Chain:
+    Primary: Local Qwen3-Coder-30B (4k ctx, ¥0, fast)
+    Fallback 1: Cloud Qwen3-plus (32k ctx, ¥3, Kagemusha)
+    Fallback 2: Gemini 3.0 Flash (defense, ¥0.04)
     """
-    
-    def __init__(self, orchestrator):
+
+    VERSION = "9.3.2"
+    LOCAL_CONTEXT_LIMIT = 4096  # Local Qwen3 optimized context
+
+    def __init__(self, orchestrator: SystemOrchestrator):
         self.orchestrator = orchestrator
-        self.qwen_client = QwenClient(
-            config=orchestrator.config,
-            api_base=orchestrator.config.get("qwen_api_base", "http://localhost:11434"),
-            model_name="qwen3-coder-30b-a3b"
-        )
-        self.mcp_manager = orchestrator.mcp_manager
+
+        # AI clients (initialized from orchestrator)
+        self.qwen3_client = None
+        self.alibaba_qwen_client = None
+        self.gemini3_client = None
+
+        # MCP connections
+        self.mcp_manager = None
         self.memory_mcp = None
         self.filesystem_mcp = None
         self.git_mcp = None
-        
-        # Enhanced v9.3: Error handling layers
-        from utils.self_healing import SelfHealingExecutor
-        from utils.dspy_validators import DSPyValidator
-        
-        self.self_healing = SelfHealingExecutor(
-            llm_client=self.qwen_client,
-            max_correction_attempts=3
-        )
-        self.validator = DSPyValidator(max_backtracks=2)
-        
+
+        # Error handling layers
+        self.self_healing = None
+        self.validator = None
+
+        # Statistics
+        self.execution_stats = {
+            "total_tasks": 0,
+            "local_success": 0,
+            "cloud_fallback": 0,
+            "gemini_fallback": 0,
+            "total_failures": 0,
+            "total_time_seconds": 0.0,
+            "context_overflows": 0
+        }
+
     async def initialize(self) -> None:
-        """Initialize Taisho and MCP connections"""
-        logger.info("🏯 Initializing Taisho (Implementation Layer)...")
-        
+        """Initialize Taisho with 3-tier fallback chain"""
+        logger.info(f"🏯 Initializing Taisho v{self.VERSION} (Implementation Layer)...")
+
+        # Get AI clients from orchestrator
+        self.qwen3_client = self.orchestrator.get_client("qwen3")
+        self.alibaba_qwen_client = self.orchestrator.get_client("alibaba_qwen")
+        self.gemini3_client = self.orchestrator.get_client("gemini3")
+
+        # Log available clients
+        if self.qwen3_client:
+            logger.info("✅ Local Qwen3 client available (primary)")
+        else:
+            logger.warning("⚠️ Local Qwen3 not available")
+
+        if self.alibaba_qwen_client:
+            logger.info("✅ Cloud Qwen3-plus (Kagemusha) available")
+        else:
+            logger.warning("⚠️ Kagemusha not available")
+
+        if self.gemini3_client:
+            logger.info("✅ Gemini 3.0 Flash (final defense) available")
+        else:
+            # Try fallback to standard Gemini
+            self.gemini3_client = self.orchestrator.get_client("gemini")
+            if self.gemini3_client:
+                logger.info("✅ Gemini client (fallback) available")
+            else:
+                logger.warning("⚠️ No Gemini client available")
+
         # Get MCP connections
-        self.memory_mcp = self.mcp_manager.get_mcp("memory")
-        self.filesystem_mcp = self.mcp_manager.get_mcp("filesystem")
-        self.git_mcp = self.mcp_manager.get_mcp("git")
-        
-        # Verify Qwen3-Coder connection
+        self.mcp_manager = self.orchestrator.mcp_manager if hasattr(self.orchestrator, 'mcp_manager') else None
+        self.memory_mcp = self.orchestrator.get_mcp("memory")
+        self.filesystem_mcp = self.orchestrator.get_mcp("filesystem")
+        self.git_mcp = self.orchestrator.get_mcp("git")
+
+        # Initialize error handling layers
+        await self._initialize_error_handling()
+
+        logger.info(f"✅ Taisho v{self.VERSION} initialization complete")
+        self._log_fallback_chain_status()
+
+    async def _initialize_error_handling(self) -> None:
+        """Initialize Layer 2 (Self-healing) and Layer 3 (Validation)"""
+
+        # Layer 2: Self-healing executor
         try:
-            await self.qwen_client.health_check()
-            logger.info("✅ Qwen3-Coder-30B-A3B connection verified")
+            from utils.self_healing import SelfHealingExecutor
+
+            # Use best available LLM client
+            llm_client = self.qwen3_client or self.gemini3_client
+            if llm_client:
+                self.self_healing = SelfHealingExecutor(
+                    llm_client=llm_client,
+                    max_correction_attempts=3
+                )
+                logger.info("✅ Layer 2 (Self-healing) initialized")
         except Exception as e:
-            logger.error(f"❌ Failed to connect to Qwen3-Coder: {e}")
-            raise
-            
-        logger.info("✅ Taisho initialization complete")
-    
+            logger.warning(f"⚠️ Self-healing not available: {e}")
+
+        # Layer 3: DSPy validator
+        try:
+            from utils.dspy_validators import DSPyValidator
+            self.validator = DSPyValidator(max_backtracks=2)
+            logger.info("✅ Layer 3 (DSPy Validation) initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ DSPy validator not available: {e}")
+
+    def _log_fallback_chain_status(self) -> None:
+        """Log the status of the 3-tier fallback chain"""
+
+        chain = []
+        if self.qwen3_client:
+            chain.append("Local Qwen3 (4k ctx, ¥0)")
+        if self.alibaba_qwen_client:
+            chain.append("Cloud Qwen3+ (32k ctx, ¥3)")
+        if self.gemini3_client:
+            chain.append("Gemini 3 Flash (defense)")
+
+        if chain:
+            logger.info(f"🔗 Fallback chain: {' → '.join(chain)}")
+        else:
+            logger.error("❌ No AI clients available!")
+
     async def execute_implementation(self, task: ImplementationTask) -> Dict[str, Any]:
         """
-        Main implementation execution pipeline
-        
-        1. Context gathering and analysis
-        2. Implementation planning
-        3. Code generation with MCP operations
-        4. Quality validation and testing
-        5. Git operations and cleanup
+        Main implementation execution with 3-tier fallback chain
+
+        Priority:
+        1. Local Qwen3 (if context fits in 4k limit)
+        2. Cloud Qwen3-plus (Kagemusha) for context overflow
+        3. Gemini 3.0 Flash as final defense
         """
-        
+
+        start_time = time.time()
         logger.info(f"🏯 Taisho executing implementation: {task.content[:50]}...")
-        
+
         try:
-            # Step 1: Gather context from Memory MCP and filesystem
+            # Gather context
             context = await self._gather_context(task)
-            
-            # Step 2: Plan implementation approach
+
+            # Estimate context size
+            context_size = self._estimate_context_size(task, context)
+            logger.info(f"📏 Estimated context size: {context_size} tokens")
+
+            # Plan implementation
             plan = await self._plan_implementation(task, context)
-            
-            # Step 3: Execute implementation based on mode
-            if task.mode == ImplementationMode.PARALLEL:
-                result = await self._execute_parallel_implementation(task, plan, context)
-            else:
-                result = await self._execute_sequential_implementation(task, plan, context)
-            
-            # Step 4: Validate and test results
+
+            # Execute with 3-tier fallback chain
+            result, fallback_status = await self._execute_with_fallback(
+                task, plan, context, context_size
+            )
+
+            # Validate results
             validation = await self._validate_implementation(result)
-            
-            # Step 5: Git operations if successful
+
+            # Git operations if successful
             if validation.get("valid", False):
                 await self._commit_changes(task, result)
-            
-            logger.info("✅ Taisho implementation complete")
+
+            # Update statistics
+            elapsed_time = time.time() - start_time
+            self._update_stats(fallback_status, elapsed_time)
+
+            logger.info(f"✅ Taisho implementation complete ({fallback_status.value}) in {elapsed_time:.1f}s")
+
             return {
                 "status": "completed",
                 "result": result,
                 "validation": validation,
                 "mode": task.mode.value,
-                "handled_by": "taisho"
+                "handled_by": "taisho",
+                "fallback_status": fallback_status.value,
+                "execution_time": elapsed_time
             }
-            
+
         except Exception as e:
             logger.error(f"❌ Taisho implementation failed: {e}")
+            self.execution_stats["total_failures"] += 1
             return {"error": str(e), "status": "failed"}
-    
+
+    def _estimate_context_size(self, task: ImplementationTask, context: Dict[str, Any]) -> int:
+        """Estimate context size in tokens (rough approximation)"""
+
+        # Rough estimate: 1 token ≈ 4 characters
+        total_chars = len(task.content)
+
+        for entry in context.get("memory_entries", []):
+            total_chars += len(str(entry))
+
+        for file_info in context.get("existing_files", []):
+            if file_info.get("content"):
+                total_chars += len(file_info["content"])
+
+        return total_chars // 4
+
+    async def _execute_with_fallback(
+        self,
+        task: ImplementationTask,
+        plan: Dict[str, Any],
+        context: Dict[str, Any],
+        context_size: int
+    ) -> tuple[Dict[str, Any], FallbackStatus]:
+        """
+        Execute with 3-tier fallback chain
+
+        1. Try Local Qwen3 (if context fits)
+        2. Fallback to Cloud Qwen3-plus (Kagemusha)
+        3. Final fallback to Gemini 3 Flash
+        """
+
+        # Tier 1: Local Qwen3 (if context fits)
+        if self.qwen3_client and context_size <= self.LOCAL_CONTEXT_LIMIT:
+            try:
+                result = await self._execute_with_qwen3(task, plan, context)
+                if result.get("status") != "failed":
+                    return result, FallbackStatus.LOCAL_SUCCESS
+                logger.warning("⚠️ Local Qwen3 execution failed, activating Kagemusha")
+            except Exception as e:
+                logger.warning(f"⚠️ Local Qwen3 error: {e}, activating Kagemusha")
+
+        # Context overflow or local failure
+        if context_size > self.LOCAL_CONTEXT_LIMIT:
+            self.execution_stats["context_overflows"] += 1
+            logger.info(f"🏯 Context overflow ({context_size} > {self.LOCAL_CONTEXT_LIMIT}), activating Kagemusha")
+
+        # Tier 2: Cloud Qwen3-plus (Kagemusha)
+        if self.alibaba_qwen_client:
+            try:
+                result = await self._execute_with_kagemusha(task, plan, context)
+                if result.get("status") != "failed":
+                    self.execution_stats["cloud_fallback"] += 1
+                    return result, FallbackStatus.CLOUD_SUCCESS
+                logger.warning("⚠️ Kagemusha failed, activating Gemini final defense")
+            except Exception as e:
+                logger.warning(f"⚠️ Kagemusha error: {e}, activating Gemini final defense")
+
+        # Tier 3: Gemini 3.0 Flash (Final Defense)
+        if self.gemini3_client:
+            try:
+                result = await self._execute_with_gemini(task, plan, context)
+                if result.get("status") != "failed":
+                    self.execution_stats["gemini_fallback"] += 1
+                    return result, FallbackStatus.GEMINI_SUCCESS
+            except Exception as e:
+                logger.error(f"❌ Gemini final defense failed: {e}")
+
+        # All tiers failed
+        return {"status": "failed", "error": "All fallback tiers exhausted"}, FallbackStatus.ALL_FAILED
+
+    async def _execute_with_qwen3(
+        self,
+        task: ImplementationTask,
+        plan: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute implementation with Local Qwen3"""
+
+        logger.info("🏯 Executing with Local Qwen3 (primary)")
+
+        implementation_prompt = self._create_implementation_prompt(task, plan, context)
+
+        response = await self.qwen3_client.generate(
+            messages=[{"role": "user", "content": implementation_prompt}],
+            max_tokens=3000  # Leave room for context in 4k limit
+        )
+
+        files_created = await self._parse_and_save_files(response)
+
+        return {
+            "status": "completed",
+            "files_created": files_created,
+            "implementation": response,
+            "client": "local_qwen3"
+        }
+
+    async def _execute_with_kagemusha(
+        self,
+        task: ImplementationTask,
+        plan: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute implementation with Cloud Qwen3-plus (Kagemusha)"""
+
+        logger.info("🏯 Executing with Kagemusha (Cloud Qwen3-plus, 32k context)")
+
+        implementation_prompt = self._create_implementation_prompt(task, plan, context)
+
+        response = await self.alibaba_qwen_client.generate(
+            messages=[{"role": "user", "content": implementation_prompt}],
+            max_tokens=4096,
+            as_kagemusha=True,
+            context_overflow=True
+        )
+
+        files_created = await self._parse_and_save_files(response)
+
+        return {
+            "status": "completed",
+            "files_created": files_created,
+            "implementation": response,
+            "client": "kagemusha"
+        }
+
+    async def _execute_with_gemini(
+        self,
+        task: ImplementationTask,
+        plan: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute implementation with Gemini 3.0 Flash (Final Defense)"""
+
+        logger.info("🛡️ Executing with Gemini 3.0 Flash (Final Defense)")
+
+        implementation_prompt = self._create_implementation_prompt(task, plan, context)
+
+        response = await self.gemini3_client.generate(
+            prompt=implementation_prompt,
+            max_output_tokens=4000,
+            as_final_defense=True
+        )
+
+        files_created = await self._parse_and_save_files(response)
+
+        return {
+            "status": "completed",
+            "files_created": files_created,
+            "implementation": response,
+            "client": "gemini3"
+        }
+
+    def _create_implementation_prompt(
+        self,
+        task: ImplementationTask,
+        plan: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> str:
+        """Create implementation prompt for LLM"""
+
+        return f"""
+As Taisho (大将) in Bushidan v{self.VERSION}, implement this task following the plan:
+
+Task: {task.content}
+Mode: {task.mode.value}
+Plan: {plan.get('plan_text', '')}
+
+Generate complete, working code. Include:
+- All necessary imports and dependencies
+- Proper error handling
+- Clean, readable code structure
+- Basic documentation
+
+Output each file separately with clear markers:
+=== FILENAME: path/to/file.py ===
+[file content]
+=== END FILE ===
+"""
+
     async def _gather_context(self, task: ImplementationTask) -> Dict[str, Any]:
         """Gather relevant context from Memory MCP and filesystem"""
-        
+
         context = {
             "memory_entries": [],
             "existing_files": [],
             "project_structure": {}
         }
-        
+
         try:
-            # Search Memory MCP for relevant decisions and patterns
             if self.memory_mcp:
                 memory_query = f"project context for: {task.content}"
                 memory_entries = await self.memory_mcp.search(memory_query)
-                context["memory_entries"] = memory_entries[:5]  # Top 5 relevant entries
-            
-            # Analyze existing project structure
+                context["memory_entries"] = memory_entries[:5] if memory_entries else []
+
             if self.filesystem_mcp and task.files_needed:
                 for file_path in task.files_needed:
                     try:
                         content = await self.filesystem_mcp.read_file(file_path)
                         context["existing_files"].append({
                             "path": file_path,
-                            "content": content[:2000]  # First 2k chars for context
+                            "content": content[:2000]
                         })
-                    except FileNotFoundError:
+                    except Exception:
                         context["existing_files"].append({
                             "path": file_path,
-                            "content": None  # File doesn't exist
+                            "content": None
                         })
-            
-            logger.info(f"📋 Context gathered: {len(context['memory_entries'])} memory entries, {len(context['existing_files'])} files")
+
+            logger.info(f"📋 Context gathered: {len(context['memory_entries'])} memory, {len(context['existing_files'])} files")
             return context
-            
+
         except Exception as e:
             logger.warning(f"⚠️ Context gathering failed: {e}")
             return context
-    
+
     async def _plan_implementation(self, task: ImplementationTask, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Plan implementation approach using Qwen3-Coder"""
-        
+        """Plan implementation approach"""
+
+        # Use best available client for planning
+        client = self.qwen3_client or self.gemini3_client
+        if not client:
+            return {"plan_text": "Direct implementation without explicit plan", "context": context}
+
         planning_prompt = f"""
-        As Taisho (大将), plan the implementation for this task:
-        
-        Task: {task.content}
-        Mode: {task.mode.value}
-        
-        Context from Memory MCP:
-        {self._format_memory_context(context.get('memory_entries', []))}
-        
-        Existing files:
-        {self._format_file_context(context.get('existing_files', []))}
-        
-        Create a detailed implementation plan including:
-        1. Files to create/modify
-        2. Dependencies and imports needed
-        3. Step-by-step implementation approach
-        4. Testing and validation steps
-        
-        Focus on practical, working code that follows project conventions.
-        """
-        
-        response = await self.qwen_client.generate(
-            messages=[{"role": "user", "content": planning_prompt}],
-            max_tokens=1000
-        )
-        
-        return {"plan_text": response, "context": context}
-    
-    async def _execute_sequential_implementation(self, task: ImplementationTask, plan: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute implementation sequentially"""
-        
-        implementation_prompt = f"""
-        As Taisho (大将), implement this task following the plan:
-        
-        Task: {task.content}
-        Plan: {plan.get('plan_text', '')}
-        
-        Generate complete, working code. Include:
-        - All necessary imports and dependencies
-        - Proper error handling
-        - Clean, readable code structure
-        - Basic documentation
-        
-        Output each file separately with clear markers:
-        === FILENAME: path/to/file.py ===
-        [file content]
-        === END FILE ===
-        """
-        
-        response = await self.qwen_client.generate(
-            messages=[{"role": "user", "content": implementation_prompt}],
-            max_tokens=4000
-        )
-        
-        # Parse and save files
-        files_created = await self._parse_and_save_files(response)
-        
-        return {
-            "files_created": files_created,
-            "implementation": response
-        }
-    
-    async def _execute_parallel_implementation(self, task: ImplementationTask, plan: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute implementation in parallel for complex tasks"""
-        
-        # For parallel execution, break down into subtasks and process simultaneously
-        subtasks = await self._break_down_task(task, plan)
-        
-        # Execute subtasks in parallel
-        parallel_results = await asyncio.gather(
-            *[self._execute_subtask(subtask, context) for subtask in subtasks],
-            return_exceptions=True
-        )
-        
-        # Combine results
-        combined_result = await self._combine_parallel_results(parallel_results)
-        
-        return combined_result
-    
-    async def _break_down_task(self, task: ImplementationTask, plan: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Break down complex task into parallel subtasks"""
-        
-        breakdown_prompt = f"""
-        Break down this complex implementation into 3-5 independent subtasks:
-        
-        Task: {task.content}
-        Plan: {plan.get('plan_text', '')}
-        
-        Each subtask should be:
-        - Independent and parallelizable
-        - Focused on specific components
-        - Clearly defined with expected outputs
-        
-        Format as JSON array of subtasks.
-        """
-        
-        response = await self.qwen_client.generate(
-            messages=[{"role": "user", "content": breakdown_prompt}],
-            max_tokens=500
-        )
-        
-        # Parse JSON response (simplified)
+As Taisho (大将), plan the implementation for this task:
+
+Task: {task.content}
+Mode: {task.mode.value}
+
+Context:
+{self._format_memory_context(context.get('memory_entries', []))}
+
+Create a brief implementation plan with:
+1. Files to create/modify
+2. Key dependencies
+3. Implementation approach
+"""
+
         try:
-            import json
-            subtasks = json.loads(response)
-            return subtasks
-        except:
-            # Fallback: create simple breakdown
-            return [
-                {"name": "core_implementation", "description": task.content},
-                {"name": "tests", "description": f"Tests for {task.content}"},
-                {"name": "documentation", "description": f"Documentation for {task.content}"}
-            ]
-    
-    async def _execute_subtask(self, subtask: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute individual subtask"""
-        
-        subtask_prompt = f"""
-        Implement this specific subtask:
-        
-        Subtask: {subtask.get('description', '')}
-        Name: {subtask.get('name', '')}
-        
-        Generate focused, working code for this specific component.
-        """
-        
-        response = await self.qwen_client.generate(
-            messages=[{"role": "user", "content": subtask_prompt}],
-            max_tokens=2000
-        )
-        
-        return {
-            "subtask_name": subtask.get('name', ''),
-            "implementation": response
-        }
-    
-    async def _combine_parallel_results(self, parallel_results: List[Any]) -> Dict[str, Any]:
-        """Combine results from parallel execution"""
-        
-        combined = {
-            "files_created": [],
-            "implementations": [],
-            "errors": []
-        }
-        
-        for result in parallel_results:
-            if isinstance(result, Exception):
-                combined["errors"].append(str(result))
-            elif isinstance(result, dict):
-                combined["implementations"].append(result)
-        
-        return combined
-    
+            if hasattr(client, 'generate'):
+                if self.qwen3_client:
+                    response = await client.generate(
+                        messages=[{"role": "user", "content": planning_prompt}],
+                        max_tokens=500
+                    )
+                else:
+                    response = await client.generate(
+                        prompt=planning_prompt,
+                        max_output_tokens=500
+                    )
+            else:
+                response = "Direct implementation"
+
+            return {"plan_text": response, "context": context}
+
+        except Exception as e:
+            logger.warning(f"⚠️ Planning failed: {e}")
+            return {"plan_text": "Direct implementation", "context": context}
+
     async def _parse_and_save_files(self, implementation_text: str) -> List[str]:
-        """Parse generated code and save files using Filesystem MCP"""
-        
+        """Parse generated code and save files"""
+
         files_created = []
-        
+
         if not self.filesystem_mcp:
             logger.warning("⚠️ Filesystem MCP not available")
             return files_created
-        
-        # Simple file parsing (look for === FILENAME: markers)
+
         sections = implementation_text.split("=== FILENAME:")
-        
-        for section in sections[1:]:  # Skip first empty section
+
+        for section in sections[1:]:
             try:
                 lines = section.split("\n")
                 filename = lines[0].strip().split("===")[0].strip()
-                
-                # Find end of file marker
+
                 content_lines = []
                 for line in lines[1:]:
                     if "=== END FILE ===" in line:
                         break
                     content_lines.append(line)
-                
+
                 content = "\n".join(content_lines).strip()
-                
+
                 if content:
                     await self.filesystem_mcp.write_file(filename, content)
                     files_created.append(filename)
                     logger.info(f"📄 Created file: {filename}")
-                    
+
             except Exception as e:
-                logger.warning(f"⚠️ Failed to parse/save file section: {e}")
-        
+                logger.warning(f"⚠️ Failed to parse/save file: {e}")
+
         return files_created
-    
+
     async def _validate_implementation(self, result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Enhanced validation using DSPy validators (Layer 3)
-        
-        Validates:
-        - Code presence and formatting
-        - No Japanese comments (English only)
-        - Complete implementation (no TODOs/placeholders)
-        - Proper imports
-        - Error handling
-        """
-        
+        """Validate implementation with Layer 3 DSPy validation"""
+
         validation = {
             "valid": True,
             "files_count": len(result.get("files_created", [])),
             "issues": [],
             "validation_details": []
         }
-        
-        # Basic check
-        if validation["files_count"] == 0:
-            validation["valid"] = False
-            validation["issues"].append("No files were created")
-            return validation
-        
-        # Enhanced v9.3: DSPy validation with automatic retry
-        try:
-            implementation_text = result.get("implementation", "")
-            
-            # Define validation rules for code implementation
-            validation_rules = [
-                "code_block_present",
-                "no_japanese_comments",
-                "proper_formatting",
-                "complete_implementation",
-                "imports_present"
-            ]
-            
-            # Validate with retry and refinement
-            validation_passed, validated_output, attempts = await self.validator.validate_with_retry(
-                llm_client=self.qwen_client,
-                output=implementation_text,
-                validation_rules=validation_rules,
-                original_prompt=f"Implementation for task",
-                task_context={"task_type": "code_implementation"}
-            )
-            
-            validation["valid"] = validation_passed
-            validation["validation_attempts"] = attempts
-            
-            if not validation_passed:
-                validation["issues"].append(f"Quality validation failed after {attempts} attempts")
-                
-                # Get validator stats for debugging
-                validator_stats = self.validator.get_validation_stats()
-                validation["validation_details"] = validator_stats
+
+        if validation["files_count"] == 0 and result.get("status") != "failed":
+            # Check if implementation text contains code
+            impl_text = result.get("implementation", "")
+            if "def " in impl_text or "class " in impl_text or "import " in impl_text:
+                validation["valid"] = True
+                validation["issues"].append("Code generated but not saved to files")
             else:
-                logger.info(f"✅ Implementation validated successfully (attempts: {attempts})")
-                
-                # Update result with validated output if refined
-                if attempts > 1:
-                    result["implementation"] = validated_output
-                    logger.info(f"📝 Implementation refined through {attempts} validation cycles")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Advanced validation failed, using basic checks: {e}")
-            # Fallback to basic validation on error
-            validation["issues"].append(f"Advanced validation error: {e}")
-        
+                validation["valid"] = False
+                validation["issues"].append("No code generated")
+            return validation
+
+        # Layer 3: DSPy validation
+        if self.validator:
+            try:
+                implementation_text = result.get("implementation", "")
+
+                validation_rules = [
+                    "code_block_present",
+                    "no_japanese_comments",
+                    "proper_formatting",
+                    "complete_implementation"
+                ]
+
+                # Use best available client for validation
+                llm_client = self.qwen3_client or self.gemini3_client
+
+                if llm_client:
+                    validation_passed, validated_output, attempts = await self.validator.validate_with_retry(
+                        llm_client=llm_client,
+                        output=implementation_text,
+                        validation_rules=validation_rules,
+                        original_prompt="Implementation task",
+                        task_context={"task_type": "code_implementation"}
+                    )
+
+                    validation["valid"] = validation_passed
+                    validation["validation_attempts"] = attempts
+
+                    if not validation_passed:
+                        validation["issues"].append(f"Validation failed after {attempts} attempts")
+
+            except Exception as e:
+                logger.warning(f"⚠️ Validation error: {e}")
+
         return validation
-    
+
     async def execute_code_with_healing(
         self,
         code: str,
         task_description: str = "",
         allow_installation: bool = False
     ) -> Dict[str, Any]:
-        """
-        Execute code with Layer 2 self-healing
-        
-        Args:
-            code: Code to execute
-            task_description: Description for error correction context
-            allow_installation: Allow automatic dependency installation
-        
-        Returns:
-            Execution result with success status and output
-        """
-        
+        """Execute code with Layer 2 self-healing"""
+
+        if not self.self_healing:
+            return {"status": "error", "error": "Self-healing not available"}
+
         logger.info("🔧 Executing code with self-healing enabled")
-        
+
         try:
             execution_result = await self.self_healing.run_and_fix(
                 code=code,
@@ -470,9 +613,9 @@ class Taisho:
                 language="python",
                 allow_installation=allow_installation
             )
-            
+
             if execution_result.success:
-                logger.info(f"✅ Code executed successfully (attempt {execution_result.attempt_number})")
+                logger.info(f"✅ Code executed (attempt {execution_result.attempt_number})")
                 return {
                     "status": "success",
                     "stdout": execution_result.stdout,
@@ -480,65 +623,88 @@ class Taisho:
                     "attempts": execution_result.attempt_number
                 }
             else:
-                logger.error(f"❌ Code execution failed: {execution_result.stderr}")
                 return {
                     "status": "failed",
                     "error": execution_result.stderr,
                     "attempts": execution_result.attempt_number
                 }
-        
+
         except Exception as e:
-            logger.error(f"❌ Self-healing execution system error: {e}")
-            return {
-                "status": "system_error",
-                "error": str(e)
-            }
-    
+            return {"status": "system_error", "error": str(e)}
+
     async def _commit_changes(self, task: ImplementationTask, result: Dict[str, Any]) -> None:
         """Commit changes using Git MCP"""
-        
+
         if not self.git_mcp:
-            logger.warning("⚠️ Git MCP not available")
             return
-        
+
         try:
-            # Add files
             files_created = result.get("files_created", [])
             for file_path in files_created:
                 await self.git_mcp.add_file(file_path)
-            
-            # Commit with descriptive message
-            commit_message = f"Implement: {task.content[:50]}\n\nGenerated by Taisho (大将)\nFiles: {', '.join(files_created[:5])}"
+
+            commit_message = f"Implement: {task.content[:50]}\n\nGenerated by Taisho v{self.VERSION}"
             await self.git_mcp.commit(commit_message)
-            
+
             logger.info(f"✅ Changes committed: {len(files_created)} files")
-            
+
         except Exception as e:
             logger.warning(f"⚠️ Git commit failed: {e}")
-    
+
+    def _update_stats(self, fallback_status: FallbackStatus, elapsed_time: float) -> None:
+        """Update execution statistics"""
+
+        self.execution_stats["total_tasks"] += 1
+        self.execution_stats["total_time_seconds"] += elapsed_time
+
+        if fallback_status == FallbackStatus.LOCAL_SUCCESS:
+            self.execution_stats["local_success"] += 1
+
     def _format_memory_context(self, memory_entries: List[Dict]) -> str:
         """Format memory entries for context"""
         if not memory_entries:
-            return "No relevant memory entries found."
-        
+            return "No relevant memory entries."
+
         formatted = []
-        for entry in memory_entries[:3]:  # Top 3 most relevant
-            formatted.append(f"- {entry.get('content', entry)}")
-        
+        for entry in memory_entries[:3]:
+            formatted.append(f"- {entry.get('content', str(entry))[:200]}")
+
         return "\n".join(formatted)
-    
-    def _format_file_context(self, existing_files: List[Dict]) -> str:
-        """Format existing file context"""
-        if not existing_files:
-            return "No existing files to reference."
-        
-        formatted = []
-        for file_info in existing_files[:3]:  # Top 3 most relevant
-            path = file_info.get("path", "unknown")
-            content = file_info.get("content")
-            if content:
-                formatted.append(f"- {path}: {len(content)} chars")
-            else:
-                formatted.append(f"- {path}: (new file)")
-        
-        return "\n".join(formatted)
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive Taisho statistics"""
+
+        stats = {
+            "version": self.VERSION,
+            "execution_stats": self.execution_stats,
+            "fallback_chain": {
+                "local_qwen3": self.qwen3_client is not None,
+                "kagemusha": self.alibaba_qwen_client is not None,
+                "gemini3": self.gemini3_client is not None
+            },
+            "error_handling": {
+                "self_healing": self.self_healing is not None,
+                "validator": self.validator is not None
+            }
+        }
+
+        # Calculate success rate
+        total = self.execution_stats["total_tasks"]
+        if total > 0:
+            local = self.execution_stats["local_success"]
+            cloud = self.execution_stats["cloud_fallback"]
+            gemini = self.execution_stats["gemini_fallback"]
+            failures = self.execution_stats["total_failures"]
+
+            stats["success_rate"] = round((local + cloud + gemini) / total * 100, 1)
+            stats["local_rate"] = round(local / total * 100, 1)
+            stats["fallback_rate"] = round((cloud + gemini) / total * 100, 1)
+
+        # Add client statistics
+        if self.qwen3_client and hasattr(self.qwen3_client, 'get_statistics'):
+            stats["qwen3_statistics"] = self.qwen3_client.get_statistics()
+
+        if self.alibaba_qwen_client and hasattr(self.alibaba_qwen_client, 'get_statistics'):
+            stats["kagemusha_statistics"] = self.alibaba_qwen_client.get_statistics()
+
+        return stats
