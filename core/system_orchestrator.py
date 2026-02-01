@@ -1,15 +1,16 @@
 """
-Bushidan Multi-Agent System v9.3.2 - System Orchestrator
+Bushidan Multi-Agent System v9.3.2 - System Orchestrator (システム統括)
 
-Enhanced system coordination for the 4-Tier Hybrid Architecture.
-Manages: Shogun -> Karo -> Taisho -> Ashigaru with Intelligent Routing.
+4層ハイブリッドアーキテクチャの強化システム調整。
+管理対象: 将軍 → 家老 → 大将 → 足軽（インテリジェントルーティング付き）
 
-v9.3.2 Enhancements:
-- Intelligent Router integration
-- New client initialization (ClaudeClientCached, Groq, Gemini3, Qwen3, AlibabaQwen)
-- 3-tier fallback chain management
-- Power-saving optimization
-- Enhanced health checks
+v9.3.2 機能強化:
+- インテリジェントルーター統合
+- 新規クライアント初期化（ClaudeClientCached, Groq, Gemini3, Qwen3, AlibabaQwen）
+- 3層フォールバックチェーン管理
+- 省電力最適化
+- 強化ヘルスチェック
+- BDIフレームワーク統合
 """
 
 import asyncio
@@ -70,19 +71,20 @@ class SystemConfig:
 
 class SystemOrchestrator:
     """
-    v9.3.2 System Orchestrator - Enhanced coordination layer
+    v9.3.2 システムオーケストレーター - 強化調整層
 
-    Manages the 4-tier hybrid architecture:
-    1. Shogun (Strategic Layer) - Claude Sonnet + Opus
-    2. Karo (Tactical Layer) - Coordination + Groq/Gemini3
-    3. Taisho (Implementation Layer) - Qwen3 + Kagemusha
-    4. Ashigaru (Execution Layer) - MCP Servers
+    4層ハイブリッドアーキテクチャを管理:
+    1. 将軍 (Shogun) - 戦略層: Claude Sonnet + Opus
+    2. 家老 (Karo) - 戦術層: 調整 + Groq/Gemini3
+    3. 大将 (Taisho) - 実装層: Qwen3 + 影武者
+    4. 足軽 (Ashigaru) - 実行層: MCPサーバー
 
-    New Features:
-    - Intelligent Router for task delegation
-    - 3-tier fallback chain management
-    - Power-saving optimization
-    - Prompt Caching for cost reduction
+    新機能:
+    - タスク委譲のインテリジェントルーター
+    - 3層フォールバックチェーン管理
+    - 省電力最適化
+    - コスト削減のプロンプトキャッシング
+    - BDIフレームワーク統合
     """
 
     VERSION = "9.3.2"
@@ -95,10 +97,15 @@ class SystemOrchestrator:
         self.mcp_manager = None
         self.initialized = False
 
-        # Statistics
+        # 4層階層コンポーネント
+        self._shogun = None  # 将軍: 戦略層
+        self._karo = None    # 家老: 戦術層
+        self._taisho = None  # 大将: 実装層
+
+        # 統計
         self.health_status: Dict[str, bool] = {}
 
-        # Performance targets
+        # パフォーマンス目標（秒）
         self.performance_targets = {
             "simple": 2,
             "medium": 12,
@@ -107,29 +114,56 @@ class SystemOrchestrator:
         }
 
     async def initialize(self) -> None:
-        """Initialize all v9.3.2 system components"""
-        logger.info(f"🔧 Initializing Bushidan v{self.VERSION} components...")
+        """全v9.3.2システムコンポーネントを初期化"""
+        logger.info(f"🔧 武士団 v{self.VERSION} コンポーネント初期化開始...")
 
         try:
-            # Initialize MCP servers
+            # MCPサーバー初期化
             await self._initialize_mcps()
 
-            # Initialize AI clients
+            # AIクライアント初期化
             await self._initialize_clients()
 
-            # Initialize Intelligent Router
+            # インテリジェントルーター初期化
             await self._initialize_router()
 
-            # Verify external dependencies
+            # 外部依存関係の検証
             await self._verify_dependencies()
 
+            # 4層階層コンポーネント初期化
+            await self._initialize_tiers()
+
             self.initialized = True
-            logger.info(f"✅ System orchestrator v{self.VERSION} initialized successfully")
+            logger.info(f"✅ システムオーケストレーター v{self.VERSION} 初期化完了")
             self._log_startup_summary()
 
         except Exception as e:
-            logger.error(f"❌ System initialization failed: {e}")
+            logger.error(f"❌ システム初期化失敗: {e}")
             raise
+
+    async def _initialize_tiers(self) -> None:
+        """4層階層コンポーネントの初期化"""
+        logger.info("🏯 4層階層コンポーネント初期化...")
+
+        # 将軍（戦略層）初期化
+        try:
+            from core.shogun import Shogun
+            self._shogun = Shogun(self)
+            await self._shogun.initialize()
+            logger.info("🎌 将軍（戦略層）初期化完了")
+        except Exception as e:
+            logger.error(f"❌ 将軍初期化失敗: {e}")
+            raise
+
+        # 家老は将軍の初期化時に作成される
+        if self._shogun and hasattr(self._shogun, 'karo'):
+            self._karo = self._shogun.karo
+            logger.info("👔 家老（戦術層）参照取得完了")
+
+        # 大将は家老の初期化時に作成される
+        if self._karo and hasattr(self._karo, 'taisho'):
+            self._taisho = self._karo.taisho
+            logger.info("⚔️ 大将（実装層）参照取得完了")
 
     async def _initialize_mcps(self) -> None:
         """Initialize Model Context Protocol servers"""
@@ -296,30 +330,55 @@ class SystemOrchestrator:
             logger.warning(f"⚠️ Could not verify LiteLLM: {e}")
 
     def _log_startup_summary(self) -> None:
-        """Log startup summary with component status"""
+        """起動サマリーをコンポーネント状態と共にログ出力"""
 
         logger.info("=" * 60)
-        logger.info(f"🏯 Bushidan Multi-Agent System v{self.VERSION}")
+        logger.info(f"🏯 武士団マルチエージェントシステム v{self.VERSION}")
         logger.info("=" * 60)
-        logger.info(f"Mode: {self.config.mode.value}")
-        logger.info(f"Intelligent Routing: {'✅' if self.router else '❌'}")
-        logger.info(f"Prompt Caching: {'✅' if self.config.prompt_caching_enabled else '❌'}")
-        logger.info(f"Power Optimization: {'✅' if self.config.power_optimization_enabled else '❌'}")
+        logger.info(f"モード: {self.config.mode.value}")
+        logger.info(f"インテリジェントルーティング: {'✅' if self.router else '❌'}")
+        logger.info(f"プロンプトキャッシング: {'✅' if self.config.prompt_caching_enabled else '❌'}")
+        logger.info(f"省電力最適化: {'✅' if self.config.power_optimization_enabled else '❌'}")
         logger.info("-" * 60)
-        logger.info("Components Status:")
 
-        # Clients
-        for name in ["claude_cached", "groq", "gemini3", "qwen3", "alibaba_qwen", "opus"]:
-            status = "✅" if name in self.clients else "❌"
+        # 4層階層コンポーネント
+        logger.info("【4層階層コンポーネント】")
+        logger.info(f"  🎌 将軍（戦略層）: {'✅' if self._shogun else '❌'}")
+        logger.info(f"  👔 家老（戦術層）: {'✅' if self._karo else '❌'}")
+        logger.info(f"  ⚔️ 大将（実装層）: {'✅' if self._taisho else '❌'}")
+
+        # BDI状態
+        if self._shogun and hasattr(self._shogun, 'bdi_enabled'):
+            logger.info(f"  🧠 BDIフレームワーク: {'✅' if self._shogun.bdi_enabled else '❌'}")
+
+        logger.info("-" * 60)
+        logger.info("【AIクライアント】")
+        client_names = {
+            "claude_cached": "Claude（キャッシュ）",
+            "groq": "Groq（即応）",
+            "gemini3": "Gemini 3.0 Flash",
+            "qwen3": "Qwen3（ローカル）",
+            "alibaba_qwen": "Alibaba Qwen（影武者）",
+            "opus": "Opus（プレミアム）"
+        }
+        for key, name in client_names.items():
+            status = "✅" if key in self.clients else "❌"
             logger.info(f"  {name}: {status}")
 
-        # MCPs
-        logger.info("MCP Servers:")
-        for name in self.mcps:
+        # MCPサーバー
+        logger.info("【MCPサーバー】")
+        mcp_names = {
+            "memory": "メモリMCP",
+            "filesystem": "ファイルシステムMCP",
+            "git": "Git MCP",
+            "web_search": "Web検索MCP"
+        }
+        for key in self.mcps:
+            name = mcp_names.get(key, key)
             logger.info(f"  {name}: ✅")
 
-        # Health status
-        logger.info("Health Status:")
+        # ヘルス状態
+        logger.info("【外部サービス】")
         for name, healthy in self.health_status.items():
             status = "✅" if healthy else "⚠️"
             logger.info(f"  {name}: {status}")
@@ -335,21 +394,99 @@ class SystemOrchestrator:
         return self.clients.get(name)
 
     def get_router(self):
-        """Get Intelligent Router"""
+        """インテリジェントルーター取得"""
         return self.router
 
+    # ==================== 4層階層コンポーネントアクセサ ====================
+
+    @property
+    def shogun(self):
+        """将軍（戦略層）取得"""
+        return self._shogun
+
+    @property
+    def karo(self):
+        """家老（戦術層）取得"""
+        return self._karo
+
+    @property
+    def taisho(self):
+        """大将（実装層）取得"""
+        return self._taisho
+
+    def get_tier_statistics(self) -> Dict[str, Any]:
+        """全階層統計を取得"""
+        stats = {}
+
+        if self._shogun and hasattr(self._shogun, 'get_statistics'):
+            stats["shogun"] = self._shogun.get_statistics()
+
+        if self._karo and hasattr(self._karo, 'get_statistics'):
+            stats["karo"] = self._karo.get_statistics()
+
+        if self._taisho and hasattr(self._taisho, 'get_statistics'):
+            stats["taisho"] = self._taisho.get_statistics()
+
+        return stats
+
+    def get_bdi_states(self) -> Dict[str, Any]:
+        """全階層のBDI状態を取得"""
+        bdi_states = {}
+
+        if self._shogun and hasattr(self._shogun, 'get_bdi_state'):
+            bdi_states["shogun"] = self._shogun.get_bdi_state()
+
+        if self._karo and hasattr(self._karo, 'get_bdi_state'):
+            bdi_states["karo"] = self._karo.get_bdi_state()
+
+        if self._taisho and hasattr(self._taisho, 'get_bdi_state'):
+            bdi_states["taisho"] = self._taisho.get_bdi_state()
+
+        return bdi_states
+
+    # ==================== タスク処理エントリポイント ====================
+
+    async def process_task(self, task_content: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        タスク処理のメインエントリポイント
+
+        Args:
+            task_content: タスク内容
+            context: オプションコンテキスト
+
+        Returns:
+            処理結果
+        """
+        if not self.initialized:
+            raise RuntimeError("システムが初期化されていません")
+
+        if not self._shogun:
+            raise RuntimeError("将軍が初期化されていません")
+
+        # 将軍に委譲
+        from core.shogun import Task, TaskComplexity
+        task = Task(
+            content=task_content,
+            complexity=TaskComplexity.MEDIUM,  # 将軍が再評価
+            context=context
+        )
+
+        return await self._shogun.process_task(task)
+
     def get_all_statistics(self) -> Dict[str, Any]:
-        """Get comprehensive statistics from all components"""
+        """全コンポーネントから包括的統計を取得"""
 
         stats = {
             "version": self.VERSION,
             "mode": self.config.mode.value,
             "health_status": self.health_status,
             "clients": {},
-            "router": None
+            "router": None,
+            "tiers": {},
+            "bdi_states": {}
         }
 
-        # Collect client statistics
+        # クライアント統計収集
         for name, client in self.clients.items():
             if hasattr(client, 'get_statistics'):
                 try:
@@ -357,32 +494,44 @@ class SystemOrchestrator:
                 except Exception as e:
                     stats["clients"][name] = {"error": str(e)}
 
-        # Router statistics
+        # ルーター統計
         if self.router:
             try:
                 stats["router"] = self.router.get_statistics()
             except Exception as e:
                 stats["router"] = {"error": str(e)}
 
+        # 階層統計
+        try:
+            stats["tiers"] = self.get_tier_statistics()
+        except Exception as e:
+            stats["tiers"] = {"error": str(e)}
+
+        # BDI状態
+        try:
+            stats["bdi_states"] = self.get_bdi_states()
+        except Exception as e:
+            stats["bdi_states"] = {"error": str(e)}
+
         return stats
 
     async def shutdown(self) -> None:
-        """Graceful shutdown of all components"""
-        logger.info(f"📴 Shutting down system orchestrator v{self.VERSION}...")
+        """全コンポーネントのグレースフルシャットダウン"""
+        logger.info(f"📴 システムオーケストレーター v{self.VERSION} シャットダウン開始...")
 
-        # Shutdown MCP servers
+        # MCPサーバーのシャットダウン
         for name, mcp in self.mcps.items():
             try:
                 await mcp.shutdown()
-                logger.info(f"✅ {name.title()} MCP shutdown complete")
+                logger.info(f"✅ {name} MCP シャットダウン完了")
             except Exception as e:
-                logger.warning(f"⚠️ Error shutting down {name} MCP: {e}")
+                logger.warning(f"⚠️ {name} MCP シャットダウンエラー: {e}")
 
-        # Log final statistics
+        # 最終統計ログ
         try:
             stats = self.get_all_statistics()
-            logger.info(f"📊 Final Statistics: {stats}")
+            logger.info(f"📊 最終統計: {stats}")
         except Exception as e:
-            logger.warning(f"⚠️ Could not collect final statistics: {e}")
+            logger.warning(f"⚠️ 最終統計収集失敗: {e}")
 
-        logger.info(f"✅ System orchestrator v{self.VERSION} shutdown complete")
+        logger.info(f"✅ システムオーケストレーター v{self.VERSION} シャットダウン完了")

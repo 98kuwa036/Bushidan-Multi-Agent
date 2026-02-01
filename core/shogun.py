@@ -1,33 +1,33 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Shogun (Strategic Layer)
+Bushidan Multi-Agent System v9.3.2 - Shogun (将軍: 最高司令官)
 
-The Shogun serves as the highest decision-making authority using Claude Sonnet 4.5.
-Enhanced with Intelligent Routing, Prompt Caching, and BDI Framework integration.
+将軍は武士団システムの最高意思決定者として、Claude Sonnet 4.5を使用し、
+BDIフレームワークによる形式的推論とインテリジェントルーティングを統合する。
 
-v9.3.2 Enhancements:
-- Intelligent Router integration for optimal task delegation
-- ClaudeClientCached for 90% cost reduction
-- Enhanced complexity assessment with routing heuristics
-- Power-saving optimization (don't wake Qwen for simple tasks)
-- BDI Framework integration for formal multi-agent reasoning
+v9.3.2 機能強化:
+- インテリジェントルーター統合による最適なタスク委譲
+- プロンプトキャッシングによる90%コスト削減
+- ルーティングヒューリスティクスによる複雑度評価
+- 省電力最適化（簡単なタスクでQwenを起動しない）
+- BDIフレームワーク統合による形式的マルチエージェント推論
 """
 
 import asyncio
-import logging
 import time
 import re
-from typing import Dict, Any, Optional, Tuple, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from enum import Enum
 from dataclasses import dataclass
 from datetime import datetime
 
 from utils.logger import get_logger
-from core.system_orchestrator import SystemOrchestrator
 from core.bdi_framework import (
     BDIAgent, BeliefBase, DesireSet, IntentionStack,
     Belief, Desire, Intention, BeliefType, DesireType
 )
 
+if TYPE_CHECKING:
+    from core.system_orchestrator import SystemOrchestrator
 
 logger = get_logger(__name__)
 
@@ -59,25 +59,32 @@ class Task:
 
 class Shogun:
     """
-    将軍 (Shogun) - Strategic Decision Layer v9.3.2
+    将軍 (Shogun) - 戦略的意思決定層 v9.3.2
 
-    Primary responsibilities:
-    1. Task intake and intelligent complexity assessment
-    2. Routing decisions via IntelligentRouter
-    3. Strategic decision making
-    4. Delegation to Karo (Tactical Layer)
-    5. Final quality assurance and approval
-    6. Ethical and security oversight
+    武士団システムの最高司令官として、以下の責務を担う:
 
-    v9.3.2 Features:
-    - Intelligent routing with power-saving optimization
-    - Prompt caching for 90% cost reduction
-    - 3-tier fallback chain management
+    主要責務:
+    1. タスク受付とインテリジェント複雑度評価
+    2. IntelligentRouterによるルーティング決定
+    3. 戦略的意思決定（高レベル判断）
+    4. 家老（Karo）への戦術的委譲
+    5. 最終品質保証と承認
+    6. 倫理・セキュリティ監視
+
+    BDI統合:
+    - 信念基盤 (BeliefBase): システム状態とクライアント可用性
+    - 願望集合 (DesireSet): 品質維持、コスト最適化、セキュリティ確保
+    - 意図スタック (IntentionStack): コミットされたアクション
+
+    v9.3.2 機能:
+    - 省電力最適化付きインテリジェントルーティング
+    - 90%コスト削減のプロンプトキャッシング
+    - 3層フォールバックチェーン管理
     """
 
     VERSION = "9.3.2"
 
-    def __init__(self, orchestrator: SystemOrchestrator):
+    def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator
         self.claude_client = None
         self.opus_client = None
@@ -111,48 +118,49 @@ class Shogun:
         }
 
     async def initialize(self) -> None:
-        """Initialize Shogun and subordinate systems"""
-        logger.info(f"🎌 Initializing Shogun v{self.VERSION} (Strategic Layer)...")
+        """将軍と配下システムの初期化"""
+        logger.info(f"🎌 将軍 v{self.VERSION} 初期化開始...")
 
-        # Initialize Claude client (prefer cached version)
+        # Claudeクライアント初期化（キャッシュ版優先）
         self.claude_client = self.orchestrator.get_client("claude_cached")
         if not self.claude_client:
             self.claude_client = self.orchestrator.get_client("claude")
             if self.claude_client:
-                logger.info("📝 Using standard Claude client (cached not available)")
+                logger.info("📝 標準Claudeクライアント使用（キャッシュ版利用不可）")
 
-        # Initialize Opus client for premium reviews
+        # Opusクライアント初期化（プレミアムレビュー用）
         self.opus_client = self.orchestrator.get_client("opus")
         if self.opus_client:
-            logger.info("🏆 Opus premium review system enabled")
+            logger.info("🏆 Opus プレミアムレビューシステム有効")
 
-        # Initialize quality metrics
+        # 品質メトリクス初期化
         try:
             from utils.quality_metrics import QualityMetricsCollector
             self.quality_metrics = QualityMetricsCollector()
-            logger.info("✅ Quality metrics collector initialized")
+            logger.info("📊 品質メトリクスコレクター初期化完了")
         except Exception as e:
-            logger.warning(f"⚠️ Quality metrics not available: {e}")
+            logger.warning(f"⚠️ 品質メトリクス利用不可: {e}")
 
-        # Get Intelligent Router
+        # インテリジェントルーター取得
         self.router = self.orchestrator.get_router()
         if self.router:
-            logger.info("🚀 Intelligent Router enabled")
+            logger.info("🚀 インテリジェントルーター有効")
         else:
-            logger.info("ℹ️ Intelligent Router not available, using legacy routing")
+            logger.info("ℹ️ インテリジェントルーター利用不可、レガシールーティング使用")
 
-        # Initialize Karo (Tactical Layer)
+        # 家老（Karo）初期化 - 戦術層
         from core.karo import Karo
         self.karo = Karo(self.orchestrator)
         await self.karo.initialize()
+        logger.info("👔 家老（戦術層）初期化完了")
 
-        # Get Memory MCP for decision logging
+        # Memory MCP取得（意思決定ログ用）
         self.memory_mcp = self.orchestrator.get_mcp("memory")
 
-        # Initialize BDI Framework
+        # BDIフレームワーク初期化
         self._initialize_bdi()
 
-        logger.info(f"✅ Shogun v{self.VERSION} initialization complete (BDI enabled)")
+        logger.info(f"✅ 将軍 v{self.VERSION} 初期化完了（BDI有効）")
 
     async def start_service(self) -> None:
         """Start the main service loop"""
@@ -170,52 +178,76 @@ class Shogun:
 
     async def process_task(self, task: Task) -> Dict[str, Any]:
         """
-        Main task processing pipeline with v9.3.2 routing
+        メインタスク処理パイプライン（v9.3.2 BDI統合）
 
-        1. Assess complexity using Intelligent Router heuristics
-        2. Get routing decision
-        3. Execute based on routing (Shogun, Karo, or direct)
-        4. Review and approve results
-        5. Log important decisions
+        BDI統合フロー:
+        1. 知覚 (Perceive): タスクと環境から信念を更新
+        2. 熟慮 (Deliberate): 追求すべき願望を選択
+        3. 計画 (Plan): ルーティング決定
+        4. 実行 (Execute): 適切なエージェントで実行
+        5. 再考 (Reconsider): 結果に基づき信念を更新
         """
-
         start_time = time.time()
-        logger.info(f"🎌 Shogun processing task: {task.content[:50]}...")
+        execution_id = f"task_{int(start_time)}"
+        logger.info(f"🎌 将軍、任務受領: {task.content[:50]}...")
 
         try:
-            # Step 1: Assess complexity with router heuristics
+            # BDI Step 1: 知覚 - タスク複雑度評価と信念更新
+            if self.bdi_enabled:
+                await self._bdi_perceive(task)
+                self.bdi_stats["bdi_cycles"] += 1
+
+            # 複雑度評価（ルーターヒューリスティクス使用）
             assessed_complexity = await self._assess_complexity_v932(task)
             task.complexity = assessed_complexity
 
-            # Step 2: Get routing decision
-            routing_decision = self._get_routing_decision(task)
+            # BDI Step 2: 熟慮 - 願望選択（品質/コスト/セキュリティ）
+            selected_desire = None
+            if self.bdi_enabled:
+                selected_desire = await self._bdi_deliberate(task)
+                if selected_desire:
+                    logger.info(f"🎯 願望選択: {selected_desire.id} (優先度: {selected_desire.priority})")
 
-            # Step 3: Execute based on complexity
+            # BDI Step 3: 計画 - ルーティング決定
+            routing_decision = self._get_routing_decision(task)
+            intention = None
+            if self.bdi_enabled and selected_desire:
+                intention = await self._bdi_plan(task, selected_desire)
+                if intention:
+                    self.intention_stack.adopt_intention(intention)
+                    self.intention_stack.update_status(intention.id, "executing")
+
+            # BDI Step 4: 実行 - 複雑度に基づく処理
             if task.complexity == TaskComplexity.STRATEGIC:
+                logger.info("⚔️ 将軍自ら出陣。戦略的判断を行う。")
                 result = await self._handle_strategic_task(task)
             elif task.complexity == TaskComplexity.SIMPLE and self.orchestrator.get_client("groq"):
-                # Simple tasks can use Groq directly for speed
+                logger.info("⚡ 簡易任務 → Groq即応")
                 result = await self._handle_simple_task_groq(task)
             else:
-                # Delegate to Karo for tactical execution
+                logger.info(f"🚩 家老へ采配。複雑度: {task.complexity.value}")
                 result = await self.karo.execute_task_with_routing(task, routing_decision)
-
-                # Adaptive quality review
                 result = await self._adaptive_review(task, result)
 
-            # Step 4: Log important decisions
+            # 意思決定ログ記録
             await self._log_decision(task, result)
 
-            # Update statistics
+            # 統計更新
             elapsed_time = time.time() - start_time
             self._update_routing_stats(task, elapsed_time, routing_decision)
 
-            logger.info(f"✅ Shogun task complete in {elapsed_time:.1f}s")
+            # BDI Step 5: 再考 - 結果に基づく信念更新
+            if self.bdi_enabled and intention:
+                await self._bdi_reconsider(task, intention, result)
+
+            result["execution_id"] = execution_id
+            result["elapsed_time"] = elapsed_time
+            logger.info(f"✅ 任務完了: {elapsed_time:.1f}秒")
             return result
 
         except Exception as e:
-            logger.error(f"❌ Shogun task processing failed: {e}")
-            return {"error": str(e), "status": "failed"}
+            logger.error(f"❌ 任務処理失敗: {e}")
+            return {"error": str(e), "status": "failed", "execution_id": execution_id}
 
     async def _assess_complexity_v932(self, task: Task) -> TaskComplexity:
         """
@@ -312,20 +344,19 @@ Respond with just: SIMPLE, MEDIUM, COMPLEX, or STRATEGIC
 
     async def _handle_simple_task_groq(self, task: Task) -> Dict[str, Any]:
         """
-        Handle simple tasks directly with Groq for instant response
+        簡易タスクをGroqで即時処理
 
-        Benefits:
-        - 300-500 tok/s (10-20x faster)
-        - Free tier (¥0)
-        - Power-saving (don't wake Qwen)
+        利点:
+        - 300-500 tok/s（10-20倍高速）
+        - 無料枠（¥0）
+        - 省電力（Qwenを起動しない）
         """
-
         groq_client = self.orchestrator.get_client("groq")
         if not groq_client:
-            # Fallback to Karo
+            # 家老へフォールバック
             return await self.karo.execute_task(task)
 
-        logger.info("⚡ Routing simple task to Groq for instant response")
+        logger.info("⚡ 簡易任務 → Groq即時応答")
 
         try:
             response = await groq_client.generate(
@@ -350,9 +381,9 @@ Respond with just: SIMPLE, MEDIUM, COMPLEX, or STRATEGIC
             return await self.karo.execute_task(task)
 
     async def _handle_strategic_task(self, task: Task) -> Dict[str, Any]:
-        """Handle strategic-level tasks directly with Claude + Opus review"""
+        """戦略的タスクの直接処理（Claude + Opusレビュー）"""
 
-        logger.info("🏆 Handling strategic task with Opus review")
+        logger.info("🏆 戦略的任務処理開始（Opusレビュー付き）")
 
         if not self.claude_client:
             return {"error": "No Claude client available", "status": "failed"}
@@ -695,8 +726,8 @@ Respond with "APPROVED" if acceptable, otherwise provide brief feedback.
     # ==================== BDI Framework Integration ====================
 
     def _initialize_bdi(self) -> None:
-        """Initialize BDI Framework components"""
-        logger.info("🧠 Initializing BDI Framework for Shogun...")
+        """BDIフレームワークコンポーネントの初期化"""
+        logger.info("🧠 将軍BDIフレームワーク初期化...")
 
         # Initialize core operational beliefs
         self.belief_base.add_belief(Belief(
