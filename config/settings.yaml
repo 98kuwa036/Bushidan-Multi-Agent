@@ -11,6 +11,68 @@ system:
   philosophy: "シンプル・イズ・ベスト + 実用性第一 + 汎用性の追求"
   subtitle: "4-Tier Hybrid Architecture with Intelligent Routing"
 
+# --- BDI Framework Configuration (v9.3.2+) ---
+bdi_framework:
+  enabled: true
+  description: "Belief-Desire-Intention framework for formal multi-agent theory"
+  default_mode: false  # Opt-in per task via context['use_bdi'] = True
+  
+  features:
+    - "Formal semantics: Perceive → Deliberate → Plan → Execute → Reconsider"
+    - "Belief management with consistency checking"
+    - "Goal-directed deliberation with priority-based selection"
+    - "Explicit plan generation and tracking"
+    - "Backward compatible with existing agents"
+  
+  shogun_bdi:
+    enabled: true
+    strategic_desires:
+      maintain_quality:
+        type: "maintenance"
+        priority: 0.9
+        description: "Maintain high quality standards (95+ points)"
+      optimize_cost:
+        type: "optimization"
+        priority: 0.7
+        description: "Optimize cost while maintaining quality"
+      learn_and_improve:
+        type: "exploration"
+        priority: 0.6
+        description: "Learn from past decisions"
+        requires: ["memory_mcp"]
+  
+  karo_bdi:
+    enabled: true
+    tactical_desires:
+      efficient_decomposition:
+        type: "optimization"
+        priority: 0.9
+        description: "Decompose tasks efficiently"
+      maximize_parallelization:
+        type: "optimization"
+        priority: 0.8
+        description: "Maximize parallel execution"
+      maintain_coordination_quality:
+        type: "maintenance"
+        priority: 0.85
+        description: "High quality result integration"
+  
+  taisho_bdi:
+    enabled: true
+    implementation_desires:
+      correct_implementation:
+        type: "achievement"
+        priority: 1.0
+        description: "Generate correct, working code"
+      efficient_execution:
+        type: "optimization"
+        priority: 0.7
+        description: "Minimize resource usage"
+      quality_validation:
+        type: "achievement"
+        priority: 0.85
+        description: "Validate code quality"
+
 # --- v9.3.2 革新的機能 ---
 v9_3_2_innovations:
   intelligent_routing:
