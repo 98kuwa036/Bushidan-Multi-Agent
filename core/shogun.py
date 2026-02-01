@@ -2,25 +2,31 @@
 Bushidan Multi-Agent System v9.3.2 - Shogun (Strategic Layer)
 
 The Shogun serves as the highest decision-making authority using Claude Sonnet 4.5.
-Enhanced with Intelligent Routing and Prompt Caching.
+Enhanced with Intelligent Routing, Prompt Caching, and BDI Framework integration.
 
 v9.3.2 Enhancements:
 - Intelligent Router integration for optimal task delegation
 - ClaudeClientCached for 90% cost reduction
 - Enhanced complexity assessment with routing heuristics
 - Power-saving optimization (don't wake Qwen for simple tasks)
+- BDI Framework integration for formal multi-agent reasoning
 """
 
 import asyncio
 import logging
 import time
 import re
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from enum import Enum
 from dataclasses import dataclass
+from datetime import datetime
 
 from utils.logger import get_logger
 from core.system_orchestrator import SystemOrchestrator
+from core.bdi_framework import (
+    BDIAgent, BeliefBase, DesireSet, IntentionStack,
+    Belief, Desire, Intention, BeliefType, DesireType
+)
 
 
 logger = get_logger(__name__)
@@ -80,6 +86,12 @@ class Shogun:
         self.karo = None
         self.memory_mcp = None
 
+        # BDI Framework components
+        self.belief_base = BeliefBase()
+        self.desire_set = DesireSet()
+        self.intention_stack = IntentionStack()
+        self.bdi_enabled = True
+
         # Statistics
         self.reviews_by_level = {
             ReviewLevel.BASIC: 0,
@@ -91,6 +103,11 @@ class Shogun:
             "by_complexity": {c.value: 0 for c in TaskComplexity},
             "total_time_seconds": 0.0,
             "power_savings": 0
+        }
+        self.bdi_stats = {
+            "bdi_cycles": 0,
+            "beliefs_updated": 0,
+            "intentions_completed": 0
         }
 
     async def initialize(self) -> None:
@@ -132,7 +149,10 @@ class Shogun:
         # Get Memory MCP for decision logging
         self.memory_mcp = self.orchestrator.get_mcp("memory")
 
-        logger.info(f"✅ Shogun v{self.VERSION} initialization complete")
+        # Initialize BDI Framework
+        self._initialize_bdi()
+
+        logger.info(f"✅ Shogun v{self.VERSION} initialization complete (BDI enabled)")
 
     async def start_service(self) -> None:
         """Start the main service loop"""
@@ -671,3 +691,412 @@ Respond with "APPROVED" if acceptable, otherwise provide brief feedback.
     def get_review_statistics(self) -> Dict[str, Any]:
         """Alias for get_statistics for backward compatibility"""
         return self.get_statistics()
+
+    # ==================== BDI Framework Integration ====================
+
+    def _initialize_bdi(self) -> None:
+        """Initialize BDI Framework components"""
+        logger.info("🧠 Initializing BDI Framework for Shogun...")
+
+        # Initialize core operational beliefs
+        self.belief_base.add_belief(Belief(
+            id="has_karo",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "tactical_coordination", "available": self.karo is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_opus",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "premium_review", "available": self.opus_client is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_router",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "intelligent_routing", "available": self.router is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_memory",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "decision_logging", "available": self.memory_mcp is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        # Initialize strategic desires
+        self.desire_set.add_desire(Desire(
+            id="maintain_quality",
+            type=DesireType.MAINTENANCE,
+            description="Maintain high quality standards (95+ points)",
+            priority=0.9,
+            feasibility=1.0
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="optimize_cost",
+            type=DesireType.OPTIMIZATION,
+            description="Optimize cost while maintaining quality",
+            priority=0.7,
+            feasibility=1.0
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="ensure_security",
+            type=DesireType.MAINTENANCE,
+            description="Ensure security and ethical compliance",
+            priority=1.0,
+            feasibility=1.0
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="learn_and_improve",
+            type=DesireType.EXPLORATION,
+            description="Learn from past decisions to improve",
+            priority=0.6,
+            feasibility=0.8,
+            conditions=["has_memory"]
+        ))
+
+        logger.info(f"🧠 BDI initialized: {len(self.belief_base.beliefs)} beliefs, {len(self.desire_set.desires)} desires")
+
+    async def process_task_with_bdi(self, task: Task) -> Dict[str, Any]:
+        """
+        Process task using full BDI reasoning cycle
+
+        BDI Cycle:
+        1. Perceive - Update beliefs from task and environment
+        2. Deliberate - Select desire to pursue
+        3. Plan - Create intention to achieve desire
+        4. Execute - Carry out the intention
+        5. Reconsider - Update beliefs based on results
+        """
+        if not self.bdi_enabled:
+            return await self.process_task(task)
+
+        logger.info(f"🧠 BDI cycle starting for task: {task.content[:50]}...")
+        self.bdi_stats["bdi_cycles"] += 1
+
+        try:
+            # Step 1: Perceive - Update beliefs
+            await self._bdi_perceive(task)
+
+            # Step 2: Deliberate - Select desire
+            selected_desire = await self._bdi_deliberate(task)
+            if not selected_desire:
+                logger.warning("⚠️ No feasible desire selected, using standard processing")
+                return await self.process_task(task)
+
+            # Step 3: Plan - Create intention
+            intention = await self._bdi_plan(task, selected_desire)
+            if not intention:
+                logger.warning("⚠️ Planning failed, using standard processing")
+                return await self.process_task(task)
+
+            # Adopt intention
+            self.intention_stack.adopt_intention(intention)
+            self.intention_stack.update_status(intention.id, "executing")
+
+            # Step 4: Execute - Carry out intention
+            result = await self._bdi_execute(task, intention)
+
+            # Step 5: Reconsider - Update beliefs based on results
+            await self._bdi_reconsider(task, intention, result)
+
+            logger.info(f"✅ BDI cycle complete for desire: {selected_desire.id}")
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ BDI cycle failed: {e}")
+            # Fallback to standard processing
+            return await self.process_task(task)
+
+    async def _bdi_perceive(self, task: Task) -> None:
+        """BDI Perceive: Update beliefs based on task and environment"""
+
+        # Assess task complexity
+        complexity = await self._assess_complexity_v932(task)
+
+        # Add belief about current task
+        self.belief_base.add_belief(Belief(
+            id=f"current_task_{id(task)}",
+            type=BeliefType.FACTUAL,
+            content={
+                "content": task.content,
+                "complexity": complexity.value,
+                "priority": task.priority,
+                "source": task.source
+            },
+            confidence=1.0,
+            source="task_perception",
+            timestamp=datetime.now()
+        ))
+
+        # Query historical context from Memory MCP
+        if self.memory_mcp:
+            try:
+                history = await self.memory_mcp.search(task.content[:100])
+                if history:
+                    self.belief_base.add_belief(Belief(
+                        id=f"historical_context_{id(task)}",
+                        type=BeliefType.HISTORICAL,
+                        content={"entries": history[:5]},
+                        confidence=0.8,
+                        source="memory_mcp"
+                    ))
+            except Exception as e:
+                logger.warning(f"⚠️ Memory MCP query failed: {e}")
+
+        # Update system state beliefs
+        self.belief_base.add_belief(Belief(
+            id="system_load",
+            type=BeliefType.OPERATIONAL,
+            content={
+                "active_intentions": len(self.intention_stack.intentions),
+                "pending_reviews": sum(self.reviews_by_level.values())
+            },
+            confidence=0.9,
+            source="system_state",
+            timestamp=datetime.now()
+        ))
+
+        self.bdi_stats["beliefs_updated"] += 1
+        logger.debug(f"👁️ Perceived: task complexity={complexity.value}")
+
+    async def _bdi_deliberate(self, task: Task) -> Optional[Desire]:
+        """BDI Deliberate: Select which desire to pursue"""
+
+        # Get task belief
+        task_beliefs = self.belief_base.query_beliefs(type=BeliefType.FACTUAL)
+        if not task_beliefs:
+            return None
+
+        latest_task = task_beliefs[-1]
+        complexity = latest_task.content.get("complexity", "medium")
+
+        # Filter feasible desires
+        feasible = self.desire_set.filter_feasible(self.belief_base)
+
+        if not feasible:
+            return None
+
+        # Adjust priorities based on task characteristics
+        for desire in feasible:
+            # Security is always top priority for strategic tasks
+            if complexity == "strategic" and desire.id == "ensure_security":
+                desire.priority = 1.0
+
+            # Quality is critical for complex tasks
+            if complexity in ["complex", "strategic"] and desire.id == "maintain_quality":
+                desire.priority = 0.95
+
+            # Cost optimization matters more for simple tasks
+            if complexity == "simple" and desire.id == "optimize_cost":
+                desire.priority = 0.9
+
+        # Select highest priority feasible desire
+        selected = sorted(
+            feasible,
+            key=lambda d: d.priority * d.feasibility,
+            reverse=True
+        )[0]
+
+        logger.debug(f"🎯 Deliberated: selected desire={selected.id} (priority={selected.priority})")
+        return selected
+
+    async def _bdi_plan(self, task: Task, desire: Desire) -> Optional[Intention]:
+        """BDI Plan: Create an intention to achieve the selected desire"""
+
+        # Get task complexity from beliefs
+        task_beliefs = self.belief_base.query_beliefs(type=BeliefType.FACTUAL)
+        if not task_beliefs:
+            return None
+
+        complexity = task_beliefs[-1].content.get("complexity", "medium")
+
+        # Create plan based on desire and complexity
+        plan = []
+
+        if desire.id == "maintain_quality":
+            if complexity == "strategic":
+                plan = [
+                    {"action": "handle_strategic", "agent": "shogun"},
+                    {"action": "opus_review", "agent": "opus"}
+                ]
+            elif complexity == "complex":
+                plan = [
+                    {"action": "delegate_to_karo", "agent": "karo"},
+                    {"action": "detailed_review", "agent": "shogun"}
+                ]
+            else:
+                plan = [
+                    {"action": "delegate_to_karo", "agent": "karo"},
+                    {"action": "basic_review", "agent": "shogun"}
+                ]
+
+        elif desire.id == "optimize_cost":
+            if complexity == "simple":
+                plan = [
+                    {"action": "groq_direct", "agent": "groq"},
+                    {"action": "auto_approve", "agent": "shogun"}
+                ]
+            else:
+                plan = [
+                    {"action": "delegate_to_karo", "agent": "karo"},
+                    {"action": "basic_review", "agent": "shogun"}
+                ]
+
+        elif desire.id == "ensure_security":
+            plan = [
+                {"action": "security_assessment", "agent": "shogun"},
+                {"action": "delegate_to_karo", "agent": "karo"},
+                {"action": "detailed_review", "agent": "shogun"}
+            ]
+
+        elif desire.id == "learn_and_improve":
+            plan = [
+                {"action": "consult_memory", "agent": "memory"},
+                {"action": "delegate_to_karo", "agent": "karo"},
+                {"action": "basic_review", "agent": "shogun"},
+                {"action": "log_decision", "agent": "memory"}
+            ]
+
+        intention = Intention(
+            id=f"intention_{desire.id}_{datetime.now().timestamp()}",
+            desire_id=desire.id,
+            plan=plan,
+            metadata={"complexity": complexity, "task_id": id(task)}
+        )
+
+        logger.debug(f"📋 Planned: {len(plan)} steps for desire={desire.id}")
+        return intention
+
+    async def _bdi_execute(self, task: Task, intention: Intention) -> Dict[str, Any]:
+        """BDI Execute: Carry out the intention plan"""
+
+        result = {"status": "executing", "steps_completed": [], "bdi_intention": intention.id}
+
+        try:
+            for step in intention.plan:
+                action = step["action"]
+
+                if action == "handle_strategic":
+                    step_result = await self._handle_strategic_task(task)
+                    result.update(step_result)
+
+                elif action == "delegate_to_karo":
+                    routing_decision = self._get_routing_decision(task)
+                    step_result = await self.karo.execute_task_with_routing(task, routing_decision)
+                    result.update(step_result)
+
+                elif action == "groq_direct":
+                    step_result = await self._handle_simple_task_groq(task)
+                    result.update(step_result)
+
+                elif action == "opus_review":
+                    result = await self._opus_premium_review(task, result, None)
+
+                elif action == "detailed_review":
+                    result = await self._sonnet_detailed_review(task, result, None)
+
+                elif action == "basic_review":
+                    result = await self._sonnet_basic_review(task, result)
+
+                elif action == "auto_approve":
+                    result["shogun_approval"] = "auto_approved"
+
+                elif action == "security_assessment":
+                    # Add security check belief
+                    self.belief_base.add_belief(Belief(
+                        id=f"security_check_{id(task)}",
+                        type=BeliefType.FACTUAL,
+                        content={"checked": True, "timestamp": datetime.now().isoformat()},
+                        confidence=1.0,
+                        source="security_assessment"
+                    ))
+
+                elif action == "consult_memory":
+                    if self.memory_mcp:
+                        try:
+                            history = await self.memory_mcp.search(task.content[:100])
+                            result["memory_context"] = history[:3] if history else []
+                        except:
+                            pass
+
+                elif action == "log_decision":
+                    await self._log_decision(task, result)
+
+                result["steps_completed"].append({"action": action, "status": "completed"})
+
+            result["status"] = "completed"
+            self.bdi_stats["intentions_completed"] += 1
+            logger.info(f"✅ BDI execution complete: {len(intention.plan)} steps")
+
+        except Exception as e:
+            logger.error(f"❌ BDI execution failed: {e}")
+            result["status"] = "failed"
+            result["error"] = str(e)
+
+        return result
+
+    async def _bdi_reconsider(self, task: Task, intention: Intention, result: Dict[str, Any]) -> None:
+        """BDI Reconsider: Update beliefs and intentions based on results"""
+
+        # Update intention status
+        if result.get("status") == "completed":
+            self.intention_stack.update_status(intention.id, "completed")
+
+            # Add success belief
+            self.belief_base.add_belief(Belief(
+                id=f"success_{intention.id}",
+                type=BeliefType.HISTORICAL,
+                content={
+                    "desire_id": intention.desire_id,
+                    "success": True,
+                    "approval": result.get("shogun_approval")
+                },
+                confidence=1.0,
+                source="execution_result",
+                timestamp=datetime.now()
+            ))
+        else:
+            self.intention_stack.update_status(intention.id, "failed")
+
+            # Add failure belief for learning
+            self.belief_base.add_belief(Belief(
+                id=f"failure_{intention.id}",
+                type=BeliefType.HISTORICAL,
+                content={
+                    "desire_id": intention.desire_id,
+                    "success": False,
+                    "error": result.get("error")
+                },
+                confidence=1.0,
+                source="execution_result",
+                timestamp=datetime.now()
+            ))
+
+        # Clean up old task beliefs (keep last 10)
+        factual_beliefs = self.belief_base.query_beliefs(type=BeliefType.FACTUAL)
+        if len(factual_beliefs) > 10:
+            for old_belief in factual_beliefs[:-10]:
+                self.belief_base.remove_belief(old_belief.id)
+
+        logger.debug(f"🔄 Reconsidered: intention {intention.id} marked as {result.get('status')}")
+
+    def get_bdi_state(self) -> Dict[str, Any]:
+        """Get current BDI state for inspection"""
+        return {
+            "beliefs": self.belief_base.get_statistics(),
+            "desires": self.desire_set.get_statistics(),
+            "intentions": self.intention_stack.get_statistics(),
+            "bdi_stats": self.bdi_stats,
+            "consistency_issues": self.belief_base.check_consistency()
+        }

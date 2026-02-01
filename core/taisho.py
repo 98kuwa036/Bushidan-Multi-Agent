@@ -11,6 +11,7 @@ v9.3.2 Enhancements:
 - Gemini 3.0 Flash as final defense line
 - Self-healing execution (Layer 2)
 - DSPy validation (Layer 3)
+- BDI Framework integration for formal implementation reasoning
 """
 
 import asyncio
@@ -20,9 +21,14 @@ import time
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from enum import Enum
+from datetime import datetime
 
 from utils.logger import get_logger
 from core.system_orchestrator import SystemOrchestrator
+from core.bdi_framework import (
+    BeliefBase, DesireSet, IntentionStack,
+    Belief, Desire, Intention, BeliefType, DesireType
+)
 
 
 logger = get_logger(__name__)
@@ -94,6 +100,12 @@ class Taisho:
         self.self_healing = None
         self.validator = None
 
+        # BDI Framework components
+        self.belief_base = BeliefBase()
+        self.desire_set = DesireSet()
+        self.intention_stack = IntentionStack()
+        self.bdi_enabled = True
+
         # Statistics
         self.execution_stats = {
             "total_tasks": 0,
@@ -103,6 +115,11 @@ class Taisho:
             "total_failures": 0,
             "total_time_seconds": 0.0,
             "context_overflows": 0
+        }
+        self.bdi_stats = {
+            "bdi_cycles": 0,
+            "self_healing_applied": 0,
+            "validations_passed": 0
         }
 
     async def initialize(self) -> None:
@@ -144,7 +161,10 @@ class Taisho:
         # Initialize error handling layers
         await self._initialize_error_handling()
 
-        logger.info(f"✅ Taisho v{self.VERSION} initialization complete")
+        # Initialize BDI Framework
+        self._initialize_bdi()
+
+        logger.info(f"✅ Taisho v{self.VERSION} initialization complete (BDI enabled)")
         self._log_fallback_chain_status()
 
     async def _initialize_error_handling(self) -> None:
@@ -707,4 +727,386 @@ Create a brief implementation plan with:
         if self.alibaba_qwen_client and hasattr(self.alibaba_qwen_client, 'get_statistics'):
             stats["kagemusha_statistics"] = self.alibaba_qwen_client.get_statistics()
 
+        # Add BDI stats
+        stats["bdi_stats"] = self.bdi_stats
+        stats["bdi_state"] = self.get_bdi_state()
+
         return stats
+
+    # ==================== BDI Framework Integration ====================
+
+    def _initialize_bdi(self) -> None:
+        """Initialize BDI Framework for implementation layer"""
+        logger.info("🧠 Initializing BDI Framework for Taisho...")
+
+        # Initialize operational beliefs about implementation capabilities
+        self.belief_base.add_belief(Belief(
+            id="has_qwen3",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "local_inference", "available": self.qwen3_client is not None, "cost": 0},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_kagemusha",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "cloud_inference", "available": self.alibaba_qwen_client is not None, "context_limit": 32000},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_gemini3",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "final_defense", "available": self.gemini3_client is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_self_healing",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "error_correction", "available": self.self_healing is not None, "max_attempts": 3},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_validator",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "code_validation", "available": self.validator is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        mcp_tools = []
+        if self.filesystem_mcp:
+            mcp_tools.append("filesystem")
+        if self.git_mcp:
+            mcp_tools.append("git")
+        if self.memory_mcp:
+            mcp_tools.append("memory")
+
+        self.belief_base.add_belief(Belief(
+            id="available_mcp_tools",
+            type=BeliefType.OPERATIONAL,
+            content={"tools": mcp_tools, "count": len(mcp_tools)},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        # Initialize implementation desires
+        self.desire_set.add_desire(Desire(
+            id="correct_implementation",
+            type=DesireType.ACHIEVEMENT,
+            description="Generate syntactically and semantically correct code",
+            priority=1.0,
+            feasibility=0.95,
+            conditions=["has_qwen3"]
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="efficient_execution",
+            type=DesireType.OPTIMIZATION,
+            description="Minimize resource usage and execution time",
+            priority=0.7,
+            feasibility=0.9
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="quality_validation",
+            type=DesireType.ACHIEVEMENT,
+            description="Validate code quality before submission",
+            priority=0.85,
+            feasibility=1.0,
+            conditions=["has_validator"]
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="self_healing_recovery",
+            type=DesireType.MAINTENANCE,
+            description="Automatically fix errors through self-healing",
+            priority=0.8,
+            feasibility=0.9,
+            conditions=["has_self_healing"]
+        ))
+
+        logger.info(f"🧠 Taisho BDI initialized: {len(self.belief_base.beliefs)} beliefs, {len(self.desire_set.desires)} desires")
+
+    async def execute_implementation_with_bdi(self, task: ImplementationTask) -> Dict[str, Any]:
+        """Execute implementation using BDI reasoning cycle"""
+        if not self.bdi_enabled:
+            return await self.execute_implementation(task)
+
+        logger.info(f"🧠 Taisho BDI cycle starting...")
+        self.bdi_stats["bdi_cycles"] += 1
+
+        try:
+            # Perceive: Analyze task and gather context
+            await self._bdi_perceive(task)
+
+            # Deliberate: Select implementation desire
+            selected_desire = await self._bdi_deliberate(task)
+            if not selected_desire:
+                return await self.execute_implementation(task)
+
+            # Plan: Create implementation intention
+            intention = await self._bdi_plan(task, selected_desire)
+            if not intention:
+                return await self.execute_implementation(task)
+
+            self.intention_stack.adopt_intention(intention)
+            self.intention_stack.update_status(intention.id, "executing")
+
+            # Execute: Carry out the implementation plan
+            result = await self._bdi_execute(task, intention)
+
+            # Reconsider: Update beliefs based on results
+            await self._bdi_reconsider(intention, result)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Taisho BDI cycle failed: {e}")
+            return await self.execute_implementation(task)
+
+    async def _bdi_perceive(self, task: ImplementationTask) -> None:
+        """Perceive task requirements and context"""
+
+        # Gather context
+        context = await self._gather_context(task)
+
+        # Estimate context size
+        context_size = self._estimate_context_size(task, context)
+
+        # Add task belief
+        self.belief_base.add_belief(Belief(
+            id=f"impl_task_{id(task)}",
+            type=BeliefType.FACTUAL,
+            content={
+                "content": task.content[:200],
+                "mode": task.mode.value,
+                "context_size": context_size,
+                "requires_overflow": context_size > self.LOCAL_CONTEXT_LIMIT,
+                "files_needed": task.files_needed or []
+            },
+            confidence=1.0,
+            source="task_analysis",
+            timestamp=datetime.now()
+        ))
+
+        # Add context belief
+        if context.get("memory_entries"):
+            self.belief_base.add_belief(Belief(
+                id=f"impl_context_{id(task)}",
+                type=BeliefType.CONTEXTUAL,
+                content={"entries_count": len(context["memory_entries"])},
+                confidence=0.8,
+                source="memory_mcp"
+            ))
+
+        logger.debug(f"👁️ Taisho perceived: context_size={context_size}, overflow={context_size > self.LOCAL_CONTEXT_LIMIT}")
+
+    async def _bdi_deliberate(self, task: ImplementationTask) -> Optional[Desire]:
+        """Select implementation desire based on task requirements"""
+
+        feasible = self.desire_set.filter_feasible(self.belief_base)
+        if not feasible:
+            return None
+
+        # Get task info
+        task_beliefs = self.belief_base.query_beliefs(type=BeliefType.FACTUAL)
+        if task_beliefs:
+            task_info = task_beliefs[-1].content
+            mode = task_info.get("mode", "standard")
+            requires_overflow = task_info.get("requires_overflow", False)
+
+            # Adjust priorities based on task
+            for desire in feasible:
+                if mode == "heavy" and desire.id == "correct_implementation":
+                    desire.priority = 1.0
+
+                if mode == "lightweight" and desire.id == "efficient_execution":
+                    desire.priority = 0.9
+
+                if requires_overflow and desire.id == "self_healing_recovery":
+                    desire.priority = 0.95  # More likely to need healing with complex context
+
+        selected = sorted(feasible, key=lambda d: d.priority * d.feasibility, reverse=True)[0]
+        logger.debug(f"🎯 Taisho selected desire: {selected.id}")
+        return selected
+
+    async def _bdi_plan(self, task: ImplementationTask, desire: Desire) -> Optional[Intention]:
+        """Create implementation plan"""
+
+        task_beliefs = self.belief_base.query_beliefs(type=BeliefType.FACTUAL)
+        if not task_beliefs:
+            return None
+
+        task_info = task_beliefs[-1].content
+        requires_overflow = task_info.get("requires_overflow", False)
+
+        plan = []
+
+        if desire.id == "correct_implementation":
+            plan = [
+                {"action": "gather_context", "agent": "taisho"},
+                {"action": "plan_implementation", "agent": "taisho"},
+                {"action": "execute_with_fallback", "agent": "llm"},
+                {"action": "validate_result", "agent": "validator"},
+                {"action": "save_files", "agent": "filesystem_mcp"}
+            ]
+
+        elif desire.id == "efficient_execution":
+            if requires_overflow:
+                plan = [
+                    {"action": "execute_with_kagemusha", "agent": "kagemusha"},
+                    {"action": "save_files", "agent": "filesystem_mcp"}
+                ]
+            else:
+                plan = [
+                    {"action": "execute_with_qwen3", "agent": "qwen3"},
+                    {"action": "save_files", "agent": "filesystem_mcp"}
+                ]
+
+        elif desire.id == "quality_validation":
+            plan = [
+                {"action": "gather_context", "agent": "taisho"},
+                {"action": "execute_with_fallback", "agent": "llm"},
+                {"action": "comprehensive_validation", "agent": "validator"},
+                {"action": "self_healing_if_needed", "agent": "self_healing"},
+                {"action": "save_files", "agent": "filesystem_mcp"},
+                {"action": "git_commit", "agent": "git_mcp"}
+            ]
+
+        elif desire.id == "self_healing_recovery":
+            plan = [
+                {"action": "execute_with_fallback", "agent": "llm"},
+                {"action": "self_healing_loop", "agent": "self_healing"},
+                {"action": "validate_result", "agent": "validator"},
+                {"action": "save_files", "agent": "filesystem_mcp"}
+            ]
+
+        intention = Intention(
+            id=f"taisho_intention_{datetime.now().timestamp()}",
+            desire_id=desire.id,
+            plan=plan,
+            metadata={"requires_overflow": requires_overflow}
+        )
+
+        logger.debug(f"📋 Taisho planned: {len(plan)} steps")
+        return intention
+
+    async def _bdi_execute(self, task: ImplementationTask, intention: Intention) -> Dict[str, Any]:
+        """Execute the implementation plan"""
+
+        result = {"status": "executing", "steps_completed": [], "bdi_intention": intention.id}
+
+        try:
+            context = {}
+            plan_result = {}
+            impl_result = {}
+
+            for step in intention.plan:
+                action = step["action"]
+
+                if action == "gather_context":
+                    context = await self._gather_context(task)
+                    result["context_gathered"] = True
+
+                elif action == "plan_implementation":
+                    plan_result = await self._plan_implementation(task, context)
+                    result["plan"] = plan_result.get("plan_text", "")
+
+                elif action == "execute_with_fallback":
+                    context_size = self._estimate_context_size(task, context)
+                    impl_result, fallback_status = await self._execute_with_fallback(
+                        task, plan_result, context, context_size
+                    )
+                    result["implementation"] = impl_result
+                    result["fallback_status"] = fallback_status.value
+
+                elif action == "execute_with_qwen3":
+                    impl_result = await self._execute_with_qwen3(task, plan_result, context)
+                    result["implementation"] = impl_result
+
+                elif action == "execute_with_kagemusha":
+                    impl_result = await self._execute_with_kagemusha(task, plan_result, context)
+                    result["implementation"] = impl_result
+
+                elif action in ["validate_result", "comprehensive_validation"]:
+                    validation = await self._validate_implementation(impl_result)
+                    result["validation"] = validation
+                    if validation.get("valid"):
+                        self.bdi_stats["validations_passed"] += 1
+
+                elif action == "self_healing_if_needed":
+                    if not result.get("validation", {}).get("valid", True):
+                        code = impl_result.get("implementation", "")
+                        if code:
+                            healing_result = await self.execute_code_with_healing(code, task.content)
+                            if healing_result.get("status") == "success":
+                                self.bdi_stats["self_healing_applied"] += 1
+
+                elif action == "self_healing_loop":
+                    code = impl_result.get("implementation", "")
+                    if code:
+                        healing_result = await self.execute_code_with_healing(code, task.content)
+                        result["self_healing"] = healing_result
+                        if healing_result.get("status") == "success":
+                            self.bdi_stats["self_healing_applied"] += 1
+
+                elif action == "save_files":
+                    if impl_result.get("implementation"):
+                        files = await self._parse_and_save_files(impl_result["implementation"])
+                        result["files_created"] = files
+
+                elif action == "git_commit":
+                    if result.get("validation", {}).get("valid", False):
+                        await self._commit_changes(task, impl_result)
+                        result["git_committed"] = True
+
+                result["steps_completed"].append({"action": action, "status": "completed"})
+
+            result["status"] = "completed"
+            result["handled_by"] = "taisho"
+            logger.info(f"✅ Taisho BDI execution complete")
+
+        except Exception as e:
+            logger.error(f"❌ Taisho BDI execution failed: {e}")
+            result["status"] = "failed"
+            result["error"] = str(e)
+
+        return result
+
+    async def _bdi_reconsider(self, intention: Intention, result: Dict[str, Any]) -> None:
+        """Update beliefs based on execution results"""
+
+        if result.get("status") == "completed":
+            self.intention_stack.update_status(intention.id, "completed")
+
+            self.belief_base.add_belief(Belief(
+                id=f"impl_success_{intention.id}",
+                type=BeliefType.HISTORICAL,
+                content={
+                    "desire_id": intention.desire_id,
+                    "fallback_used": result.get("fallback_status", "local_qwen3_success"),
+                    "files_created": len(result.get("files_created", [])),
+                    "validation_passed": result.get("validation", {}).get("valid", False)
+                },
+                confidence=1.0,
+                source="execution_result",
+                timestamp=datetime.now()
+            ))
+        else:
+            self.intention_stack.update_status(intention.id, "failed")
+            self.execution_stats["total_failures"] += 1
+
+    def get_bdi_state(self) -> Dict[str, Any]:
+        """Get current BDI state"""
+        return {
+            "beliefs": self.belief_base.get_statistics(),
+            "desires": self.desire_set.get_statistics(),
+            "intentions": self.intention_stack.get_statistics()
+        }

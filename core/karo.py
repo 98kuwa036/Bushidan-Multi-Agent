@@ -10,6 +10,7 @@ v9.3.2 Enhancements:
 - Routing decision execution from Shogun
 - Dynamic client selection based on task complexity
 - Taisho coordination with fallback chain
+- BDI Framework integration for formal tactical reasoning
 """
 
 import asyncio
@@ -19,9 +20,14 @@ import time
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass
 from enum import Enum
+from datetime import datetime
 
 from utils.logger import get_logger
 from core.system_orchestrator import SystemOrchestrator
+from core.bdi_framework import (
+    BeliefBase, DesireSet, IntentionStack,
+    Belief, Desire, Intention, BeliefType, DesireType
+)
 
 
 logger = get_logger(__name__)
@@ -94,12 +100,23 @@ class Karo:
         self.memory_mcp = None
         self.web_search_mcp = None
 
+        # BDI Framework components
+        self.belief_base = BeliefBase()
+        self.desire_set = DesireSet()
+        self.intention_stack = IntentionStack()
+        self.bdi_enabled = True
+
         # Statistics
         self.execution_stats = {
             "total_tasks": 0,
             "by_delegation": {d.value: 0 for d in TaskDelegation},
             "fallback_count": 0,
             "total_time_seconds": 0.0
+        }
+        self.bdi_stats = {
+            "bdi_cycles": 0,
+            "decompositions": 0,
+            "parallel_executions": 0
         }
 
     async def initialize(self) -> None:
@@ -147,7 +164,10 @@ class Karo:
         self.memory_mcp = self.orchestrator.get_mcp("memory")
         self.web_search_mcp = self.orchestrator.get_mcp("web_search")
 
-        logger.info(f"✅ Karo v{self.VERSION} initialization complete")
+        # Initialize BDI Framework
+        self._initialize_bdi()
+
+        logger.info(f"✅ Karo v{self.VERSION} initialization complete (BDI enabled)")
 
     async def execute_task(self, task) -> Dict[str, Any]:
         """
@@ -575,4 +595,339 @@ Provide a synthesized, coherent final result.
         if self.groq_client and hasattr(self.groq_client, 'get_statistics'):
             stats["groq_statistics"] = self.groq_client.get_statistics()
 
+        # Add BDI stats
+        stats["bdi_stats"] = self.bdi_stats
+        stats["bdi_state"] = self.get_bdi_state()
+
         return stats
+
+    # ==================== BDI Framework Integration ====================
+
+    def _initialize_bdi(self) -> None:
+        """Initialize BDI Framework for tactical coordination"""
+        logger.info("🧠 Initializing BDI Framework for Karo...")
+
+        # Initialize operational beliefs about available resources
+        self.belief_base.add_belief(Belief(
+            id="has_taisho",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "implementation", "available": self.taisho is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_ashigaru",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "parallel_execution", "available": self.ashigaru is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_groq",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "instant_response", "available": self.groq_client is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_gemini3",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "final_defense", "available": self.gemini3_client is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        ashigaru_types = ["filesystem", "git", "memory", "web_search"]
+        self.belief_base.add_belief(Belief(
+            id="available_ashigaru_types",
+            type=BeliefType.OPERATIONAL,
+            content={"types": ashigaru_types, "count": len(ashigaru_types)},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        # Initialize tactical desires
+        self.desire_set.add_desire(Desire(
+            id="efficient_decomposition",
+            type=DesireType.OPTIMIZATION,
+            description="Decompose tasks efficiently for parallel execution",
+            priority=0.9,
+            feasibility=1.0,
+            conditions=["has_ashigaru"]
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="maximize_parallelization",
+            type=DesireType.OPTIMIZATION,
+            description="Maximize parallel execution of subtasks",
+            priority=0.8,
+            feasibility=0.9,
+            conditions=["has_ashigaru"]
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="maintain_coordination_quality",
+            type=DesireType.MAINTENANCE,
+            description="Maintain high quality in result integration",
+            priority=0.85,
+            feasibility=1.0
+        ))
+
+        self.desire_set.add_desire(Desire(
+            id="minimize_fallbacks",
+            type=DesireType.OPTIMIZATION,
+            description="Minimize fallback chain activations",
+            priority=0.7,
+            feasibility=0.8
+        ))
+
+        logger.info(f"🧠 Karo BDI initialized: {len(self.belief_base.beliefs)} beliefs, {len(self.desire_set.desires)} desires")
+
+    async def execute_task_with_bdi(self, task, routing_decision=None) -> Dict[str, Any]:
+        """Execute task using BDI reasoning cycle"""
+        if not self.bdi_enabled:
+            return await self.execute_task_with_routing(task, routing_decision)
+
+        logger.info(f"🧠 Karo BDI cycle starting...")
+        self.bdi_stats["bdi_cycles"] += 1
+
+        try:
+            # Perceive: Update beliefs about the task
+            await self._bdi_perceive(task)
+
+            # Deliberate: Select tactical desire
+            selected_desire = await self._bdi_deliberate(task)
+            if not selected_desire:
+                return await self.execute_task_with_routing(task, routing_decision)
+
+            # Plan: Create coordination intention
+            intention = await self._bdi_plan(task, selected_desire)
+            if not intention:
+                return await self.execute_task_with_routing(task, routing_decision)
+
+            self.intention_stack.adopt_intention(intention)
+            self.intention_stack.update_status(intention.id, "executing")
+
+            # Execute: Carry out the coordination plan
+            result = await self._bdi_execute(task, intention, routing_decision)
+
+            # Reconsider: Update beliefs based on results
+            await self._bdi_reconsider(intention, result)
+
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Karo BDI cycle failed: {e}")
+            return await self.execute_task_with_routing(task, routing_decision)
+
+    async def _bdi_perceive(self, task) -> None:
+        """Perceive task characteristics and environment"""
+
+        # Estimate subtask count
+        subtask_estimate = self._estimate_subtask_count(task)
+
+        # Add task belief
+        self.belief_base.add_belief(Belief(
+            id=f"task_info_{id(task)}",
+            type=BeliefType.FACTUAL,
+            content={
+                "content": task.content[:200],
+                "complexity": getattr(task, 'complexity', 'unknown'),
+                "estimated_subtasks": subtask_estimate,
+                "parallelizable": subtask_estimate > 1
+            },
+            confidence=0.85,
+            source="task_analysis",
+            timestamp=datetime.now()
+        ))
+
+        # Check memory for context
+        if self.memory_mcp:
+            try:
+                context = await self.memory_mcp.search(task.content[:100])
+                if context:
+                    self.belief_base.add_belief(Belief(
+                        id=f"task_context_{id(task)}",
+                        type=BeliefType.CONTEXTUAL,
+                        content={"entries": context[:3]},
+                        confidence=0.8,
+                        source="memory_mcp"
+                    ))
+            except:
+                pass
+
+        logger.debug(f"👁️ Karo perceived: ~{subtask_estimate} subtasks")
+
+    def _estimate_subtask_count(self, task) -> int:
+        """Estimate number of subtasks for decomposition"""
+        content = task.content.lower()
+
+        action_keywords = ["implement", "create", "update", "test", "document",
+                         "refactor", "add", "modify", "fix", "analyze"]
+        action_count = sum(1 for kw in action_keywords if kw in content)
+
+        return max(1, min(action_count, 5))
+
+    async def _bdi_deliberate(self, task) -> Optional[Desire]:
+        """Select tactical desire based on task characteristics"""
+
+        feasible = self.desire_set.filter_feasible(self.belief_base)
+        if not feasible:
+            return None
+
+        # Get task info
+        task_beliefs = self.belief_base.query_beliefs(type=BeliefType.FACTUAL)
+        if task_beliefs:
+            task_info = task_beliefs[-1].content
+            parallelizable = task_info.get("parallelizable", False)
+            subtask_count = task_info.get("estimated_subtasks", 1)
+
+            # Adjust priorities based on task
+            for desire in feasible:
+                if desire.id == "maximize_parallelization":
+                    desire.feasibility = 0.9 if parallelizable else 0.3
+
+                if desire.id == "efficient_decomposition" and subtask_count >= 3:
+                    desire.priority = 0.95
+
+        selected = sorted(feasible, key=lambda d: d.priority * d.feasibility, reverse=True)[0]
+        logger.debug(f"🎯 Karo selected desire: {selected.id}")
+        return selected
+
+    async def _bdi_plan(self, task, desire: Desire) -> Optional[Intention]:
+        """Create tactical coordination plan"""
+
+        task_beliefs = self.belief_base.query_beliefs(type=BeliefType.FACTUAL)
+        if not task_beliefs:
+            return None
+
+        task_info = task_beliefs[-1].content
+        subtask_count = task_info.get("estimated_subtasks", 1)
+
+        plan = []
+
+        if desire.id == "efficient_decomposition" and subtask_count > 1:
+            plan = [
+                {"action": "consult_memory", "agent": "memory"},
+                {"action": "decompose_task", "agent": "karo"},
+                {"action": "execute_subtasks", "agent": "ashigaru"},
+                {"action": "integrate_results", "agent": "karo"}
+            ]
+            self.bdi_stats["decompositions"] += 1
+
+        elif desire.id == "maximize_parallelization":
+            plan = [
+                {"action": "decompose_task", "agent": "karo"},
+                {"action": "parallel_execution", "agent": "ashigaru"},
+                {"action": "integrate_results", "agent": "karo"}
+            ]
+            self.bdi_stats["parallel_executions"] += 1
+
+        elif desire.id == "maintain_coordination_quality":
+            plan = [
+                {"action": "delegate_to_taisho", "agent": "taisho"},
+                {"action": "validate_result", "agent": "karo"}
+            ]
+
+        else:
+            plan = [
+                {"action": "direct_execution", "agent": "taisho"}
+            ]
+
+        intention = Intention(
+            id=f"karo_intention_{datetime.now().timestamp()}",
+            desire_id=desire.id,
+            plan=plan,
+            metadata={"subtask_count": subtask_count}
+        )
+
+        logger.debug(f"📋 Karo planned: {len(plan)} steps")
+        return intention
+
+    async def _bdi_execute(self, task, intention: Intention, routing_decision) -> Dict[str, Any]:
+        """Execute the tactical coordination plan"""
+
+        result = {"status": "executing", "steps_completed": [], "bdi_intention": intention.id}
+        subtasks = []
+        subtask_results = []
+
+        try:
+            for step in intention.plan:
+                action = step["action"]
+
+                if action == "consult_memory":
+                    context = await self._consult_memory(task)
+                    result["memory_context"] = context
+
+                elif action == "decompose_task":
+                    context = result.get("memory_context")
+                    subtasks = await self._decompose_task(task, context)
+                    result["subtask_count"] = len(subtasks)
+
+                elif action in ["execute_subtasks", "parallel_execution"]:
+                    if subtasks:
+                        subtask_results = await self._execute_subtasks(subtasks)
+                    else:
+                        taisho_result = await self._execute_with_taisho(task, routing_decision)
+                        subtask_results = [taisho_result]
+
+                elif action == "integrate_results":
+                    if subtask_results:
+                        integrated = await self._integrate_results(task, subtask_results)
+                        result.update(integrated)
+
+                elif action == "delegate_to_taisho":
+                    taisho_result = await self._execute_with_taisho(task, routing_decision)
+                    result.update(taisho_result)
+
+                elif action == "direct_execution":
+                    direct_result = await self._execute_with_taisho(task, routing_decision)
+                    result.update(direct_result)
+
+                elif action == "validate_result":
+                    result["validated"] = True
+
+                result["steps_completed"].append({"action": action, "status": "completed"})
+
+            result["status"] = "completed"
+            logger.info(f"✅ Karo BDI execution complete")
+
+        except Exception as e:
+            logger.error(f"❌ Karo BDI execution failed: {e}")
+            result["status"] = "failed"
+            result["error"] = str(e)
+
+        return result
+
+    async def _bdi_reconsider(self, intention: Intention, result: Dict[str, Any]) -> None:
+        """Update beliefs based on execution results"""
+
+        if result.get("status") == "completed":
+            self.intention_stack.update_status(intention.id, "completed")
+
+            self.belief_base.add_belief(Belief(
+                id=f"coordination_success_{intention.id}",
+                type=BeliefType.HISTORICAL,
+                content={
+                    "desire_id": intention.desire_id,
+                    "subtask_count": result.get("subtask_count", 0),
+                    "success": True
+                },
+                confidence=1.0,
+                source="execution_result",
+                timestamp=datetime.now()
+            ))
+        else:
+            self.intention_stack.update_status(intention.id, "failed")
+            self.execution_stats["fallback_count"] += 1
+
+    def get_bdi_state(self) -> Dict[str, Any]:
+        """Get current BDI state"""
+        return {
+            "beliefs": self.belief_base.get_statistics(),
+            "desires": self.desire_set.get_statistics(),
+            "intentions": self.intention_stack.get_statistics()
+        }
