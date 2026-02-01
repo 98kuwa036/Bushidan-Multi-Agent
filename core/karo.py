@@ -1,34 +1,34 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Karo (Enhanced Tactical Layer)
+Bushidan Multi-Agent System v9.3.2 - Karo (家老: 戦術調整層)
 
-The Karo serves as the enhanced tactical coordination layer supporting 4-tier architecture.
-Coordinates between Taisho (implementation) and Ashigaru (support) with intelligent routing.
+家老は4層アーキテクチャの戦術調整層として、大将と足軽間の調整を担当。
+インテリジェントルーティングにより最適な実行パスを選択する。
 
-v9.3.2 Enhancements:
-- Gemini 3.0 Flash integration (final defense line)
-- Groq integration for simple task speed
-- Routing decision execution from Shogun
-- Dynamic client selection based on task complexity
-- Taisho coordination with fallback chain
-- BDI Framework integration for formal tactical reasoning
+v9.3.2 機能強化:
+- Gemini 3.0 Flash統合（最終防衛線）
+- Groq統合（簡易タスク高速化）
+- 将軍からのルーティング決定実行
+- タスク複雑度に基づく動的クライアント選択
+- フォールバックチェーン付き大将調整
+- BDIフレームワーク統合（形式的戦術推論）
 """
 
 import asyncio
-import logging
 import json
 import time
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
 
 from utils.logger import get_logger
-from core.system_orchestrator import SystemOrchestrator
 from core.bdi_framework import (
     BeliefBase, DesireSet, IntentionStack,
     Belief, Desire, Intention, BeliefType, DesireType
 )
 
+if TYPE_CHECKING:
+    from core.system_orchestrator import SystemOrchestrator
 
 logger = get_logger(__name__)
 
@@ -67,25 +67,32 @@ class Subtask:
 
 class Karo:
     """
-    家老 (Karo) - Enhanced Tactical Coordination Layer v9.3.2
+    家老 (Karo) - 戦術調整層 v9.3.2
 
-    Enhanced responsibilities:
-    1. Execute routing decisions from Shogun
-    2. Dynamic client selection (Groq for speed, Gemini3 for defense)
-    3. Taisho coordination for heavy implementation
-    4. 3-tier fallback chain management
-    5. Ashigaru coordination for parallel support
-    6. DSPy-optimized task decomposition
+    武士団システムの戦術調整官として、以下の責務を担う:
 
-    v9.3.2 Features:
-    - Intelligent routing execution
-    - Gemini 3.0 Flash as final defense
-    - Groq for instant simple task response
+    主要責務:
+    1. 将軍からのルーティング決定を実行
+    2. 動的クライアント選択（Groq高速化、Gemini3防衛）
+    3. 重量実装のための大将調整
+    4. 3層フォールバックチェーン管理
+    5. 並列サポートのための足軽調整
+    6. DSPy最適化タスク分解
+
+    BDI統合:
+    - 信念基盤: タスク分解可能性、クライアント可用性
+    - 願望集合: 効率的分解、並列最大化、品質維持
+    - 意図スタック: 調整計画の実行
+
+    v9.3.2 機能:
+    - インテリジェントルーティング実行
+    - Gemini 3.0 Flash最終防衛
+    - Groq簡易タスク即時応答
     """
 
     VERSION = "9.3.2"
 
-    def __init__(self, orchestrator: SystemOrchestrator):
+    def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator
 
         # AI clients (initialized from orchestrator)
@@ -120,54 +127,54 @@ class Karo:
         }
 
     async def initialize(self) -> None:
-        """Initialize Karo and subordinate systems"""
-        logger.info(f"🏛️ Initializing Karo v{self.VERSION} (Tactical Layer)...")
+        """家老と配下システムの初期化"""
+        logger.info(f"👔 家老 v{self.VERSION} 初期化開始...")
 
-        # Get AI clients from orchestrator
+        # AIクライアント取得
         self.gemini3_client = self.orchestrator.get_client("gemini3")
         if not self.gemini3_client:
             self.gemini_client = self.orchestrator.get_client("gemini")
             if self.gemini_client:
-                logger.info("📝 Using standard Gemini client (Gemini3 not available)")
+                logger.info("📝 標準Geminiクライアント使用（Gemini3利用不可）")
 
         self.groq_client = self.orchestrator.get_client("groq")
         if self.groq_client:
-            logger.info("⚡ Groq client available for instant responses")
+            logger.info("⚡ Groqクライアント有効（即時応答用）")
 
-        # Initialize DSPy client
+        # DSPyクライアント初期化
         try:
             from utils.dspy_client import DSPyClient
             self.dspy_client = DSPyClient()
-            logger.info("✅ DSPy client initialized")
+            logger.info("📊 DSPyクライアント初期化完了")
         except Exception as e:
-            logger.warning(f"⚠️ DSPy client not available: {e}")
+            logger.warning(f"⚠️ DSPyクライアント利用不可: {e}")
 
-        # Initialize Taisho (Implementation Layer)
+        # 大将（実装層）初期化
         try:
             from core.taisho import Taisho
             self.taisho = Taisho(self.orchestrator)
             await self.taisho.initialize()
-            logger.info("✅ Taisho (Implementation Layer) initialized")
+            logger.info("⚔️ 大将（実装層）初期化完了")
         except Exception as e:
-            logger.warning(f"⚠️ Taisho initialization failed: {e}")
+            logger.warning(f"⚠️ 大将初期化失敗: {e}")
 
-        # Initialize Ashigaru (Execution Layer)
+        # 足軽（実行層）初期化
         try:
             from core.ashigaru import Ashigaru
             self.ashigaru = Ashigaru(self.orchestrator)
             await self.ashigaru.initialize()
-            logger.info("✅ Ashigaru (Execution Layer) initialized")
+            logger.info("👣 足軽（実行層）初期化完了")
         except Exception as e:
-            logger.warning(f"⚠️ Ashigaru initialization failed: {e}")
+            logger.warning(f"⚠️ 足軽初期化失敗: {e}")
 
-        # Get MCP connections
+        # MCP接続取得
         self.memory_mcp = self.orchestrator.get_mcp("memory")
         self.web_search_mcp = self.orchestrator.get_mcp("web_search")
 
-        # Initialize BDI Framework
+        # BDIフレームワーク初期化
         self._initialize_bdi()
 
-        logger.info(f"✅ Karo v{self.VERSION} initialization complete (BDI enabled)")
+        logger.info(f"✅ 家老 v{self.VERSION} 初期化完了（BDI有効）")
 
     async def execute_task(self, task) -> Dict[str, Any]:
         """
@@ -179,17 +186,16 @@ class Karo:
 
     async def execute_task_with_routing(self, task, routing_decision) -> Dict[str, Any]:
         """
-        Execute task using routing decision from Shogun
+        将軍からのルーティング決定に基づくタスク実行
 
-        v9.3.2 routing logic:
-        - Simple → Groq (instant, power-saving)
-        - Medium → Taisho (Local Qwen3)
-        - Complex → Taisho with fallback chain
-        - Strategic → Handled by Shogun (shouldn't reach here)
+        v9.3.2 ルーティングロジック:
+        - 簡易 → Groq（即時、省電力）
+        - 中程度 → 大将（ローカルQwen3）
+        - 複雑 → 大将＋フォールバックチェーン
+        - 戦略的 → 将軍が処理（ここには来ない）
         """
-
         start_time = time.time()
-        logger.info(f"🏛️ Karo executing task: {task.content[:50]}...")
+        logger.info(f"👔 家老、任務実行: {task.content[:50]}...")
 
         try:
             # Determine delegation strategy
@@ -604,8 +610,8 @@ Provide a synthesized, coherent final result.
     # ==================== BDI Framework Integration ====================
 
     def _initialize_bdi(self) -> None:
-        """Initialize BDI Framework for tactical coordination"""
-        logger.info("🧠 Initializing BDI Framework for Karo...")
+        """家老BDIフレームワーク初期化"""
+        logger.info("🧠 家老BDIフレームワーク初期化...")
 
         # Initialize operational beliefs about available resources
         self.belief_base.add_belief(Belief(

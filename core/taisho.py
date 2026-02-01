@@ -1,35 +1,35 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Taisho (Implementation Layer)
+Bushidan Multi-Agent System v9.3.2 - Taisho (大将: 実装層)
 
-The Taisho serves as the primary implementation layer with 3-tier fallback chain.
-Handles actual code generation, file operations, and heavy computational tasks.
+大将は3層フォールバックチェーンを持つ主要実装層として機能。
+実際のコード生成、ファイル操作、重量計算タスクを処理する。
 
-v9.3.2 Enhancements:
-- 3-tier fallback chain: Local Qwen3 → Cloud Qwen3 (Kagemusha) → Gemini 3 Flash
-- Qwen3-Coder-30B optimization with 4k context (1.5x speed)
-- Cloud Qwen3-plus (Kagemusha) for context overflow (32k capacity)
-- Gemini 3.0 Flash as final defense line
-- Self-healing execution (Layer 2)
-- DSPy validation (Layer 3)
-- BDI Framework integration for formal implementation reasoning
+v9.3.2 機能強化:
+- 3層フォールバックチェーン: ローカルQwen3 → クラウドQwen3（影武者）→ Gemini 3 Flash
+- Qwen3-Coder-30B最適化（4kコンテキスト、1.5倍速）
+- クラウドQwen3-plus（影武者）コンテキストオーバーフロー対応（32k容量）
+- Gemini 3.0 Flash最終防衛線
+- 自己修復実行（Layer 2）
+- DSPy検証（Layer 3）
+- BDIフレームワーク統合（形式的実装推論）
 """
 
 import asyncio
-import logging
 import json
 import time
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from dataclasses import dataclass
 from enum import Enum
 from datetime import datetime
 
 from utils.logger import get_logger
-from core.system_orchestrator import SystemOrchestrator
 from core.bdi_framework import (
     BeliefBase, DesireSet, IntentionStack,
     Belief, Desire, Intention, BeliefType, DesireType
 )
 
+if TYPE_CHECKING:
+    from core.system_orchestrator import SystemOrchestrator
 
 logger = get_logger(__name__)
 
@@ -62,27 +62,34 @@ class FallbackStatus(Enum):
 
 class Taisho:
     """
-    大将 (Taisho) - Implementation Layer v9.3.2
+    大将 (Taisho) - 実装層 v9.3.2
 
-    Primary responsibilities:
-    1. Heavy implementation tasks with 3-tier fallback chain
-    2. Local Qwen3 (4k context, ¥0) as primary
-    3. Cloud Qwen3-plus (Kagemusha, 32k context) for overflow
-    4. Gemini 3.0 Flash as final defense
-    5. MCP-driven file operations
-    6. Self-healing code execution (Layer 2)
-    7. DSPy validation (Layer 3)
+    武士団システムの実装担当として、以下の責務を担う:
 
-    v9.3.2 Fallback Chain:
-    Primary: Local Qwen3-Coder-30B (4k ctx, ¥0, fast)
-    Fallback 1: Cloud Qwen3-plus (32k ctx, ¥3, Kagemusha)
-    Fallback 2: Gemini 3.0 Flash (defense, ¥0.04)
+    主要責務:
+    1. 3層フォールバックチェーン付き重量実装タスク
+    2. ローカルQwen3（4kコンテキスト、¥0）をプライマリ
+    3. クラウドQwen3-plus（影武者、32kコンテキスト）オーバーフロー対応
+    4. Gemini 3.0 Flash最終防衛
+    5. MCP駆動ファイル操作
+    6. 自己修復コード実行（Layer 2）
+    7. DSPy検証（Layer 3）
+
+    BDI統合:
+    - 信念基盤: クライアント可用性、コンテキストサイズ
+    - 願望集合: 正確実装、効率実行、品質検証、自己修復
+    - 意図スタック: 実装計画の実行
+
+    v9.3.2 フォールバックチェーン:
+    プライマリ: ローカルQwen3-Coder-30B (4k ctx, ¥0, 高速)
+    フォールバック1: クラウドQwen3-plus (32k ctx, ¥3, 影武者)
+    フォールバック2: Gemini 3.0 Flash (防衛, ¥0.04)
     """
 
     VERSION = "9.3.2"
-    LOCAL_CONTEXT_LIMIT = 4096  # Local Qwen3 optimized context
+    LOCAL_CONTEXT_LIMIT = 4096  # ローカルQwen3最適化コンテキスト
 
-    def __init__(self, orchestrator: SystemOrchestrator):
+    def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator
 
         # AI clients (initialized from orchestrator)
@@ -123,48 +130,48 @@ class Taisho:
         }
 
     async def initialize(self) -> None:
-        """Initialize Taisho with 3-tier fallback chain"""
-        logger.info(f"🏯 Initializing Taisho v{self.VERSION} (Implementation Layer)...")
+        """大将と3層フォールバックチェーンの初期化"""
+        logger.info(f"⚔️ 大将 v{self.VERSION} 初期化開始...")
 
-        # Get AI clients from orchestrator
+        # AIクライアント取得
         self.qwen3_client = self.orchestrator.get_client("qwen3")
         self.alibaba_qwen_client = self.orchestrator.get_client("alibaba_qwen")
         self.gemini3_client = self.orchestrator.get_client("gemini3")
 
-        # Log available clients
+        # 利用可能クライアントログ
         if self.qwen3_client:
-            logger.info("✅ Local Qwen3 client available (primary)")
+            logger.info("✅ ローカルQwen3クライアント有効（プライマリ）")
         else:
-            logger.warning("⚠️ Local Qwen3 not available")
+            logger.warning("⚠️ ローカルQwen3利用不可")
 
         if self.alibaba_qwen_client:
-            logger.info("✅ Cloud Qwen3-plus (Kagemusha) available")
+            logger.info("✅ クラウドQwen3-plus（影武者）有効")
         else:
-            logger.warning("⚠️ Kagemusha not available")
+            logger.warning("⚠️ 影武者利用不可")
 
         if self.gemini3_client:
-            logger.info("✅ Gemini 3.0 Flash (final defense) available")
+            logger.info("✅ Gemini 3.0 Flash（最終防衛）有効")
         else:
-            # Try fallback to standard Gemini
+            # 標準Geminiにフォールバック
             self.gemini3_client = self.orchestrator.get_client("gemini")
             if self.gemini3_client:
-                logger.info("✅ Gemini client (fallback) available")
+                logger.info("✅ Geminiクライアント（フォールバック）有効")
             else:
-                logger.warning("⚠️ No Gemini client available")
+                logger.warning("⚠️ Geminiクライアント利用不可")
 
-        # Get MCP connections
+        # MCP接続取得
         self.mcp_manager = self.orchestrator.mcp_manager if hasattr(self.orchestrator, 'mcp_manager') else None
         self.memory_mcp = self.orchestrator.get_mcp("memory")
         self.filesystem_mcp = self.orchestrator.get_mcp("filesystem")
         self.git_mcp = self.orchestrator.get_mcp("git")
 
-        # Initialize error handling layers
+        # エラーハンドリングレイヤー初期化
         await self._initialize_error_handling()
 
-        # Initialize BDI Framework
+        # BDIフレームワーク初期化
         self._initialize_bdi()
 
-        logger.info(f"✅ Taisho v{self.VERSION} initialization complete (BDI enabled)")
+        logger.info(f"✅ 大将 v{self.VERSION} 初期化完了（BDI有効）")
         self._log_fallback_chain_status()
 
     async def _initialize_error_handling(self) -> None:
@@ -194,33 +201,32 @@ class Taisho:
             logger.warning(f"⚠️ DSPy validator not available: {e}")
 
     def _log_fallback_chain_status(self) -> None:
-        """Log the status of the 3-tier fallback chain"""
+        """3層フォールバックチェーンの状態をログ出力"""
 
         chain = []
         if self.qwen3_client:
-            chain.append("Local Qwen3 (4k ctx, ¥0)")
+            chain.append("ローカルQwen3 (4k ctx, ¥0)")
         if self.alibaba_qwen_client:
-            chain.append("Cloud Qwen3+ (32k ctx, ¥3)")
+            chain.append("クラウドQwen3+ (32k ctx, ¥3)")
         if self.gemini3_client:
-            chain.append("Gemini 3 Flash (defense)")
+            chain.append("Gemini 3 Flash (防衛)")
 
         if chain:
-            logger.info(f"🔗 Fallback chain: {' → '.join(chain)}")
+            logger.info(f"🔗 フォールバックチェーン: {' → '.join(chain)}")
         else:
-            logger.error("❌ No AI clients available!")
+            logger.error("❌ AIクライアント利用不可！")
 
     async def execute_implementation(self, task: ImplementationTask) -> Dict[str, Any]:
         """
-        Main implementation execution with 3-tier fallback chain
+        3層フォールバックチェーン付きメイン実装実行
 
-        Priority:
-        1. Local Qwen3 (if context fits in 4k limit)
-        2. Cloud Qwen3-plus (Kagemusha) for context overflow
-        3. Gemini 3.0 Flash as final defense
+        優先順位:
+        1. ローカルQwen3（コンテキストが4k制限内の場合）
+        2. クラウドQwen3-plus（影武者）コンテキストオーバーフロー対応
+        3. Gemini 3.0 Flash最終防衛
         """
-
         start_time = time.time()
-        logger.info(f"🏯 Taisho executing implementation: {task.content[:50]}...")
+        logger.info(f"⚔️ 大将、実装開始: {task.content[:50]}...")
 
         try:
             # Gather context
@@ -736,8 +742,8 @@ Create a brief implementation plan with:
     # ==================== BDI Framework Integration ====================
 
     def _initialize_bdi(self) -> None:
-        """Initialize BDI Framework for implementation layer"""
-        logger.info("🧠 Initializing BDI Framework for Taisho...")
+        """大将BDIフレームワーク初期化"""
+        logger.info("🧠 大将BDIフレームワーク初期化...")
 
         # Initialize operational beliefs about implementation capabilities
         self.belief_base.add_belief(Belief(
