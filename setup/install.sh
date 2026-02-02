@@ -126,35 +126,53 @@ NPMPATH
 
     # --- MCP サーバー群 ---
     echo ""
-    echo "[3/6] MCP サーバー..."
+    echo "[3/6] MCP サーバー設定..."
 
-    # 利用可能なMCPパッケージを個別にインストール（失敗しても続行）
-    MCP_PACKAGES=(
-        "@modelcontextprotocol/server-filesystem"
-        "@modelcontextprotocol/server-memory"
-        "@modelcontextprotocol/server-github"
-        "@modelcontextprotocol/server-postgres"
-        "@modelcontextprotocol/server-puppeteer"
-        "@modelcontextprotocol/server-brave-search"
-        "@modelcontextprotocol/server-slack"
-        "@modelcontextprotocol/server-sequential-thinking"
-    )
+    # グローバルインストールせず、npx で実行時にダウンロードする方式
+    # これにより容量を大幅に節約（必要時のみダウンロード）
+    echo "  ℹ️ MCPサーバーはnpx経由で実行時にダウンロードされます"
+    echo "  ℹ️ グローバルインストールはスキップ（容量節約）"
 
-    INSTALLED=0
-    FAILED=0
+    # MCP設定ファイルを作成（Claude Desktop/VS Code用）
+    MCP_CONFIG_DIR="${HOME}/.config/claude"
+    mkdir -p "$MCP_CONFIG_DIR"
 
-    for pkg in "${MCP_PACKAGES[@]}"; do
-        echo "  Installing: $pkg"
-        if npm install -g "$pkg" 2>/dev/null; then
-            ((INSTALLED++))
-            echo "    ✅ $pkg"
-        else
-            ((FAILED++))
-            echo "    ⚠️ $pkg (スキップ - パッケージ未公開または一時エラー)"
-        fi
-    done
+    cat > "${MCP_CONFIG_DIR}/mcp_servers.json" << 'MCPCONFIG'
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/claude"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
+      }
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    }
+  }
+}
+MCPCONFIG
 
-    echo "  MCP インストール完了: ${INSTALLED}個成功, ${FAILED}個スキップ"
+    echo "  ✅ MCP設定ファイル作成: ${MCP_CONFIG_DIR}/mcp_servers.json"
+    echo ""
+    echo "  使用可能なMCPサーバー:"
+    echo "    - filesystem (ファイル操作)"
+    echo "    - memory (知識グラフ)"
+    echo "    - github (リポジトリ操作)"
+    echo "    - sequential-thinking (推論)"
+    echo ""
+    echo "  追加パッケージが必要な場合:"
+    echo "    npx -y @modelcontextprotocol/server-<name>"
 
     # --- Python venv ---
     echo ""
