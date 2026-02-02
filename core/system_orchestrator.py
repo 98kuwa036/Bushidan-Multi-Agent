@@ -1,13 +1,14 @@
 """
-Bushidan Multi-Agent System v9.3.2 - System Orchestrator (システム統括)
+Bushidan Multi-Agent System v9.4 - System Orchestrator (システム統括)
 
 4層ハイブリッドアーキテクチャの強化システム調整。
 管理対象: 将軍 → 家老 → 大将 → 足軽（インテリジェントルーティング付き）
 
-v9.3.2 機能強化:
+v9.4 機能強化:
 - インテリジェントルーター統合
-- 新規クライアント初期化（ClaudeClientCached, Groq, Gemini3, Qwen3, AlibabaQwen）
+- 新規クライアント初期化（ClaudeClientCached, Groq, Gemini3, Qwen3 llama.cpp, AlibabaQwen）
 - 3層フォールバックチェーン管理
+- llama.cpp CPU最適化（HP ProDesk 600対応）
 - 省電力最適化
 - 強化ヘルスチェック
 - BDIフレームワーク統合
@@ -40,13 +41,13 @@ class SystemMode(Enum):
 
 @dataclass
 class SystemConfig:
-    """v9.3.2 Configuration structure"""
+    """v9.4 Configuration structure"""
     mode: SystemMode
     claude_api_key: str
     gemini_api_key: str
     tavily_api_key: str
 
-    # v9.3.2: Additional API keys
+    # v9.4: Additional API keys
     groq_api_key: Optional[str] = None
     alibaba_api_key: Optional[str] = None
 
@@ -55,14 +56,23 @@ class SystemConfig:
     notion_token: Optional[str] = None
 
     # Service endpoints
-    ollama_endpoint: str = "http://localhost:11434"
+    ollama_endpoint: str = "http://localhost:11434"  # Legacy (unused in v9.4)
     litellm_endpoint: str = "http://localhost:8000"
 
-    # v9.3.2: Configuration settings
-    version: str = "9.3.2"
+    # v9.4: llama.cpp configuration (HP ProDesk 600 CPU optimized)
+    llamacpp_endpoint: str = "http://127.0.0.1:8080"
+    llamacpp_model_path: str = "models/Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf"
+    llamacpp_threads: int = 8  # HP ProDesk 600: i5/i7 with 6-8 cores
+    llamacpp_context_size: int = 4096  # Optimized for CPU speed
+    llamacpp_batch_size: int = 512  # CPU optimal
+    llamacpp_mlock: bool = True  # Lock memory to prevent swapping
+
+    # v9.4: Configuration settings
+    version: str = "9.4"
     intelligent_routing_enabled: bool = True
     prompt_caching_enabled: bool = True
     power_optimization_enabled: bool = True
+    use_llamacpp: bool = True  # Use llama.cpp instead of Ollama
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get configuration value by key"""
@@ -246,12 +256,28 @@ class SystemOrchestrator:
                 logger.warning(f"⚠️ Gemini fallback also failed: {e2}")
 
         # Local Qwen3 Client (Primary implementation)
+        # v9.4: Use llama.cpp instead of Ollama for CPU-optimized inference
         try:
-            from utils.qwen3_client import Qwen3Client
-            self.clients["qwen3"] = Qwen3Client(
-                api_base=self.config.ollama_endpoint
-            )
-            logger.info("✅ Local Qwen3 Client initialized")
+            if self.config.use_llamacpp:
+                from utils.qwen3_llamacpp_client import Qwen3LlamaCppClient, LlamaCppConfig
+                llamacpp_config = LlamaCppConfig(
+                    model_path=self.config.llamacpp_model_path,
+                    host=self.config.llamacpp_endpoint.split("://")[1].split(":")[0],
+                    port=int(self.config.llamacpp_endpoint.split(":")[-1]),
+                    threads=self.config.llamacpp_threads,
+                    context_size=self.config.llamacpp_context_size,
+                    batch_size=self.config.llamacpp_batch_size,
+                    mlock=self.config.llamacpp_mlock
+                )
+                self.clients["qwen3"] = Qwen3LlamaCppClient(config=llamacpp_config)
+                logger.info("✅ Qwen3 llama.cpp Client initialized (CPU optimized)")
+            else:
+                # Fallback to Ollama (legacy)
+                from utils.qwen3_client import Qwen3Client
+                self.clients["qwen3"] = Qwen3Client(
+                    api_base=self.config.ollama_endpoint
+                )
+                logger.info("✅ Local Qwen3 Client initialized (Ollama)")
         except Exception as e:
             logger.warning(f"⚠️ Qwen3 client failed: {e}")
 
@@ -303,18 +329,32 @@ class SystemOrchestrator:
 
         import httpx
 
-        # Check Ollama availability (for Qwen3)
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{self.config.ollama_endpoint}/api/tags")
-                self.health_status["ollama"] = response.status_code == 200
-                if self.health_status["ollama"]:
-                    logger.info("✅ Ollama service available")
-                else:
-                    logger.warning("⚠️ Ollama service not responding")
-        except Exception as e:
-            self.health_status["ollama"] = False
-            logger.warning(f"⚠️ Could not verify Ollama: {e}")
+        # v9.4: Check llama.cpp server availability (for Qwen3)
+        if self.config.use_llamacpp:
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(f"{self.config.llamacpp_endpoint}/health")
+                    self.health_status["llamacpp"] = response.status_code == 200
+                    if self.health_status["llamacpp"]:
+                        logger.info("✅ llama.cpp server available")
+                    else:
+                        logger.warning("⚠️ llama.cpp server not responding")
+            except Exception as e:
+                self.health_status["llamacpp"] = False
+                logger.warning(f"⚠️ Could not verify llama.cpp: {e}")
+        else:
+            # Legacy: Check Ollama availability
+            try:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    response = await client.get(f"{self.config.ollama_endpoint}/api/tags")
+                    self.health_status["ollama"] = response.status_code == 200
+                    if self.health_status["ollama"]:
+                        logger.info("✅ Ollama service available")
+                    else:
+                        logger.warning("⚠️ Ollama service not responding")
+            except Exception as e:
+                self.health_status["ollama"] = False
+                logger.warning(f"⚠️ Could not verify Ollama: {e}")
 
         # Check LiteLLM proxy
         try:
@@ -357,13 +397,21 @@ class SystemOrchestrator:
             "claude_cached": "Claude（キャッシュ）",
             "groq": "Groq（即応）",
             "gemini3": "Gemini 3.0 Flash",
-            "qwen3": "Qwen3（ローカル）",
+            "qwen3": f"Qwen3（{'llama.cpp CPU' if self.config.use_llamacpp else 'Ollama'}）",
             "alibaba_qwen": "Alibaba Qwen（影武者）",
             "opus": "Opus（プレミアム）"
         }
         for key, name in client_names.items():
             status = "✅" if key in self.clients else "❌"
             logger.info(f"  {name}: {status}")
+
+        # v9.4: llama.cpp configuration info
+        if self.config.use_llamacpp:
+            logger.info("【llama.cpp設定】")
+            logger.info(f"  エンドポイント: {self.config.llamacpp_endpoint}")
+            logger.info(f"  スレッド数: {self.config.llamacpp_threads}")
+            logger.info(f"  コンテキスト: {self.config.llamacpp_context_size}")
+            logger.info(f"  メモリロック: {'✅' if self.config.llamacpp_mlock else '❌'}")
 
         # MCPサーバー
         logger.info("【MCPサーバー】")

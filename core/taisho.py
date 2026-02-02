@@ -1,12 +1,13 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Taisho (大将: 実装層)
+Bushidan Multi-Agent System v9.4 - Taisho (大将: 実装層)
 
 大将は3層フォールバックチェーンを持つ主要実装層として機能。
 実際のコード生成、ファイル操作、重量計算タスクを処理する。
 
-v9.3.2 機能強化:
+v9.4 機能強化:
 - 3層フォールバックチェーン: ローカルQwen3 → クラウドQwen3（影武者）→ Gemini 3 Flash
-- Qwen3-Coder-30B最適化（4kコンテキスト、1.5倍速）
+- llama.cpp CPU最適化（HP ProDesk 600対応、Ollama不要）
+- Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf（4kコンテキスト、CPU推論）
 - クラウドQwen3-plus（影武者）コンテキストオーバーフロー対応（32k容量）
 - Gemini 3.0 Flash最終防衛線
 - 自己修復実行（Layer 2）

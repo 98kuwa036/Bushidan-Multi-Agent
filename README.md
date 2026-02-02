@@ -4,6 +4,7 @@
 [![Claude](https://img.shields.io/badge/Claude-Sonnet%204.5%20%2B%20Opus%204-purple)](https://www.anthropic.com/claude)
 [![Gemini](https://img.shields.io/badge/Gemini-3.0%20Flash-blue)](https://ai.google.dev/)
 [![Qwen3](https://img.shields.io/badge/Qwen3-Coder--30B-orange)](https://qwenlm.github.io/)
+[![llama.cpp](https://img.shields.io/badge/llama.cpp-CPU%20Optimized-brightgreen)](https://github.com/ggerganov/llama.cpp)
 [![Groq](https://img.shields.io/badge/Groq-Llama%203.3%2070B-red)](https://groq.com/)
 [![BDI](https://img.shields.io/badge/BDI-Framework-yellow)](docs/bdi_framework.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
@@ -17,6 +18,7 @@
 
 - **🧠 BDIフレームワーク**: 信念-願望-意図に基づく形式的推論を全階層に統合
 - **📝 日本語ログ**: 全コンポーネントで自然な日本語ログ出力
+- **🖥️ llama.cpp CPU最適化**: HP ProDesk 600対応、Ollama不要（15-25 tok/s）
 - **🎯 インテリジェント・ルーティング**: 複雑度に応じた最適モデル自動選択
 - **⚡ Groq統合**: Simple タスクは爆速・無料（300-500 tok/s）
 - **🔄 3段階フォールバック**: Local Qwen3 → Cloud Qwen3-plus → Gemini 3 Flash（99.5%信頼性）
@@ -208,16 +210,23 @@ Gemini 3 Flash (1M context, ¥0.04) [最終防御線]
 ### 📋 システム要件
 
 #### ハードウェア
-- **メモリ**: 24GB+ (Qwen3-Coder用)
-- **GPU**: NVIDIA 12GB+ VRAM推奨（RTX 3060 12GB以上）
+
+**GPU環境（推奨）**
+- **メモリ**: 24GB+
+- **GPU**: NVIDIA 12GB+ VRAM（RTX 3060以上）
 - **ストレージ**: SSD 100GB+
-- **CPU**: 6コア以上
+
+**CPU環境（HP ProDesk 600対応）**
+- **CPU**: Intel i5-10500/i7-10700 (6-8コア)
+- **メモリ**: 16-32GB DDR4
+- **ストレージ**: SSD 50GB+
+- **GPU**: 不要（llama.cpp CPU推論）
 
 #### ソフトウェア
-- **Ubuntu**: 24.04 LTS推奨
+- **Ubuntu**: 22.04/24.04 LTS
 - **Python**: 3.11+
 - **Node.js**: 20.x+
-- **Ollama**: 最新版
+- **llama.cpp**: v9.4からllama.cppに移行（Ollama不要）
 
 ---
 
@@ -229,13 +238,15 @@ Gemini 3 Flash (1M context, ¥0.04) [最終防御線]
 git clone https://github.com/98kuwa036/Bushidan-Multi-Agent.git
 cd Bushidan-Multi-Agent
 
-# Ollama + Qwen3-Coder設定
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen3-coder-30b:q4_k_m
-
 # Python依存関係
 pip install -r requirements.txt
+
+# llama.cpp + Qwen3-Coder設定（HP ProDesk 600 CPU対応）
+chmod +x scripts/setup_llamacpp_prodesck600.sh
+./scripts/setup_llamacpp_prodesck600.sh
 ```
+
+> 📖 詳細は [llama.cppセットアップガイド](docs/LLAMACPP_SETUP.md) を参照
 
 #### Phase 2: API Key設定
 ```bash
