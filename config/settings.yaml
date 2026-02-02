@@ -1,29 +1,30 @@
 # =============================================================
-# 将軍システム v9.3.2 - Configuration
+# 武士団マルチエージェントシステム v9.4 - Configuration
 # =============================================================
-# "Universal Multi-LLM Framework" - 完全版ハイブリッド・アーキテクチャ
+# "BDI Framework + llama.cpp CPU最適化" - 完全版ハイブリッド・アーキテクチャ
 # =============================================================
 
 system:
   name: "Bushidan Multi-Agent System"
-  version: "9.3.2"
+  version: "9.4"
   language: "ja"
   philosophy: "シンプル・イズ・ベスト + 実用性第一 + 汎用性の追求"
-  subtitle: "4-Tier Hybrid Architecture with Intelligent Routing"
+  subtitle: "4-Tier Hybrid Architecture with BDI Framework + llama.cpp"
 
-# --- BDI Framework Configuration (v9.3.2+) ---
+# --- BDI Framework Configuration (v9.4) ---
 bdi_framework:
   enabled: true
   description: "Belief-Desire-Intention framework for formal multi-agent theory"
-  default_mode: false  # Opt-in per task via context['use_bdi'] = True
-  
+  default_mode: true  # v9.4: BDI enabled by default
+
   features:
     - "Formal semantics: Perceive → Deliberate → Plan → Execute → Reconsider"
     - "Belief management with consistency checking"
     - "Goal-directed deliberation with priority-based selection"
     - "Explicit plan generation and tracking"
+    - "Japanese logging throughout"
     - "Backward compatible with existing agents"
-  
+
   shogun_bdi:
     enabled: true
     strategic_desires:
@@ -35,12 +36,16 @@ bdi_framework:
         type: "optimization"
         priority: 0.7
         description: "Optimize cost while maintaining quality"
+      ensure_security:
+        type: "constraint"
+        priority: 0.95
+        description: "Ensure security for sensitive operations"
       learn_and_improve:
         type: "exploration"
         priority: 0.6
         description: "Learn from past decisions"
         requires: ["memory_mcp"]
-  
+
   karo_bdi:
     enabled: true
     tactical_desires:
@@ -56,7 +61,7 @@ bdi_framework:
         type: "maintenance"
         priority: 0.85
         description: "High quality result integration"
-  
+
   taisho_bdi:
     enabled: true
     implementation_desires:
@@ -72,15 +77,29 @@ bdi_framework:
         type: "achievement"
         priority: 0.85
         description: "Validate code quality"
+      self_healing_recovery:
+        type: "maintenance"
+        priority: 0.8
+        description: "Automatically fix errors"
 
-# --- v9.3.2 革新的機能 ---
-v9_3_2_innovations:
+# --- v9.4 革新的機能 ---
+v9_4_innovations:
+  llamacpp_cpu:
+    enabled: true
+    description: "llama.cpp CPU最適化（HP ProDesk 600対応、Ollama不要）"
+    benefits:
+      - "AVX2, FMA, F16C CPU命令活用"
+      - "メモリロック（mlock）でスワップ防止"
+      - "ネイティブC++（Goオーバーヘッド無し）"
+      - "HP ProDesk 600完全対応"
+    expected_speed: "15-25 tok/s (i7-10700 CPU)"
+
   intelligent_routing:
     enabled: true
     description: "運用黄金律に基づくインテリジェント・ルーティング"
     golden_rules:
       - "Simple → Groq (instant, free, DON'T wake Qwen)"
-      - "Heavy → Local Qwen3 (local volume, ¥0)"
+      - "Heavy → Local Qwen3 llama.cpp (local volume, ¥0)"
       - "Difficult → Cloud/Gemini (quality backup)"
       - "Strategic → Shogun (final authority)"
     complexity_judgment:
@@ -88,7 +107,7 @@ v9_3_2_innovations:
       medium: "Standard implementation (code keywords) → Local Qwen3"
       complex: "Multi-component (multiple files) → Local → Cloud → Gemini"
       strategic: "Design decisions (strategic keywords) → Shogun"
-  
+
   three_tier_fallback:
     enabled: true
     description: "3段階フォールバック・チェーン（99.5%信頼性）"
@@ -97,25 +116,19 @@ v9_3_2_innovations:
         primary: "Groq (300-500 tok/s, free)"
         fallback: "Gemini 3 Flash"
       medium_complex:
-        primary: "Local Qwen3 (4096 context, ¥0)"
+        primary: "Local Qwen3 llama.cpp (4096 context, ¥0)"
         shadow: "Cloud Qwen3-plus (32k context, ¥3)"
         final_defense: "Gemini 3 Flash (¥0.04)"
-  
+
   prompt_caching:
     enabled: true
     description: "Claude Prompt Caching（90%コスト削減）"
     technology: "Anthropic Prompt Caching API"
-    features:
-      - "システムプロンプト自動キャッシュ"
-      - "5分間TTL（Time To Live）"
-      - "キャッシュヒット90%削減"
-    estimated_savings: "¥140 → ¥14/月"
-  
+
   power_optimization:
     enabled: true
     description: "電力最適化（Qwen起動制御）"
     strategy: "Simple タスクは Groq で処理し Qwen を起こさない"
-    estimated_savings: "¥200/月（電力コスト）"
 
 # --- リポジトリ同期 ---
 repo:
@@ -129,24 +142,17 @@ shogun:
   role: "将軍 - 大局的設計図・難解エラー最終判断・品質保証"
   model: "claude-sonnet-4-5-20250929"
   opus_model: "claude-opus-4-20250514"
-  
-  # Prompt Caching (v9.3.2)
+
   prompt_caching:
     enabled: true
     cache_ttl_minutes: 5
     system_prompt_caching: true
-  
-  # Pro CLI + API管理
+
   pro_cli:
     enabled: true
     monthly_limit: 2000
     model: "sonnet"
-  
-  api:
-    fallback: true
-    model: "claude-sonnet-4-5-20250929"
-  
-  # Adaptive Review System
+
   review_system:
     enabled: true
     levels:
@@ -154,22 +160,15 @@ shogun:
         target: ["simple", "medium"]
         model: "sonnet"
         cost_yen: 0
-        time_seconds: 5
-        quality: "90-93"
       detailed:
         target: ["complex"]
         model: "sonnet"
         cost_yen: "0-5"
-        time_seconds: 10
-        quality: "95-97"
       premium:
         target: ["strategic"]
         model: "opus-4"
         cost_yen: 10
-        time_seconds: 15
-        quality: "98-99.5"
-  
-  # Opus Premium Review triggers
+
   opus_triggers:
     - "task_complexity == STRATEGIC"
     - "risk_level in [HIGH, CRITICAL]"
@@ -181,8 +180,7 @@ shogun:
 karo:
   codename: "Karo"
   role: "家老 - タスク分解・最終防御線"
-  
-  # 動的選択（Groq vs Gemini 3）
+
   dynamic_selection:
     enabled: true
     groq:
@@ -190,56 +188,49 @@ karo:
       use_case: "Simple tasks (instant speed)"
       speed: "300-500 tok/s"
       cost_yen: 0
-      rate_limit: "30/min (free tier)"
-    
+
     gemini3:
       model: "gemini-3.0-flash"
       use_case: "Final defense line (fallback)"
-      improvements_vs_2_0:
-        speed: "1.3x faster"
-        reasoning: "+15% accuracy"
-        japanese: "Enhanced support"
       cost_yen: 0.04
-  
-  # Groq が使われない時
-  groq_inactive_when:
-    - "task_complexity != SIMPLE"
-    - "Groq rate limited"
-    - "Groq API unavailable"
 
 # --- 大将 (Taisho) - Implementation Layer ---
 taisho:
   codename: "Taisho"
   role: "大将 - 実務実装・MCP駆使"
-  
-  # Primary: Local Qwen3
+
+  # v9.4: llama.cpp (replaces Ollama)
   local:
-    model: "qwen3-coder-30b-instruct"
-    endpoint: "http://localhost:11434"
-    context_length: 4096  # v9.3.2: Reduced from 8192+ for 1.5x speed
+    backend: "llama.cpp"
+    model: "Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf"
+    endpoint: "http://127.0.0.1:8080"
+    context_length: 4096
     quantization: "Q4_K_M"
-    vram_usage: "20-22GB"
-    expected_speed: "36 tok/s (1.5x improvement)"
+    threads: 8  # HP ProDesk 600: i7 8 cores
+    batch_size: 512
+    mlock: true
+    expected_speed: "15-25 tok/s (CPU)"
     cost_yen: 0
-    power_cost_yen: 5  # per task
+    power_cost_yen: 3  # CPU is more efficient
     optimizations:
-      - "Context 8k → 4k (1.5x speed)"
-      - "Memory -40% reduction"
-      - "MoE 3.3B active params"
-  
+      - "llama.cpp CPU native (AVX2, FMA)"
+      - "Memory lock (mlock) prevents swap"
+      - "No Ollama overhead"
+      - "HP ProDesk 600 optimized"
+
   # Shadow: Cloud Qwen3-plus (Kagemusha)
   kagemusha:
     enabled: true
     model: "qwen3-coder-plus"
     provider: "Alibaba Cloud Model Studio"
-    context_length: 32000  # 8x local
+    context_length: 32000
     activation_triggers:
       - "Local Qwen3 fails"
       - "Context > 4096 tokens"
       - "Complex task requiring more capacity"
-    cost_yen: 3  # per task
+    cost_yen: 3
     description: "影武者（Shadow backup）for seamless continuation"
-  
+
   # Final fallback: Gemini 3 Flash
   final_defense:
     model: "gemini-3.0-flash"
@@ -250,126 +241,128 @@ taisho:
 ashigaru:
   codename: "Ashigaru"
   role: "足軽 - MCP実行・並列処理"
-  
-  # Groq added as Ashigaru member (v9.3.2)
+
   members:
     - name: "filesystem"
       type: "MCP"
       role: "ファイル読み書き"
-    
+
     - name: "git"
       type: "MCP"
       role: "バージョン管理"
-    
+
     - name: "memory"
       type: "MCP"
       role: "知識保持・Web検索キャッシュ"
-      features:
-        - "決定事項記録"
-        - "Web検索結果7日間キャッシュ"
-        - "JSONL形式（人間可読）"
-    
+
     - name: "web_search"
       type: "MCP"
       role: "最新情報取得"
       technology: "Tavily + Playwright"
-      features:
-        - "精密抽出（1,000-2,000文字）"
-        - "90%削減効果"
-        - "Memory MCP統合"
-    
+
     - name: "groq"
-      type: "API"  # v9.3.2: Groq added as Ashigaru
+      type: "API"
       role: "瞬速実行（Simple tasks）"
       model: "llama-3.3-70b-versatile"
-      features:
-        - "300-500 tok/s"
-        - "Free tier (14,400/day)"
-        - "Power-saving (don't wake Qwen)"
 
 # --- インフラ設定 ---
 infrastructure:
-  mode: "hybrid"  # v9.3.2: Cloud + Local
+  mode: "hybrid"
   description: "クラウドの知能・速度 + ローカルの物量・コスト0"
-  
+
   local:
-    hardware: "HP ProDesk 600 G4"
-    cpu: "Intel Core i5-8500 (6C/6T)"
-    ram: "24GB DDR4"
-    gpu: "RTX 3060 12GB or RTX 3090 24GB"
-    os: "Ubuntu 24.04 LTS"
-  
-  ollama:
-    endpoint: "http://localhost:11434"
-    models:
-      - "qwen3-coder-30b-instruct:q4_k_m"
-  
+    hardware: "HP ProDesk 600"
+    cpu: "Intel Core i5-10500 / i7-10700 (6-8C)"
+    ram: "16-32GB DDR4"
+    gpu: "なし（CPU推論）"
+    os: "Ubuntu 22.04/24.04 LTS"
+
+  # v9.4: llama.cpp (replaces Ollama)
+  llamacpp:
+    endpoint: "http://127.0.0.1:8080"
+    model_path: "models/Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf"
+    threads: 8
+    context_size: 4096
+    batch_size: 512
+    mlock: true
+    mmap: true
+
+  # Legacy (unused in v9.4)
+  # ollama:
+  #   endpoint: "http://localhost:11434"
+
   litellm:
     endpoint: "http://localhost:8000"
     features:
       - "Context compression (<4k)"
       - "Multi-API integration"
-      - "Ollama OpenAI-compatible proxy"
+
+# --- Proxmox コンテナ設定 ---
+proxmox:
+  containers:
+    ct_100:
+      name: "本陣"
+      role: "System orchestration"
+      disk: "10GB"
+      ram: "2GB"
+      cpu: 2
+      description: "調整専用、モデル無し"
+
+    ct_101:
+      name: "Qwen3"
+      role: "Local LLM inference"
+      disk: "45GB"
+      ram: "24GB"
+      cpu: 8
+      description: "llama.cpp + Qwen3-Coder-30B (~17GB model)"
+      storage_breakdown:
+        model: "17GB"
+        llamacpp: "3GB"
+        dependencies: "5GB"
+        os_overhead: "10GB"
+        free_space: "10GB"
 
 # --- パフォーマンス目標 ---
 performance_targets:
-  v9_3_2:
+  v9_4:
     simple:
-      time_seconds: 2  # Groq (60% faster vs v9.3.1)
+      time_seconds: 2
       route: "Groq"
       cost_yen: 0
-    
+
     medium:
-      time_seconds: 12  # Local Qwen3 (20% faster)
-      route: "Local Qwen3"
+      time_seconds: 15  # CPU is slower than GPU
+      route: "Local Qwen3 llama.cpp"
       cost_yen: 0
-    
+
     complex:
-      time_seconds: 28  # Local → Cloud → Gemini
+      time_seconds: 30
       route: "3-tier fallback"
       cost_yen: "0-3"
-    
+
     strategic:
-      time_seconds: 45  # Shogun
+      time_seconds: 45
       route: "Shogun"
       cost_yen: "0-5"
-  
-  improvements_vs_v9_3_1:
-    simple: "60% faster (5s → 2s)"
-    medium: "20% faster (15s → 12s)"
-    reliability: "99.5% (3-tier fallback)"
 
 # --- コスト目標 ---
 cost_targets:
-  v9_3_1:
-    monthly_yen: 3520
-  
-  v9_3_2:
-    monthly_yen: 3580  # +¥60 (+1.7%)
+  v9_4:
+    monthly_yen: 3500
     breakdown:
       claude_pro: 3000
       claude_api: 140
       opus_premium: 100
-      gemini_3_flash: 120  # -¥10 vs 2.0
-      alibaba_cloud: 60  # ~20 fallbacks/month
-      groq: 0  # free
-      electricity: 160  # -¥200 savings (Groq)
-    
-    net_benefits:
-      groq_power_savings: -200  # Don't wake Qwen for simple
-      speed_improvements: "20-60% faster"
-      reliability: "99.5% success rate"
-      value: "Much better performance for minimal cost increase"
+      gemini_3_flash: 120
+      alibaba_cloud: 60
+      groq: 0
+      electricity: 80  # CPU more efficient
 
 # --- 品質目標 ---
 quality_targets:
-  v9_3_1:
-    overall: "95-96"
-    strategic: "98-99"
-  
-  v9_3_2:
-    overall: "96-97"  # +1-2 points
-    simple: "90-93"  # Groq quality
+  v9_4:
+    overall: "96-97"
+    simple: "90-93"  # Groq
     medium: "95-97"  # Local Qwen3
     complex: "96-98"  # 3-tier fallback
     strategic: "98-99.5"  # Opus Premium
@@ -381,11 +374,11 @@ development:
     battalion: "Full system (Shogun + Karo + Taisho + Ashigaru)"
     company: "Slack mode (Karo + Taisho + Ashigaru)"
     platoon: "HA OS mode (Taisho + Dynamic Ashigaru)"
-  
+
   logging:
     level: "INFO"
     format: "structured"
-    outputs: ["console", "file"]
+    language: "ja"  # v9.4: Japanese logging
 
 # --- セキュリティ ---
 security:
@@ -397,61 +390,19 @@ security:
     - "payment"
     - "database"
     - "credential"
-  
-  opus_review_on_security: true  # Auto-trigger Opus for security-sensitive code
+
+  opus_review_on_security: true
 
 # --- 記憶システム (3層) ---
 memory_system:
   short_term:
     location: "Slack Thread"
-    duration: "数日（Thread存続中）"
-    management: "自動（Slack標準機能）"
-  
+    duration: "数日"
+
   medium_term:
-    location: "Memory MCP (shogun_memory.jsonl)"
+    location: "Memory MCP (bushidan_memory.jsonl)"
     duration: "数週間〜数ヶ月"
-    management: "将軍が自動記録"
-    content:
-      - "重要な決定事項"
-      - "技術選定理由"
-      - "Web検索結果（7日間キャッシュ）"
-  
+
   long_term:
     location: "Notion Database"
     duration: "永続"
-    management: "手動キュレーション（月次）"
-    content:
-      - "プロジェクトドキュメント"
-      - "設計書"
-      - "振り返り"
-
-# --- v9.3.2 実装優先度 ---
-implementation_priority:
-  phase_1: "Core clients (Groq, Gemini 3, Alibaba Qwen, optimized Qwen3, Claude cached)"
-  phase_2: "Intelligent router integration"
-  phase_3: "Core component updates (Shogun, Karo, Taisho)"
-  phase_4: "System orchestrator & main.py"
-  phase_5: "Testing & documentation"
-
-# --- 想定される成果 ---
-expected_outcomes:
-  speed:
-    simple: "2s (60% improvement)"
-    medium: "12s (20% improvement)"
-    complex: "28s (maintaining quality)"
-  
-  cost:
-    monthly: "¥3,580 (+1.7% acceptable)"
-    savings_vs_claude_only: "-54%"
-  
-  reliability:
-    success_rate: "99.5%"
-    fallback_chain_depth: 3
-  
-  quality:
-    overall: "96-97 points"
-    strategic_with_opus: "98-99.5 points"
-  
-  power_efficiency:
-    groq_power_savings: "¥200/month"
-    qwen_sleep_ratio: "~30% (Simple tasks)"

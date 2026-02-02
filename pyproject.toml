@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
-name = "shogun-system"
-version = "8.1"
-description = "将軍システム v8.1: 完全自律型AI開発環境 - 実証主義・二重記憶・自律学習・家訓自動生成強化"
+name = "bushidan-multi-agent"
+version = "9.4"
+description = "武士団マルチエージェントシステム v9.4: BDI Framework統合 + llama.cpp CPU最適化 + 4層ハイブリッドアーキテクチャ"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -26,7 +26,7 @@ groq = ["groq>=0.4.1"]
 notion = ["notion-client>=2.2.1"]
 rag = ["qdrant-client>=1.7.0", "sentence-transformers>=2.2.2"]
 sandbox = ["docker>=6.1.0", "psutil>=5.9.0"]
-ollama = ["ollama>=0.6.0"]
+gemini = ["google-generativeai>=0.8.0"]
 dev = ["pytest", "pytest-asyncio", "ruff", "black", "mypy"]
 all = [
     "anthropic>=0.40.0",
@@ -37,14 +37,14 @@ all = [
     "sentence-transformers>=2.2.2",
     "docker>=6.1.0",
     "psutil>=5.9.0",
-    "ollama>=0.6.0"
+    "google-generativeai>=0.8.0"
 ]
 
 [project.scripts]
-shogun = "shogun.cli:main"
+bushidan = "bushidan.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["shogun*"]
+include = ["bushidan*", "core*", "utils*", "ashigaru*", "mcp*"]
 
 [tool.ruff]
 target-version = "py311"

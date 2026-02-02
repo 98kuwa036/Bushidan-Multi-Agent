@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 将軍システム v7.0 - Controller Installation
+# 武士団マルチエージェントシステム v9.4 - Controller Installation
 # =============================================================
 # CT 100 (本陣) で実行。Python + Node.js + MCP + CLI をセットアップ。
 #
@@ -13,14 +13,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo "============================================="
-echo "  将軍システム v7.0 - 本陣セットアップ「スピードより質」"
+echo "  武士団マルチエージェントシステム v9.4"
+echo "  BDI Framework + llama.cpp CPU最適化"
 echo "  Project: ${PROJECT_DIR}"
 echo "============================================="
 
 # --- [1] システムパッケージ ---
 echo "[1/8] システムパッケージ..."
 apt update && apt upgrade -y
-apt install -y python3-pip python3-venv git curl wget
+apt install -y python3-pip python3-venv git curl wget build-essential cmake
 
 # --- [2] Node.js ---
 echo ""
@@ -74,61 +75,24 @@ echo "  MCP × 8 インストール完了"
 # --- [6] CLI ショートカット ---
 echo ""
 echo "[6/8] CLI ショートカット..."
-cat > "${VENV_DIR}/bin/shogun" << WRAPPER
+cat > "${VENV_DIR}/bin/bushidan" << WRAPPER
 #!/bin/bash
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="\$(dirname "\$SCRIPT_DIR")"
 PROJECT_DIR="${PROJECT_DIR}"
 source "\${VENV_DIR}/bin/activate"
 cd "\$PROJECT_DIR"
-python -m shogun.cli "\$@"
+python -m bushidan.cli "\$@"
 WRAPPER
-chmod +x "${VENV_DIR}/bin/shogun"
-echo "  CLI: ${VENV_DIR}/bin/shogun"
+chmod +x "${VENV_DIR}/bin/bushidan"
+echo "  CLI: ${VENV_DIR}/bin/bushidan"
 
 # --- [7] 環境変数テンプレート ---
 echo ""
 echo "[7/8] 環境変数..."
 ENV_FILE="${PROJECT_DIR}/.env"
 if [ ! -f "$ENV_FILE" ]; then
-    cat > "$ENV_FILE" << 'ENV'
-# 将軍システム v7.0 - 環境変数
-
-# Anthropic API (将軍/家老のAPIフォールバック用)
-# ANTHROPIC_API_KEY=sk-ant-api03-xxxxx
-
-# Groq API (9番足軽・記録係)
-# GROQ_API_KEY=gsk_xxxxx
-
-# Notion API (ナレッジDB)
-# NOTION_TOKEN=secret_xxxxx
-# NOTION_DATABASE_ID=xxxxx
-
-# GitHub
-# GITHUB_TOKEN=ghp_xxxxx
-
-# Slack (11ボット)
-# SLACK_APP_TOKEN=xapp-xxxxx
-# SLACK_TOKEN_SHOGUN=xoxb-xxxxx
-# SLACK_TOKEN_KARO=xoxb-xxxxx
-# SLACK_TOKEN_TAISHO=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_1=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_2=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_3=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_4=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_5=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_6=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_7=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_8=xoxb-xxxxx
-# SLACK_TOKEN_ASHIGARU_9=xoxb-xxxxx
-# SLACK_TOKEN_LIGHT=xoxb-xxxxx
-
-# Brave Search
-# BRAVE_API_KEY=BSAxxxxx
-
-# Database
-# DATABASE_URL=postgresql://user:pass@localhost:5432/shogun
-ENV
+    cp "${PROJECT_DIR}/.env.example" "$ENV_FILE"
     echo "  .env テンプレート作成。APIキーを設定してください。"
 else
     echo "  .env 既に存在"
@@ -140,11 +104,11 @@ echo "[8/8] Git自動同期..."
 SYNC_SCRIPT="${PROJECT_DIR}/setup/auto_sync.sh"
 cat > "$SYNC_SCRIPT" << 'SYNC'
 #!/bin/bash
-# Detect repo path: GitHub {user}/{repo} → /home/claude/{repo}
+# Git自動同期スクリプト v9.4
 LOCAL_BASE="/home/claude"
 REPO_NAME=$(basename "$(git -C "${PROJECT_DIR}" remote get-url origin 2>/dev/null | sed 's/\.git$//')" 2>/dev/null || echo "")
 REPO_PATH="${LOCAL_BASE}/${REPO_NAME:-$(basename "$PROJECT_DIR")}"
-LOG_FILE="/var/log/repo-sync.log"
+LOG_FILE="/var/log/bushidan-sync.log"
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
@@ -186,14 +150,17 @@ fi
 
 echo ""
 echo "============================================="
-echo "  本陣セットアップ完了!"
+echo "  本陣セットアップ完了! (v9.4)"
 echo ""
 echo "  使い方:"
 echo "    source ${VENV_DIR}/bin/activate"
-echo "    shogun health       # ヘルスチェック"
-echo "    shogun repl         # 対話モード"
-echo "    shogun ask 'Hello'  # タスク実行"
-echo "    shogun server       # APIサーバー起動"
+echo "    bushidan health       # ヘルスチェック"
+echo "    bushidan repl         # 対話モード"
+echo "    bushidan ask 'Hello'  # タスク実行"
+echo "    bushidan server       # APIサーバー起動"
+echo ""
+echo "  llama.cppセットアップ (CT 101用):"
+echo "    ./scripts/setup_llamacpp_prodesck600.sh"
 echo ""
 echo "  PATH追加 (shell profile):"
 echo "    export PATH=\"${VENV_DIR}/bin:\$PATH\""
