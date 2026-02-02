@@ -95,6 +95,10 @@ install_user_packages() {
     mkdir -p "$NPM_GLOBAL"
     npm config set prefix "$NPM_GLOBAL"
 
+    # 古い認証トークンをクリア（Access token expired エラー対策）
+    npm config delete _authToken 2>/dev/null || true
+    npm config delete //registry.npmjs.org/:_authToken 2>/dev/null || true
+
     # PATH に追加（現在のセッション）
     export PATH="${NPM_GLOBAL}/bin:$PATH"
 
