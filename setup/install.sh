@@ -4,78 +4,154 @@
 # =============================================================
 # CT 100 (本陣) で実行。Python + Node.js + MCP + CLI をセットアップ。
 #
-# Usage: bash install.sh
+# Usage:
+#   # Step 1: root でシステムパッケージをインストール
+#   sudo bash install.sh --system
+#
+#   # Step 2: claude ユーザーでアプリをインストール
+#   bash install.sh --user
+#
+#   # または一括実行（root で実行、内部でsu）
+#   sudo bash install.sh
 # =============================================================
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+CLAUDE_USER="claude"
+CLAUDE_HOME="/home/${CLAUDE_USER}"
 
-echo "============================================="
-echo "  武士団マルチエージェントシステム v9.4"
-echo "  BDI Framework + llama.cpp CPU最適化"
-echo "  Project: ${PROJECT_DIR}"
-echo "============================================="
+# ============================================================================
+# Functions
+# ============================================================================
 
-# --- [1] システムパッケージ ---
-echo "[1/8] システムパッケージ..."
-apt update && apt upgrade -y
-apt install -y python3-pip python3-venv git curl wget build-essential cmake
+print_header() {
+    echo "============================================="
+    echo "  武士団マルチエージェントシステム v9.4"
+    echo "  BDI Framework + llama.cpp CPU最適化"
+    echo "  Project: ${PROJECT_DIR}"
+    echo "============================================="
+}
 
-# --- [2] Node.js ---
-echo ""
-echo "[2/8] Node.js 20..."
-if command -v node &>/dev/null; then
-    echo "  Node.js: $(node --version)"
-else
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt install -y nodejs
-    echo "  Node.js: $(node --version)"
-fi
+install_system_packages() {
+    echo ""
+    echo "[1/3] システムパッケージ (root権限必要)..."
 
-# --- [3] Claude CLI (npm) ---
-echo ""
-echo "[3/8] Claude CLI..."
-if command -v claude &>/dev/null; then
-    echo "  Claude CLI: $(claude --version 2>/dev/null || echo 'installed')"
-else
-    npm install -g @anthropic-ai/claude-code
-    echo "  Claude CLI インストール完了"
-fi
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "  ⚠️ root権限が必要です。sudo で実行してください。"
+        exit 1
+    fi
 
-# --- [4] Python venv ---
-echo ""
-echo "[4/8] Python仮想環境..."
-VENV_DIR="${PROJECT_DIR}/.venv"
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
-    echo "  作成: ${VENV_DIR}"
-fi
+    apt update && apt upgrade -y
+    apt install -y python3-pip python3-venv git curl wget build-essential cmake
 
-source "${VENV_DIR}/bin/activate"
-pip install --upgrade pip
-pip install -r "${PROJECT_DIR}/requirements.txt"
-echo "  依存パッケージ完了"
+    # Node.js
+    echo ""
+    echo "[2/3] Node.js 20..."
+    if command -v node &>/dev/null; then
+        echo "  Node.js: $(node --version)"
+    else
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+        apt install -y nodejs
+        echo "  Node.js: $(node --version)"
+    fi
 
-# --- [5] MCP サーバー群 ---
-echo ""
-echo "[5/8] MCP サーバー (足軽 × 8)..."
-npm install -g \
-    @modelcontextprotocol/server-filesystem \
-    @modelcontextprotocol/server-github \
-    @modelcontextprotocol/server-fetch \
-    @modelcontextprotocol/server-memory \
-    @modelcontextprotocol/server-postgres \
-    @modelcontextprotocol/server-puppeteer \
-    @modelcontextprotocol/server-brave-search \
-    @modelcontextprotocol/server-slack
-echo "  MCP × 8 インストール完了"
+    # Create claude user if not exists
+    echo ""
+    echo "[3/3] ユーザー設定..."
+    if ! id "$CLAUDE_USER" &>/dev/null; then
+        useradd -m -s /bin/bash "$CLAUDE_USER"
+        echo "  ユーザー作成: $CLAUDE_USER"
+    else
+        echo "  ユーザー既存: $CLAUDE_USER"
+    fi
 
-# --- [6] CLI ショートカット ---
-echo ""
-echo "[6/8] CLI ショートカット..."
-cat > "${VENV_DIR}/bin/bushidan" << WRAPPER
+    # Ensure project directory is accessible
+    if [ -d "$PROJECT_DIR" ]; then
+        chown -R ${CLAUDE_USER}:${CLAUDE_USER} "$PROJECT_DIR"
+        echo "  プロジェクト所有権設定完了"
+    fi
+
+    echo ""
+    echo "✅ システムパッケージ完了"
+    echo ""
+    echo "次のステップ: claude ユーザーでユーザーパッケージをインストール"
+    echo "  su - $CLAUDE_USER"
+    echo "  cd $PROJECT_DIR"
+    echo "  bash setup/install.sh --user"
+}
+
+install_user_packages() {
+    echo ""
+    echo "【ユーザーパッケージインストール】"
+    echo "  User: $(whoami)"
+    echo "  Home: $HOME"
+    echo ""
+
+    # --- NPM ローカル設定 ---
+    echo "[1/6] NPM ローカル設定..."
+    NPM_GLOBAL="${HOME}/.npm-global"
+    mkdir -p "$NPM_GLOBAL"
+    npm config set prefix "$NPM_GLOBAL"
+
+    # PATH に追加（現在のセッション）
+    export PATH="${NPM_GLOBAL}/bin:$PATH"
+
+    # .bashrc に追加（永続化）
+    if ! grep -q "npm-global" "${HOME}/.bashrc" 2>/dev/null; then
+        cat >> "${HOME}/.bashrc" << 'NPMPATH'
+
+# NPM global packages (user-local)
+export NPM_GLOBAL="${HOME}/.npm-global"
+export PATH="${NPM_GLOBAL}/bin:$PATH"
+NPMPATH
+        echo "  .bashrc にPATH追加"
+    fi
+    echo "  NPM prefix: $NPM_GLOBAL"
+
+    # --- Claude CLI ---
+    echo ""
+    echo "[2/6] Claude CLI..."
+    if command -v claude &>/dev/null || [ -f "${NPM_GLOBAL}/bin/claude" ]; then
+        echo "  Claude CLI: インストール済み"
+    else
+        npm install -g @anthropic-ai/claude-code
+        echo "  Claude CLI インストール完了"
+    fi
+
+    # --- MCP サーバー群 ---
+    echo ""
+    echo "[3/6] MCP サーバー (足軽 × 8)..."
+    npm install -g \
+        @modelcontextprotocol/server-filesystem \
+        @modelcontextprotocol/server-github \
+        @modelcontextprotocol/server-fetch \
+        @modelcontextprotocol/server-memory \
+        @modelcontextprotocol/server-postgres \
+        @modelcontextprotocol/server-puppeteer \
+        @modelcontextprotocol/server-brave-search \
+        @modelcontextprotocol/server-slack
+    echo "  MCP × 8 インストール完了"
+
+    # --- Python venv ---
+    echo ""
+    echo "[4/6] Python仮想環境..."
+    VENV_DIR="${PROJECT_DIR}/.venv"
+    if [ ! -d "$VENV_DIR" ]; then
+        python3 -m venv "$VENV_DIR"
+        echo "  作成: ${VENV_DIR}"
+    fi
+
+    source "${VENV_DIR}/bin/activate"
+    pip install --upgrade pip
+    pip install -r "${PROJECT_DIR}/requirements.txt"
+    echo "  依存パッケージ完了"
+
+    # --- CLI ショートカット ---
+    echo ""
+    echo "[5/6] CLI ショートカット..."
+    cat > "${VENV_DIR}/bin/bushidan" << WRAPPER
 #!/bin/bash
 SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="\$(dirname "\$SCRIPT_DIR")"
@@ -84,84 +160,92 @@ source "\${VENV_DIR}/bin/activate"
 cd "\$PROJECT_DIR"
 python -m bushidan.cli "\$@"
 WRAPPER
-chmod +x "${VENV_DIR}/bin/bushidan"
-echo "  CLI: ${VENV_DIR}/bin/bushidan"
+    chmod +x "${VENV_DIR}/bin/bushidan"
+    echo "  CLI: ${VENV_DIR}/bin/bushidan"
 
-# --- [7] 環境変数テンプレート ---
-echo ""
-echo "[7/8] 環境変数..."
-ENV_FILE="${PROJECT_DIR}/.env"
-if [ ! -f "$ENV_FILE" ]; then
-    cp "${PROJECT_DIR}/.env.example" "$ENV_FILE"
-    echo "  .env テンプレート作成。APIキーを設定してください。"
-else
-    echo "  .env 既に存在"
-fi
+    # --- 環境変数テンプレート ---
+    echo ""
+    echo "[6/6] 環境変数..."
+    ENV_FILE="${PROJECT_DIR}/.env"
+    if [ ! -f "$ENV_FILE" ]; then
+        cp "${PROJECT_DIR}/.env.example" "$ENV_FILE"
+        echo "  .env テンプレート作成。APIキーを設定してください。"
+    else
+        echo "  .env 既に存在"
+    fi
 
-# --- [8] Git自動同期 ---
-echo ""
-echo "[8/8] Git自動同期..."
-SYNC_SCRIPT="${PROJECT_DIR}/setup/auto_sync.sh"
-cat > "$SYNC_SCRIPT" << 'SYNC'
-#!/bin/bash
-# Git自動同期スクリプト v9.4
-LOCAL_BASE="/home/claude"
-REPO_NAME=$(basename "$(git -C "${PROJECT_DIR}" remote get-url origin 2>/dev/null | sed 's/\.git$//')" 2>/dev/null || echo "")
-REPO_PATH="${LOCAL_BASE}/${REPO_NAME:-$(basename "$PROJECT_DIR")}"
-LOG_FILE="/var/log/bushidan-sync.log"
-
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+    echo ""
+    echo "============================================="
+    echo "  ユーザーパッケージ完了! (v9.4)"
+    echo ""
+    echo "  使い方:"
+    echo "    source ${VENV_DIR}/bin/activate"
+    echo "    bushidan health       # ヘルスチェック"
+    echo "    bushidan repl         # 対話モード"
+    echo "    bushidan ask 'Hello'  # タスク実行"
+    echo ""
+    echo "  PATH (新しいシェルで自動適用):"
+    echo "    export PATH=\"${NPM_GLOBAL}/bin:${VENV_DIR}/bin:\$PATH\""
+    echo ""
+    echo "  llama.cppセットアップ (CT 101用):"
+    echo "    ./scripts/setup_llamacpp_prodesck600.sh"
+    echo "============================================="
 }
 
-[ -d "$REPO_PATH" ] || { log "リポジトリ未検出: $REPO_PATH"; exit 1; }
-cd "$REPO_PATH"
+install_all() {
+    # Root で実行された場合、システムパッケージ後にclaudeユーザーで続行
+    if [ "$(id -u)" -eq 0 ]; then
+        print_header
+        install_system_packages
 
-BRANCH=$(git branch --show-current)
-git fetch origin >> "$LOG_FILE" 2>&1
+        echo ""
+        echo "【claudeユーザーでユーザーパッケージをインストール中...】"
+        echo ""
 
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse "origin/$BRANCH" 2>/dev/null)
-
-if [ "$LOCAL" != "$REMOTE" ]; then
-    log "変更検出: リモートから更新"
-    if ! git diff-index --quiet HEAD --; then
-        log "ローカル変更あり: stash実行"
-        git stash save "auto-stash $(date +%s)" >> "$LOG_FILE" 2>&1
-    fi
-    git pull origin "$BRANCH" >> "$LOG_FILE" 2>&1
-    if [ $? -eq 0 ]; then
-        log "同期成功: $BRANCH"
+        # claude ユーザーとしてユーザーパッケージをインストール
+        su - "$CLAUDE_USER" -c "cd $PROJECT_DIR && bash setup/install.sh --user"
     else
-        log "エラー: pull失敗"
-        exit 1
+        # 非rootの場合、ユーザーパッケージのみ
+        print_header
+        install_user_packages
     fi
-else
-    log "同期不要: 最新状態"
-fi
-SYNC
-chmod +x "$SYNC_SCRIPT"
+}
 
-# Add cron (5分ごと)
-if ! crontab -l 2>/dev/null | grep -q "auto_sync"; then
-    (crontab -l 2>/dev/null; echo "*/5 * * * * ${SYNC_SCRIPT}") | crontab -
-    echo "  cron設定: 5分ごとにGit同期"
-fi
+show_usage() {
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --system    システムパッケージのみインストール (root必要)"
+    echo "  --user      ユーザーパッケージのみインストール (claude user)"
+    echo "  (no option) 全てインストール (root で実行推奨)"
+    echo ""
+    echo "推奨手順:"
+    echo "  # 一括インストール"
+    echo "  sudo bash install.sh"
+    echo ""
+    echo "  # または段階的に"
+    echo "  sudo bash install.sh --system"
+    echo "  su - claude"
+    echo "  bash ~/Bushidan-Multi-Agent/setup/install.sh --user"
+}
 
-echo ""
-echo "============================================="
-echo "  本陣セットアップ完了! (v9.4)"
-echo ""
-echo "  使い方:"
-echo "    source ${VENV_DIR}/bin/activate"
-echo "    bushidan health       # ヘルスチェック"
-echo "    bushidan repl         # 対話モード"
-echo "    bushidan ask 'Hello'  # タスク実行"
-echo "    bushidan server       # APIサーバー起動"
-echo ""
-echo "  llama.cppセットアップ (CT 101用):"
-echo "    ./scripts/setup_llamacpp_prodesck600.sh"
-echo ""
-echo "  PATH追加 (shell profile):"
-echo "    export PATH=\"${VENV_DIR}/bin:\$PATH\""
-echo "============================================="
+# ============================================================================
+# Main
+# ============================================================================
+
+case "${1:-}" in
+    --system)
+        print_header
+        install_system_packages
+        ;;
+    --user)
+        print_header
+        install_user_packages
+        ;;
+    --help|-h)
+        show_usage
+        ;;
+    *)
+        install_all
+        ;;
+esac
