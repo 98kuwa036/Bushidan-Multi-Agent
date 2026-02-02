@@ -126,17 +126,35 @@ NPMPATH
 
     # --- MCP サーバー群 ---
     echo ""
-    echo "[3/6] MCP サーバー (足軽 × 8)..."
-    npm install -g \
-        @modelcontextprotocol/server-filesystem \
-        @modelcontextprotocol/server-github \
-        @modelcontextprotocol/server-fetch \
-        @modelcontextprotocol/server-memory \
-        @modelcontextprotocol/server-postgres \
-        @modelcontextprotocol/server-puppeteer \
-        @modelcontextprotocol/server-brave-search \
-        @modelcontextprotocol/server-slack
-    echo "  MCP × 8 インストール完了"
+    echo "[3/6] MCP サーバー..."
+
+    # 利用可能なMCPパッケージを個別にインストール（失敗しても続行）
+    MCP_PACKAGES=(
+        "@modelcontextprotocol/server-filesystem"
+        "@modelcontextprotocol/server-memory"
+        "@modelcontextprotocol/server-github"
+        "@modelcontextprotocol/server-postgres"
+        "@modelcontextprotocol/server-puppeteer"
+        "@modelcontextprotocol/server-brave-search"
+        "@modelcontextprotocol/server-slack"
+        "@modelcontextprotocol/server-sequential-thinking"
+    )
+
+    INSTALLED=0
+    FAILED=0
+
+    for pkg in "${MCP_PACKAGES[@]}"; do
+        echo "  Installing: $pkg"
+        if npm install -g "$pkg" 2>/dev/null; then
+            ((INSTALLED++))
+            echo "    ✅ $pkg"
+        else
+            ((FAILED++))
+            echo "    ⚠️ $pkg (スキップ - パッケージ未公開または一時エラー)"
+        fi
+    done
+
+    echo "  MCP インストール完了: ${INSTALLED}個成功, ${FAILED}個スキップ"
 
     # --- Python venv ---
     echo ""
