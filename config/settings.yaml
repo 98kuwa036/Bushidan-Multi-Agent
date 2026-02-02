@@ -202,7 +202,7 @@ taisho:
   # v9.4: llama.cpp (replaces Ollama)
   local:
     backend: "llama.cpp"
-    model: "Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf"
+    model: "Qwen3-Coder-30B-Q4_K_M.gguf"
     endpoint: "http://127.0.0.1:8080"
     context_length: 4096
     quantization: "Q4_K_M"
@@ -280,7 +280,7 @@ infrastructure:
   # v9.4: llama.cpp (replaces Ollama)
   llamacpp:
     endpoint: "http://127.0.0.1:8080"
-    model_path: "models/Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf"
+    model_path: "models/qwen3/Qwen3-Coder-30B-Q4_K_M.gguf"
     threads: 8
     context_size: 4096
     batch_size: 512

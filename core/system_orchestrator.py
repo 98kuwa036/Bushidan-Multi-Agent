@@ -61,7 +61,7 @@ class SystemConfig:
 
     # v9.4: llama.cpp configuration (HP ProDesk 600 CPU optimized)
     llamacpp_endpoint: str = "http://127.0.0.1:8080"
-    llamacpp_model_path: str = "models/Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf"
+    llamacpp_model_path: str = "models/qwen3/Qwen3-Coder-30B-Q4_K_M.gguf"
     llamacpp_threads: int = 8  # HP ProDesk 600: i5/i7 with 6-8 cores
     llamacpp_context_size: int = 4096  # Optimized for CPU speed
     llamacpp_batch_size: int = 512  # CPU optimal

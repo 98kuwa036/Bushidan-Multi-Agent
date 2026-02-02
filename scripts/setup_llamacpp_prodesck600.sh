@@ -51,9 +51,9 @@ log_error() {
 # ============================================================================
 
 LLAMA_CPP_DIR="${HOME}/llama.cpp"
-MODEL_DIR="${HOME}/Bushidan-Multi-Agent/models"
-MODEL_NAME="Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf"
-MODEL_URL="https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/qwen3-coder-30b-a3b-instruct-q4_k_m.gguf"
+MODEL_DIR="${HOME}/Bushidan-Multi-Agent/models/qwen3"
+MODEL_NAME="Qwen3-Coder-30B-Q4_K_M.gguf"
+MODEL_URL="https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/Qwen3-Coder-30B-A3B-Instruct-Q4_K_M.gguf?download=true"
 
 # HP ProDesk 600 CPU最適化設定
 CPU_THREADS=8          # i7-10700は8コア

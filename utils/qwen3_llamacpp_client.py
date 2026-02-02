@@ -4,7 +4,7 @@ Bushidan Multi-Agent System v9.4 - llama.cpp Qwen3-Coder-30B Client
 CPU推論に最適化されたllama.cppクライアント
 HP ProDesk 600 (CPU only) での高速推論を実現
 
-Model: Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf
+Model: Qwen3-Coder-30B-Q4_K_M.gguf (unsloth版)
 Backend: llama.cpp (not Ollama)
 Hardware: HP ProDesk 600 (Intel i5/i7, 16-32GB RAM, CPU only)
 
@@ -40,7 +40,7 @@ class LlamaCppConfig:
     """llama.cpp server configuration for CPU optimization"""
 
     # Model path
-    model_path: str = "models/Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf"
+    model_path: str = "models/qwen3/Qwen3-Coder-30B-Q4_K_M.gguf"
 
     # Server settings
     host: str = "127.0.0.1"
