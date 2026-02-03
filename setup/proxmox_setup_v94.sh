@@ -1,39 +1,40 @@
 #!/bin/bash
 # ============================================================================
-# Bushidan Multi-Agent System v9.4 - Proxmox Container Setup
+# 武士団マルチエージェントシステム v9.4 - Proxmox コンテナセットアップ
 # ============================================================================
 #
-# Creates 2 LXC containers for v9.4 architecture:
-#   CT 100 (本陣): 10GB - System orchestration, no model
-#   CT 101 (Qwen3): 45GB - llama.cpp + Qwen3-Coder-30B (~17GB model)
+# 【コア要件】必ず達成すべきこと:
+#   1. CT 100 (本陣) の作成: 10GB - System orchestration
+#   2. CT 101 (Qwen3) の作成: 45GB - llama.cpp + モデル
+#
+# 【最終結果】このスクリプト完了後の状態:
+#   - CT 100: Ubuntu + Python + Node.js + MCP 設定
+#   - CT 101: Ubuntu + build-essential + llama.cpp 準備
+#   - 両コンテナで claude ユーザーが使用可能
+#
+# 【動作保証】
+#   - Proxmox VE 環境で pct コマンドが使用可能なら異常終了しない
+#   - 既存コンテナがあればスキップ
+#   - ネットワーク設定はカスタマイズ可能
 #
 # Prerequisites:
 #   - Proxmox VE 8.x
-#   - Ubuntu 22.04/24.04 template downloaded
-#   - Sufficient storage (55GB+ total)
+#   - Ubuntu 22.04/24.04 template
+#   - 55GB+ storage
 #
 # Usage:
-#   chmod +x setup/proxmox_setup_v94.sh
-#   ./setup/proxmox_setup_v94.sh
+#   ./setup/proxmox_setup_v94.sh              # 対話モード
+#   ./setup/proxmox_setup_v94.sh --auto       # 自動モード
+#   ./setup/proxmox_setup_v94.sh --ct100-only # CT 100 のみ
+#   ./setup/proxmox_setup_v94.sh --ct101-only # CT 101 のみ
 #
 # ============================================================================
 
-set -e
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+# エラー時に即座に終了しない
+# set -e は使わない
 
 # ============================================================================
-# Configuration
+# 設定 (必要に応じてカスタマイズ)
 # ============================================================================
 
 # Container IDs
@@ -63,28 +64,112 @@ CT101_DISK="45"   # GB (17GB model + system)
 CT101_RAM="24576" # MB (24GB for model loading)
 CT101_CORES="8"   # All CPU cores for inference
 
-# Root password (change this!)
+# Root password
 ROOT_PASSWORD="bushidan2024"
 
+# 実行モード
+AUTO_MODE=0
+CT100_ONLY=0
+CT101_ONLY=0
+
 # ============================================================================
-# Functions
+# 結果トラッキング
+# ============================================================================
+
+declare -A RESULTS
+CORE_FAILED=0
+
+mark_success() {
+    RESULTS["$1"]="OK"
+}
+
+mark_failed() {
+    RESULTS["$1"]="FAILED"
+    if [[ "$2" == "core" ]]; then
+        CORE_FAILED=1
+    fi
+}
+
+mark_skipped() {
+    RESULTS["$1"]="SKIPPED"
+}
+
+# ============================================================================
+# ユーティリティ関数
+# ============================================================================
+
+log_info() {
+    echo "[INFO] $1"
+}
+
+log_success() {
+    echo "[OK] $1"
+}
+
+log_warning() {
+    echo "[WARN] $1"
+}
+
+log_error() {
+    echo "[ERROR] $1"
+}
+
+# ============================================================================
+# 前提条件チェック
 # ============================================================================
 
 check_proxmox() {
-    if ! command -v pct &> /dev/null; then
-        log_error "pct command not found. Run this on Proxmox host."
-        exit 1
+    log_info "Proxmox 環境を確認中..."
+
+    if ! command -v pct &>/dev/null; then
+        log_error "pct コマンドが見つかりません"
+        log_info "このスクリプトは Proxmox VE ホストで実行してください"
+        return 1
     fi
-    log_success "Proxmox environment detected"
+
+    if ! command -v pvesm &>/dev/null; then
+        log_error "pvesm コマンドが見つかりません"
+        return 1
+    fi
+
+    mark_success "proxmox_env"
+    log_success "Proxmox 環境検出"
+    return 0
 }
 
 check_template() {
-    if ! pveam list local | grep -q "ubuntu-22.04"; then
-        log_warning "Ubuntu 22.04 template not found. Downloading..."
-        pveam download local ubuntu-22.04-standard_22.04-1_amd64.tar.zst
+    log_info "テンプレートを確認中..."
+
+    if pveam list local 2>/dev/null | grep -q "ubuntu-22.04"; then
+        mark_success "template"
+        log_success "Ubuntu 22.04 テンプレート検出"
+        return 0
     fi
-    log_success "Template available"
+
+    log_warning "Ubuntu 22.04 テンプレートが見つかりません"
+
+    if [ $AUTO_MODE -eq 1 ]; then
+        log_info "テンプレートをダウンロード中..."
+        if pveam download local ubuntu-22.04-standard_22.04-1_amd64.tar.zst 2>/dev/null; then
+            mark_success "template"
+            log_success "テンプレートダウンロード完了"
+            return 0
+        else
+            log_error "テンプレートダウンロード失敗"
+            mark_failed "template" "core"
+            return 1
+        fi
+    else
+        log_info "以下のコマンドでダウンロードできます:"
+        echo "  pveam download local ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
+        mark_skipped "template"
+        return 1
+    fi
 }
+
+# ============================================================================
+# コンテナ作成
+# ============================================================================
 
 create_container() {
     local CTID=$1
@@ -93,17 +178,19 @@ create_container() {
     local DISK=$4
     local RAM=$5
     local CORES=$6
+    local DESC=$7
 
-    log_info "Creating container CT $CTID ($HOSTNAME)..."
+    log_info "CT $CTID ($DESC) を作成中..."
 
-    # Check if container exists
-    if pct status $CTID &> /dev/null; then
-        log_warning "Container CT $CTID already exists. Skipping..."
-        return
+    # 既存チェック
+    if pct status $CTID &>/dev/null; then
+        log_warning "CT $CTID は既に存在します。スキップ"
+        mark_skipped "ct${CTID}_create"
+        return 0
     fi
 
-    # Create container
-    pct create $CTID $TEMPLATE \
+    # コンテナ作成
+    if pct create $CTID $TEMPLATE \
         --hostname $HOSTNAME \
         --password "$ROOT_PASSWORD" \
         --storage $STORAGE \
@@ -113,149 +200,287 @@ create_container() {
         --net0 name=eth0,bridge=$BRIDGE,ip=${IP}/${NETMASK},gw=$GATEWAY \
         --features nesting=1 \
         --unprivileged 1 \
-        --start 0
-
-    log_success "Container CT $CTID created"
+        --start 0 2>/dev/null; then
+        mark_success "ct${CTID}_create"
+        log_success "CT $CTID 作成完了"
+        return 0
+    else
+        log_error "CT $CTID 作成失敗"
+        mark_failed "ct${CTID}_create" "core"
+        return 1
+    fi
 }
+
+# ============================================================================
+# CT 100 (本陣) 設定
+# ============================================================================
 
 configure_ct100() {
-    log_info "Configuring CT $CT_HONIN (本陣)..."
+    log_info "CT $CT_HONIN (本陣) を設定中..."
 
-    # Start container
-    pct start $CT_HONIN
-    sleep 5
+    # コンテナ起動
+    if ! pct status $CT_HONIN 2>/dev/null | grep -q "running"; then
+        pct start $CT_HONIN 2>/dev/null || true
+        sleep 5
+    fi
 
-    # Update and install base packages
-    pct exec $CT_HONIN -- bash -c "
-        apt update && apt upgrade -y
-        apt install -y python3-pip python3-venv git curl wget sudo
+    # 基本セットアップ
+    local setup_result
+    setup_result=$(pct exec $CT_HONIN -- bash -c '
+        # パッケージ更新
+        apt update && apt upgrade -y 2>/dev/null
 
-        # Create user
-        useradd -m -s /bin/bash claude || true
-        echo 'claude ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/claude
+        # 基本パッケージ
+        apt install -y python3-pip python3-venv git curl wget sudo 2>/dev/null
 
-        # Clone repository
-        su - claude -c 'git clone https://github.com/98kuwa036/Bushidan-Multi-Agent.git ~/Bushidan-Multi-Agent || true'
+        # claude ユーザー作成
+        if ! id claude &>/dev/null; then
+            useradd -m -s /bin/bash claude
+            echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude
+            echo "USER_CREATED"
+        else
+            echo "USER_EXISTS"
+        fi
+    ' 2>&1)
 
-        # Run install script
-        su - claude -c 'cd ~/Bushidan-Multi-Agent && bash setup/install.sh'
-    "
+    if echo "$setup_result" | grep -q "USER_"; then
+        mark_success "ct100_base"
+        log_success "CT $CT_HONIN 基本設定完了"
+    else
+        log_warning "CT $CT_HONIN 基本設定に問題がありました"
+        mark_failed "ct100_base"
+    fi
 
-    log_success "CT $CT_HONIN (本陣) configured"
+    # リポジトリクローン
+    pct exec $CT_HONIN -- su - claude -c '
+        if [ ! -d ~/Bushidan-Multi-Agent ]; then
+            git clone https://github.com/98kuwa036/Bushidan-Multi-Agent.git ~/Bushidan-Multi-Agent 2>/dev/null
+        fi
+    ' 2>/dev/null || true
+
+    log_success "CT $CT_HONIN (本陣) 設定完了"
+    mark_success "ct100_config"
 }
+
+# ============================================================================
+# CT 101 (Qwen3) 設定
+# ============================================================================
 
 configure_ct101() {
-    log_info "Configuring CT $CT_QWEN3 (Qwen3)..."
+    log_info "CT $CT_QWEN3 (Qwen3) を設定中..."
 
-    # Start container
-    pct start $CT_QWEN3
-    sleep 5
+    # コンテナ起動
+    if ! pct status $CT_QWEN3 2>/dev/null | grep -q "running"; then
+        pct start $CT_QWEN3 2>/dev/null || true
+        sleep 5
+    fi
 
-    # Update and install packages for llama.cpp build
-    pct exec $CT_QWEN3 -- bash -c "
-        apt update && apt upgrade -y
-        apt install -y build-essential cmake git curl wget python3-pip
+    # 基本セットアップ
+    local setup_result
+    setup_result=$(pct exec $CT_QWEN3 -- bash -c '
+        # パッケージ更新
+        apt update && apt upgrade -y 2>/dev/null
 
-        # Create user
-        useradd -m -s /bin/bash claude || true
-        echo 'claude ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/claude
+        # ビルド用パッケージ
+        apt install -y build-essential cmake git curl wget python3-pip 2>/dev/null
 
-        # Clone repository
-        su - claude -c 'git clone https://github.com/98kuwa036/Bushidan-Multi-Agent.git ~/Bushidan-Multi-Agent || true'
+        # claude ユーザー作成
+        if ! id claude &>/dev/null; then
+            useradd -m -s /bin/bash claude
+            echo "claude ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/claude
+            echo "USER_CREATED"
+        else
+            echo "USER_EXISTS"
+        fi
+    ' 2>&1)
 
-        # Run llama.cpp setup
-        su - claude -c 'cd ~/Bushidan-Multi-Agent && chmod +x scripts/setup_llamacpp_prodesck600.sh'
-    "
+    if echo "$setup_result" | grep -q "USER_"; then
+        mark_success "ct101_base"
+        log_success "CT $CT_QWEN3 基本設定完了"
+    else
+        log_warning "CT $CT_QWEN3 基本設定に問題がありました"
+        mark_failed "ct101_base"
+    fi
 
-    log_success "CT $CT_QWEN3 (Qwen3) base configured"
-    log_info "To complete llama.cpp setup, run inside CT $CT_QWEN3:"
-    echo "  pct enter $CT_QWEN3"
-    echo "  su - claude"
-    echo "  cd ~/Bushidan-Multi-Agent && ./scripts/setup_llamacpp_prodesck600.sh"
+    # リポジトリクローン
+    pct exec $CT_QWEN3 -- su - claude -c '
+        if [ ! -d ~/Bushidan-Multi-Agent ]; then
+            git clone https://github.com/98kuwa036/Bushidan-Multi-Agent.git ~/Bushidan-Multi-Agent 2>/dev/null
+        fi
+        chmod +x ~/Bushidan-Multi-Agent/scripts/setup_llamacpp_prodesck600.sh 2>/dev/null
+    ' 2>/dev/null || true
+
+    log_success "CT $CT_QWEN3 (Qwen3) 基本設定完了"
+    mark_success "ct101_config"
 }
 
-show_summary() {
+# ============================================================================
+# 最終レポート
+# ============================================================================
+
+print_final_report() {
     echo ""
-    echo "============================================================================"
-    echo " Bushidan v9.4 - Proxmox Setup Complete"
-    echo "============================================================================"
+    echo "============================================="
+    echo "  Proxmox セットアップ - 完了レポート"
+    echo "============================================="
+    echo ""
+
+    echo "【処理結果】"
+    for key in "${!RESULTS[@]}"; do
+        local status="${RESULTS[$key]}"
+        case "$status" in
+            OK)      echo "  [OK]      $key" ;;
+            FAILED)  echo "  [FAILED]  $key" ;;
+            SKIPPED) echo "  [SKIP]    $key" ;;
+        esac
+    done
+
+    echo ""
+
+    if [ $CORE_FAILED -eq 1 ]; then
+        echo "【状態】コア機能に失敗があります"
+        return 1
+    fi
+
+    echo "【状態】正常完了"
     echo ""
     echo "【コンテナ一覧】"
     echo "  CT $CT_HONIN (本陣): ${CT100_IP}"
-    echo "    - Disk: ${CT100_DISK}GB"
-    echo "    - RAM: ${CT100_RAM}MB"
-    echo "    - CPU: ${CT100_CORES} cores"
-    echo "    - 役割: System orchestration"
+    echo "    Disk: ${CT100_DISK}GB, RAM: ${CT100_RAM}MB, CPU: ${CT100_CORES} cores"
+    echo "    役割: System orchestration"
     echo ""
     echo "  CT $CT_QWEN3 (Qwen3): ${CT101_IP}"
-    echo "    - Disk: ${CT101_DISK}GB"
-    echo "    - RAM: ${CT101_RAM}MB"
-    echo "    - CPU: ${CT101_CORES} cores"
-    echo "    - 役割: llama.cpp + Qwen3-Coder-30B"
+    echo "    Disk: ${CT101_DISK}GB, RAM: ${CT101_RAM}MB, CPU: ${CT101_CORES} cores"
+    echo "    役割: llama.cpp + Qwen3-Coder-30B"
     echo ""
     echo "【次のステップ】"
     echo ""
-    echo "  1. CT $CT_QWEN3 で llama.cpp セットアップを完了:"
+    echo "  1. CT $CT_HONIN で本陣セットアップ:"
+    echo "     pct enter $CT_HONIN"
+    echo "     su - claude"
+    echo "     cd ~/Bushidan-Multi-Agent"
+    echo "     bash setup/install.sh --user"
+    echo ""
+    echo "  2. CT $CT_QWEN3 で llama.cpp セットアップ:"
     echo "     pct enter $CT_QWEN3"
     echo "     su - claude"
     echo "     cd ~/Bushidan-Multi-Agent"
     echo "     ./scripts/setup_llamacpp_prodesck600.sh"
-    echo ""
-    echo "  2. CT $CT_HONIN で API キーを設定:"
-    echo "     pct enter $CT_HONIN"
-    echo "     su - claude"
-    echo "     cd ~/Bushidan-Multi-Agent"
-    echo "     vim .env"
-    echo ""
-    echo "  3. システム起動:"
-    echo "     # CT $CT_QWEN3 で llama.cpp サーバー起動"
-    echo "     sudo systemctl start bushidan-llamacpp"
-    echo ""
-    echo "     # CT $CT_HONIN で Bushidan 起動"
-    echo "     source .venv/bin/activate"
-    echo "     python main.py"
     echo ""
     echo "【ストレージ使用量】"
     echo "  CT $CT_HONIN: ~3GB (OS + Python + MCP)"
     echo "  CT $CT_QWEN3: ~35GB (OS + llama.cpp + Model 17GB)"
     echo "  合計: ~38GB (余裕: ~17GB)"
     echo ""
-    echo "============================================================================"
+    echo "============================================="
 }
 
 # ============================================================================
-# Main
+# メイン処理
 # ============================================================================
 
-main() {
+show_usage() {
+    echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "============================================================================"
-    echo " Bushidan Multi-Agent System v9.4 - Proxmox Setup"
-    echo " BDI Framework + llama.cpp CPU最適化"
-    echo "============================================================================"
+    echo "Options:"
+    echo "  --auto        自動モード (確認なしで実行)"
+    echo "  --ct100-only  CT 100 (本陣) のみ作成"
+    echo "  --ct101-only  CT 101 (Qwen3) のみ作成"
+    echo "  --help        このヘルプを表示"
     echo ""
-
-    check_proxmox
-    check_template
-
+    echo "【コア要件】"
+    echo "  1. CT 100 (本陣): 10GB - System orchestration"
+    echo "  2. CT 101 (Qwen3): 45GB - llama.cpp + モデル"
     echo ""
-    log_info "Creating containers..."
-    echo ""
-
-    # Create containers
-    create_container $CT_HONIN "$CT100_HOSTNAME" "$CT100_IP" "$CT100_DISK" "$CT100_RAM" "$CT100_CORES"
-    create_container $CT_QWEN3 "$CT101_HOSTNAME" "$CT101_IP" "$CT101_DISK" "$CT101_RAM" "$CT101_CORES"
-
-    echo ""
-    log_info "Configuring containers..."
-    echo ""
-
-    # Configure containers
-    configure_ct100
-    configure_ct101
-
-    show_summary
+    echo "【設定変更】"
+    echo "  スクリプト冒頭の設定セクションを編集してください:"
+    echo "  - CT100_IP, CT101_IP: IPアドレス"
+    echo "  - GATEWAY: デフォルトゲートウェイ"
+    echo "  - STORAGE: ストレージ名"
+    echo "  - ROOT_PASSWORD: rootパスワード"
 }
 
-# Run
-main "$@"
+run_full_setup() {
+    echo ""
+    echo "============================================="
+    echo "  武士団 v9.4 - Proxmox セットアップ"
+    echo "  BDI Framework + llama.cpp CPU最適化"
+    echo "============================================="
+    echo ""
+
+    # 前提条件チェック
+    if ! check_proxmox; then
+        CORE_FAILED=1
+        print_final_report
+        exit 1
+    fi
+
+    if ! check_template; then
+        CORE_FAILED=1
+        print_final_report
+        exit 1
+    fi
+
+    echo ""
+    log_info "コンテナを作成中..."
+    echo ""
+
+    # CT 100 (本陣)
+    if [ $CT101_ONLY -eq 0 ]; then
+        create_container $CT_HONIN "$CT100_HOSTNAME" "$CT100_IP" "$CT100_DISK" "$CT100_RAM" "$CT100_CORES" "本陣"
+    fi
+
+    # CT 101 (Qwen3)
+    if [ $CT100_ONLY -eq 0 ]; then
+        create_container $CT_QWEN3 "$CT101_HOSTNAME" "$CT101_IP" "$CT101_DISK" "$CT101_RAM" "$CT101_CORES" "Qwen3"
+    fi
+
+    echo ""
+    log_info "コンテナを設定中..."
+    echo ""
+
+    # 設定
+    if [ $CT101_ONLY -eq 0 ]; then
+        configure_ct100
+    fi
+
+    if [ $CT100_ONLY -eq 0 ]; then
+        configure_ct101
+    fi
+
+    print_final_report
+}
+
+# ============================================================================
+# エントリーポイント
+# ============================================================================
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --auto)
+            AUTO_MODE=1
+            shift
+            ;;
+        --ct100-only)
+            CT100_ONLY=1
+            shift
+            ;;
+        --ct101-only)
+            CT101_ONLY=1
+            shift
+            ;;
+        --help|-h)
+            show_usage
+            exit 0
+            ;;
+        *)
+            log_error "不明なオプション: $1"
+            show_usage
+            exit 1
+            ;;
+    esac
+done
+
+run_full_setup
+
+exit $CORE_FAILED
