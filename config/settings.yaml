@@ -121,7 +121,7 @@ v10_innovations:
         description: "サブタスクを Taisho に委譲 (並列実行対応)"
         execution_strategy: "independent=parallel, dependent=sequential"
         primary_executor: "Taisho (Local Qwen3, 3層フォールバック)"
-        fallback_executor: "Gunshi API (自力実装)"
+        fallback_executor: "Gunshi API (Taisho未初期化時のみ)"
 
       check:
         description: "全結果を 256K window で一括検証 (cross-file整合性)"

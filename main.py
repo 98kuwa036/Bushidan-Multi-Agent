@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Bushidan Multi-Agent System v9.4 - Main Entry Point
+Bushidan Multi-Agent System v10 - Main Entry Point
 
-武士団マルチエージェントシステム v9.4
+武士団マルチエージェントシステム v10
 Universal Multi-LLM Framework based on Samurai hierarchy.
-4-Tier Hybrid Architecture with Intelligent Routing + BDI Framework.
+5-Tier Hybrid Architecture with PDCA Engine + Intelligent Routing + BDI Framework.
 
-v9.4 Features:
+v10 Features:
+- 軍師 (Gunshi) 層: Qwen3-Coder-Next 80B API (256K context, PDCA Engine)
 - BDI Framework integration (Belief-Desire-Intention)
 - Intelligent Router for optimal task delegation
 - Prompt Caching for 90% cost reduction
@@ -26,26 +27,27 @@ from utils.config import load_config
 from utils.logger import setup_logger
 
 
-VERSION = "9.4"
+VERSION = "10.0"
 
 
 def print_banner() -> None:
-    """Print Bushidan v9.4 startup banner"""
+    """Print Bushidan v10 startup banner"""
 
     banner = f"""
 ╔══════════════════════════════════════════════════════════════╗
-║        🏯 武士団マルチエージェントシステム v{VERSION}             ║
-║        "Universal Multi-LLM Framework + BDI"                 ║
+║        🏯 武士団マルチエージェントシステム v{VERSION}            ║
+║        "Universal Multi-LLM Framework + PDCA + BDI"          ║
 ╠══════════════════════════════════════════════════════════════╣
-║  4層階層 (4-Tier Hierarchy):                                  ║
+║  5層階層 (5-Tier Hierarchy):                                  ║
 ║    🎌 将軍 (Shogun)   - Claude Sonnet + Opus + BDI          ║
+║    🧠 軍師 (Gunshi)   - Qwen3-Coder-Next 80B + PDCA        ║
 ║    👔 家老 (Karo)     - Groq + Gemini 3.0 + BDI             ║
 ║    ⚔️ 大将 (Taisho)   - Qwen3 + 影武者 + BDI                ║
 ║    👣 足軽 (Ashigaru) - MCP Servers × 8                     ║
 ╠══════════════════════════════════════════════════════════════╣
-║  v9.4 新機能:                                                 ║
-║    🧠 BDI Framework (信念-願望-意図 形式推論)                ║
-║    ⚡ Intelligent Routing (60% faster simple tasks)         ║
+║  v10 新機能:                                                  ║
+║    🧠 PDCA Engine (Plan→Do→Check→Act 作戦立案)              ║
+║    🎯 Intelligent Routing (GUNSHI route for COMPLEX)        ║
 ║    💾 Prompt Caching (90% cost reduction)                   ║
 ║    🔗 3-tier Fallback (99.5% reliability)                   ║
 ║    📝 Japanese Logging (全コンポーネント日本語)              ║
@@ -55,7 +57,7 @@ def print_banner() -> None:
 
 
 async def main() -> None:
-    """Main entry point for Bushidan v9.4."""
+    """Main entry point for Bushidan v10."""
 
     # Setup logging
     logger = setup_logger(f"bushidan_v{VERSION}")
@@ -120,6 +122,7 @@ def _print_component_status(orchestrator: SystemOrchestrator) -> None:
     # AI Clients
     clients = {
         "Claude (Cached)": "claude_cached",
+        "Qwen3-Coder-Next (Gunshi)": "qwen3_coder_next",
         "Groq": "groq",
         "Gemini 3.0 Flash": "gemini3",
         "Local Qwen3": "qwen3",
@@ -144,7 +147,7 @@ def _print_component_status(orchestrator: SystemOrchestrator) -> None:
     print(f"\nIntelligent Router: {router_status}")
 
     # Features
-    print("\nv9.3.2 Features:")
+    print("\nv10 Features:")
     print(f"  {'✅' if orchestrator.config.intelligent_routing_enabled else '❌'} Intelligent Routing")
     print(f"  {'✅' if orchestrator.config.prompt_caching_enabled else '❌'} Prompt Caching")
     print(f"  {'✅' if orchestrator.config.power_optimization_enabled else '❌'} Power Optimization")

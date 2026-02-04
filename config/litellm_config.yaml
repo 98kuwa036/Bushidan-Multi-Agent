@@ -1,5 +1,5 @@
-# Bushidan Multi-Agent System v9.1 - Enhanced LiteLLM Configuration
-# Multi-API proxy supporting 4-tier hybrid architecture with DSPy optimization
+# Bushidan Multi-Agent System v10 - Enhanced LiteLLM Configuration
+# Multi-API proxy supporting 5-tier hybrid architecture with DSPy optimization
 
 model_list:
   # Taisho (大将) - Primary implementation layer
@@ -29,7 +29,7 @@ model_list:
       max_tokens: 1500
       top_p: 0.95
 
-# Enhanced server configuration for 4-tier architecture
+# Enhanced server configuration for 5-tier architecture
 server:
   port: 8000
   host: 0.0.0.0
@@ -131,4 +131,4 @@ external_apis:
 #   # Verify API endpoint
 #   curl http://localhost:8000/v1/models
 #
-# This exposes OpenAI-compatible API optimized for the 4-tier architecture
+# This exposes OpenAI-compatible API optimized for the 5-tier architecture

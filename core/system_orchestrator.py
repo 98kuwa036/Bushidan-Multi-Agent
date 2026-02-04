@@ -34,15 +34,15 @@ logger = get_logger(__name__)
 
 
 class SystemMode(Enum):
-    """v9.3.2 System modes"""
-    BATTALION = "battalion"  # Full system: Shogun + Karo + Taisho + Ashigaru + All MCP
+    """v10 System modes"""
+    BATTALION = "battalion"  # Full system: Shogun + Gunshi + Karo + Taisho + Ashigaru + All MCP
     COMPANY = "company"      # Slack mode: Karo + Taisho + Ashigaru + Memory MCP
     PLATOON = "platoon"      # HA OS mode: Taisho + Ashigaru + Dynamic MCP
 
 
 @dataclass
 class SystemConfig:
-    """v9.4 Configuration structure"""
+    """v10 Configuration structure"""
     mode: SystemMode
     claude_api_key: str
     gemini_api_key: str
@@ -61,7 +61,7 @@ class SystemConfig:
     notion_token: Optional[str] = None
 
     # Service endpoints
-    ollama_endpoint: str = "http://localhost:11434"  # Legacy (unused in v9.4)
+    ollama_endpoint: str = "http://localhost:11434"  # Legacy (unused in v10)
     litellm_endpoint: str = "http://localhost:8000"
 
     # v9.4: llama.cpp configuration (HP ProDesk 600 CPU optimized)
@@ -132,7 +132,7 @@ class SystemOrchestrator:
         }
 
     async def initialize(self) -> None:
-        """全v9.3.2システムコンポーネントを初期化"""
+        """全v10システムコンポーネントを初期化"""
         logger.info(f"🔧 武士団 v{self.VERSION} コンポーネント初期化開始...")
 
         try:
@@ -148,7 +148,7 @@ class SystemOrchestrator:
             # 外部依存関係の検証
             await self._verify_dependencies()
 
-            # 4層階層コンポーネント初期化
+            # 5層階層コンポーネント初期化
             await self._initialize_tiers()
 
             self.initialized = True
@@ -221,7 +221,7 @@ class SystemOrchestrator:
             logger.warning(f"⚠️ MCP Manager not available: {e}")
 
     async def _initialize_clients(self) -> None:
-        """Initialize all v9.3.2 AI clients"""
+        """Initialize all v10 AI clients"""
 
         # Claude Client with Prompt Caching (Shogun)
         try:
@@ -332,7 +332,7 @@ class SystemOrchestrator:
             logger.warning(f"⚠️ Opus client failed: {e}")
 
     async def _initialize_router(self) -> None:
-        """Initialize Intelligent Router for v9.3.2"""
+        """Initialize Intelligent Router for v10"""
 
         if not self.config.intelligent_routing_enabled:
             logger.info("ℹ️ Intelligent routing disabled in config")

@@ -1,8 +1,8 @@
 """
-Bushidan Multi-Agent System v9.1 - Smart Web Search MCP
+Bushidan Multi-Agent System v10 - Smart Web Search MCP
 
 Enhanced web search using Tavily API + Playwright for targeted content extraction.
-Integrates with Memory MCP for 7-day caching and supports the 4-tier architecture.
+Integrates with Memory MCP for 7-day caching and supports the 5-tier architecture.
 """
 
 import asyncio

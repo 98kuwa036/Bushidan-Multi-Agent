@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v9.4 - Taisho (大将: 実装層)
+Bushidan Multi-Agent System v10 - Taisho (大将: 実装層)
 
 大将は3層フォールバックチェーンを持つ主要実装層として機能。
 実際のコード生成、ファイル操作、重量計算タスクを処理する。
@@ -63,7 +63,7 @@ class FallbackStatus(Enum):
 
 class Taisho:
     """
-    大将 (Taisho) - 実装層 v9.3.2
+    大将 (Taisho) - 実装層 v10
 
     武士団システムの実装担当として、以下の責務を担う:
 
@@ -81,7 +81,7 @@ class Taisho:
     - 願望集合: 正確実装、効率実行、品質検証、自己修復
     - 意図スタック: 実装計画の実行
 
-    v9.3.2 フォールバックチェーン:
+    v10 フォールバックチェーン:
     プライマリ: ローカルQwen3-Coder-30B (4k ctx, ¥0, 高速)
     フォールバック1: クラウドQwen3-plus (32k ctx, ¥3, 影武者)
     フォールバック2: Gemini 3.0 Flash (防衛, ¥0.04)

@@ -1,8 +1,8 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Configuration Management
+Bushidan Multi-Agent System v10 - Configuration Management
 
-Enhanced configuration loading for the 4-Tier Hybrid Architecture.
-Supports v9.3.2 features: Intelligent Routing, Prompt Caching, Power Optimization.
+Enhanced configuration loading for the 5-Tier Hybrid Architecture.
+Supports v10 features: PDCA Engine, Intelligent Routing, Prompt Caching, Power Optimization.
 """
 
 import os
@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 
 
 def load_config() -> SystemConfig:
-    """Load v9.3.2 system configuration from environment variables"""
+    """Load v10 system configuration from environment variables"""
 
     # Load .env file if it exists
     load_dotenv()
@@ -34,9 +34,13 @@ def load_config() -> SystemConfig:
 
     tavily_api_key = os.getenv("TAVILY_API_KEY", "")
 
-    # v9.3.2: Additional API keys
+    # Additional API keys
     groq_api_key = os.getenv("GROQ_API_KEY")
     alibaba_api_key = os.getenv("ALIBABA_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
+
+    # v10: Qwen3-Coder-Next (軍師)
+    qwen3_coder_next_api_key = os.getenv("QWEN3_CODER_NEXT_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
+    qwen3_coder_next_provider = os.getenv("QWEN3_CODER_NEXT_PROVIDER", "dashscope")
 
     # Optional tokens
     slack_token = os.getenv("SLACK_BOT_TOKEN")
@@ -54,7 +58,7 @@ def load_config() -> SystemConfig:
     ollama_endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
     litellm_endpoint = os.getenv("LITELLM_ENDPOINT", "http://localhost:8000")
 
-    # v9.3.2: Feature flags
+    # Feature flags
     intelligent_routing = os.getenv("INTELLIGENT_ROUTING_ENABLED", "true").lower() == "true"
     prompt_caching = os.getenv("PROMPT_CACHING_ENABLED", "true").lower() == "true"
     power_optimization = os.getenv("POWER_OPTIMIZATION_ENABLED", "true").lower() == "true"
@@ -66,6 +70,8 @@ def load_config() -> SystemConfig:
         tavily_api_key=tavily_api_key,
         groq_api_key=groq_api_key,
         alibaba_api_key=alibaba_api_key,
+        qwen3_coder_next_api_key=qwen3_coder_next_api_key,
+        qwen3_coder_next_provider=qwen3_coder_next_provider,
         slack_token=slack_token,
         notion_token=notion_token,
         ollama_endpoint=ollama_endpoint,
@@ -75,7 +81,7 @@ def load_config() -> SystemConfig:
         power_optimization_enabled=power_optimization
     )
 
-    logger.info(f"✅ Configuration v9.3.2 loaded - Mode: {mode.value}")
+    logger.info(f"✅ Configuration v10 loaded - Mode: {mode.value}")
     logger.info(f"  Intelligent Routing: {'✅' if intelligent_routing else '❌'}")
     logger.info(f"  Prompt Caching: {'✅' if prompt_caching else '❌'}")
     logger.info(f"  Power Optimization: {'✅' if power_optimization else '❌'}")

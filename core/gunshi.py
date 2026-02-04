@@ -493,9 +493,9 @@ class Gunshi:
         """
         単一サブタスクの実行
 
-        実行優先順位:
-        1. Taisho (Local Qwen3 30B, 3層フォールバック付き) - ¥0
-        2. Gunshi API (自力実装, フォールバック) - API cost
+        実行先:
+        - Taisho 有効時: Taisho に委譲 (内部3層フォールバック: Local→Kagemusha→Gemini)
+        - Taisho 未初期化時: Gunshi API で自力実装 (緊急パス)
         """
         subtask.status = "running"
         start_time = asyncio.get_event_loop().time()
@@ -508,11 +508,10 @@ class Gunshi:
                 f"## タスク\n{subtask.description}"
             )
 
-        # Try 1: Taisho (ローカル推論、3層フォールバック付き)
         taisho = self.orchestrator.taisho
         if taisho:
+            # Taisho に委譲 (内部で Local→Kagemusha→Gemini 3層フォールバック)
             try:
-                # Lazy import で循環参照を回避
                 from core.taisho import ImplementationTask, ImplementationMode
                 task = ImplementationTask(
                     content=impl_prompt,
@@ -530,27 +529,38 @@ class Gunshi:
                         asyncio.get_event_loop().time() - start_time
                     )
                     return
-            except Exception as e:
-                logger.warning(f"⚠️ Taisho委譲失敗 ({subtask.id}): {e}")
 
-        # Try 2: Gunshi API 自力実装 (フォールバック)
-        try:
-            messages = [{
-                "role": "user",
-                "content": f"以下のタスクを実装してください。\n\n{impl_prompt}"
-            }]
-            result_text = await self.client.generate(
-                messages=messages,
-                temperature=0.4,
-                max_tokens=4096
-            )
-            subtask.result = result_text
-            subtask.status = "completed"
-            subtask.executed_by = "gunshi_api"
-        except Exception as e:
-            logger.error(f"❌ 全実行パス失敗 ({subtask.id}): {e}")
-            subtask.status = "failed"
-            subtask.result = str(e)
+                # Taisho が completed 以外を返した (3層全滅)
+                subtask.status = "failed"
+                subtask.result = result.get("error", "Taisho 3層フォールバック全滅")
+                subtask.executed_by = "taisho/exhausted"
+
+            except Exception as e:
+                logger.error(f"❌ Taisho委譲失敗 ({subtask.id}): {e}")
+                subtask.status = "failed"
+                subtask.result = str(e)
+                subtask.executed_by = "taisho/exception"
+        else:
+            # Taisho 未初期化 → Gunshi API で自力実装 (緊急パス)
+            logger.warning(f"⚠️ Taisho未初期化 → Gunshi API自力実装 ({subtask.id})")
+            try:
+                messages = [{
+                    "role": "user",
+                    "content": f"以下のタスクを実装してください。\n\n{impl_prompt}"
+                }]
+                result_text = await self.client.generate(
+                    messages=messages,
+                    temperature=0.4,
+                    max_tokens=4096
+                )
+                subtask.result = result_text
+                subtask.status = "completed"
+                subtask.executed_by = "gunshi_api"
+            except Exception as e:
+                logger.error(f"❌ Gunshi API自力実装も失敗 ({subtask.id}): {e}")
+                subtask.status = "failed"
+                subtask.result = str(e)
+                subtask.executed_by = "gunshi_api/failed"
 
         subtask.execution_time = (
             asyncio.get_event_loop().time() - start_time
@@ -693,8 +703,12 @@ class Gunshi:
     async def _try_execute(
         self, prompt: str, subtask_id: str
     ) -> Optional[str]:
-        """Taisho → Gunshi API のフォールバック付き実行"""
-        # Try 1: Taisho
+        """
+        修正実行: Taisho に委譲 (Taisho未初期化時のみ Gunshi API)
+
+        Taisho 内部で Local→Kagemusha→Gemini の3層フォールバックが動く。
+        Gunshi API は Taisho が未初期化の場合のみ使用する緊急パス。
+        """
         taisho = self.orchestrator.taisho
         if taisho:
             try:
@@ -707,10 +721,17 @@ class Gunshi:
                 result = await taisho.execute_implementation(task)
                 if result.get("status") == "completed":
                     return result.get("result", "")
+                logger.warning(
+                    f"⚠️ Taisho修正失敗 ({subtask_id}): "
+                    f"{result.get('error', 'non-completed status')}"
+                )
+                return None
             except Exception as e:
-                logger.warning(f"⚠️ Taisho修正失敗 ({subtask_id}): {e}")
+                logger.error(f"❌ Taisho修正例外 ({subtask_id}): {e}")
+                return None
 
-        # Try 2: Gunshi API
+        # Taisho 未初期化 → Gunshi API 緊急パス
+        logger.warning(f"⚠️ Taisho未初期化 → Gunshi API修正 ({subtask_id})")
         try:
             messages = [{"role": "user", "content": prompt}]
             return await self.client.generate(
@@ -719,7 +740,7 @@ class Gunshi:
                 max_tokens=4096
             )
         except Exception as e:
-            logger.error(f"❌ 修正生成失敗 ({subtask_id}): {e}")
+            logger.error(f"❌ Gunshi API修正も失敗 ({subtask_id}): {e}")
             return None
 
     # ==================== Helpers ====================

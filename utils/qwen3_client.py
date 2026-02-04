@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Optimized Local Qwen3-Coder-30B Client
+Bushidan Multi-Agent System v10 - Optimized Local Qwen3-Coder-30B Client
 
 Optimized local inference with 4096 context limit for 1.5x speed improvement.
 

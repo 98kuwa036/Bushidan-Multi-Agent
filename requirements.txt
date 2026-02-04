@@ -1,5 +1,5 @@
-# Bushidan Multi-Agent System v9.4 - Hybrid Architecture Dependencies
-# BDI Framework + llama.cpp CPU Optimized + 3-Tier Fallback
+# Bushidan Multi-Agent System v10 - Hybrid Architecture Dependencies
+# PDCA Engine + BDI Framework + llama.cpp CPU Optimized + 3-Tier Fallback
 
 # Core dependencies (required)
 httpx>=0.24.0
@@ -9,7 +9,7 @@ pydantic>=2.0.0
 pyyaml>=6.0
 asyncio-throttle>=1.0.2      # Rate limiting for API calls
 
-# AI Model APIs (required for 4-tier architecture with intelligent routing)
+# AI Model APIs (required for 5-tier architecture with intelligent routing)
 anthropic>=0.34.0             # Claude Sonnet 4.5 + Opus 4 (Shogun) - Prompt Caching
 google-generativeai>=0.4.0    # Gemini 3.0 Flash (Final defense)
 groq>=0.4.0                   # Groq Llama 3.3 70B (Simple tasks, 300-500 tok/s)
@@ -38,7 +38,7 @@ mypy>=1.5.0
 pathlib2>=2.3.7
 
 # ============================================================================
-# v9.4 Installation Guide
+# v10 Installation Guide
 # ============================================================================
 #
 # Minimal (Cloud-only, no local inference):
@@ -54,7 +54,7 @@ pathlib2>=2.3.7
 #   pip install -e .[dev]
 #
 # ============================================================================
-# v9.4 Local Qwen3-Coder Setup (llama.cpp CPU Optimized)
+# v10 Local Qwen3-Coder Setup (llama.cpp CPU Optimized)
 # ============================================================================
 #
 # Option 1: Automatic setup (HP ProDesk 600)
@@ -79,7 +79,7 @@ pathlib2>=2.3.7
 # See: docs/LLAMACPP_SETUP.md for full documentation
 #
 # ============================================================================
-# v9.4 Architecture
+# v10 Architecture
 # ============================================================================
 #
 #   ✅ BDI Framework (Belief-Desire-Intention formal reasoning)

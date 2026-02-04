@@ -1,10 +1,10 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Karo (家老: 戦術調整層)
+Bushidan Multi-Agent System v10 - Karo (家老: 戦術調整層)
 
-家老は4層アーキテクチャの戦術調整層として、大将と足軽間の調整を担当。
+家老は5層アーキテクチャの戦術調整層として、大将と足軽間の調整を担当。
 インテリジェントルーティングにより最適な実行パスを選択する。
 
-v9.3.2 機能強化:
+v10 機能強化:
 - Gemini 3.0 Flash統合（最終防衛線）
 - Groq統合（簡易タスク高速化）
 - 将軍からのルーティング決定実行
@@ -34,7 +34,7 @@ logger = get_logger(__name__)
 
 
 class TaskDelegation(Enum):
-    """Task delegation strategies in 4-tier architecture"""
+    """Task delegation strategies in 5-tier architecture"""
     TAISHO_PRIMARY = "taisho_primary"      # Heavy implementation to Taisho
     ASHIGARU_PARALLEL = "ashigaru_parallel"  # Light tasks to Ashigaru
     HYBRID_COORDINATION = "hybrid_coordination"  # Taisho + Ashigaru coordination
@@ -44,7 +44,7 @@ class TaskDelegation(Enum):
 
 @dataclass
 class EnhancedSubtask:
-    """Enhanced subtask for 4-tier coordination"""
+    """Enhanced subtask for 5-tier coordination"""
     id: str
     content: str
     dependencies: List[str]
@@ -67,7 +67,7 @@ class Subtask:
 
 class Karo:
     """
-    家老 (Karo) - 戦術調整層 v9.3.2
+    家老 (Karo) - 戦術調整層 v10
 
     武士団システムの戦術調整官として、以下の責務を担う:
 
