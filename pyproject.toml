@@ -4,8 +4,8 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "bushidan-multi-agent"
-version = "9.4"
-description = "武士団マルチエージェントシステム v9.4: BDI Framework統合 + llama.cpp CPU最適化 + 4層ハイブリッドアーキテクチャ"
+version = "10.0"
+description = "武士団マルチエージェントシステム v10: 軍師(Gunshi)層追加 + BDI Framework統合 + llama.cpp CPU最適化 + 5層ハイブリッドアーキテクチャ"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

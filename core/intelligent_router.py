@@ -1,13 +1,18 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Intelligent Router
+Bushidan Multi-Agent System v10 - Intelligent Router
 
-Smart routing orchestrator that implements the new 4-tier hybrid architecture:
+Smart routing orchestrator that implements the 5-tier hybrid architecture:
 - Simple tasks → Groq (instant, free, power-saving)
-- Medium/Complex → Local Qwen3 → Cloud Qwen3-plus → Gemini 3 Flash
+- Medium → Local Qwen3 → Cloud Qwen3-plus → Gemini 3 Flash
+- Complex → Gunshi (Qwen3-Coder-Next API) → Local Qwen3 → Cloud → Gemini
 - Strategic → Shogun self-handles
 
+v10 新機能:
+- 軍師 (Gunshi) ルーティング: COMPLEX タスクは軍師に作戦立案を委譲
+- Qwen3-Coder-Next 80B-A3B (256K context, SWE-Bench 70.6%)
+
 This router optimizes for speed, cost, and reliability through intelligent
-task delegation and 3-tier fallback management.
+task delegation and fallback management.
 """
 
 import asyncio
@@ -37,6 +42,7 @@ class RouteTarget(Enum):
     LOCAL_QWEN3 = "local_qwen3"        # Local Qwen3-Coder-30B (4096 context)
     CLOUD_QWEN3 = "cloud_qwen3"        # Alibaba Cloud Qwen3-plus (32k context)
     GEMINI3 = "gemini3"                # Gemini 3 Flash (final defense)
+    GUNSHI = "gunshi"                  # v10: Qwen3-Coder-Next 80B API (256K context)
     SHOGUN = "shogun"                  # Claude Sonnet (strategic only)
 
 
@@ -69,17 +75,18 @@ class RoutingStats:
 
 class IntelligentRouter:
     """
-    Intelligent Routing Orchestrator for v9.3.2
-    
+    Intelligent Routing Orchestrator for v10
+
     Implements the golden rules (運用黄金律):
     1. Simple → Groq (instant, free, power-saving)
-    2. Heavy → Local Qwen3 (local volume, ¥0)
-    3. Difficult → Cloud/Gemini (quality backup)
+    2. Medium → Local Qwen3 (local volume, ¥0)
+    3. Complex → Gunshi (Qwen3-Coder-Next API, 作戦立案)
     4. Strategic → Shogun (final authority)
-    
-    Features:
+
+    v10 Features:
+    - 軍師 (Gunshi) layer for complex task strategy planning
     - Complexity-based routing heuristics
-    - 3-tier fallback management
+    - Multi-tier fallback management
     - Power-saving logic (don't wake Qwen for simple tasks)
     - Cost and performance tracking
     """
@@ -103,6 +110,7 @@ class IntelligentRouter:
             RouteTarget.LOCAL_QWEN3: 0.0,    # Local inference
             RouteTarget.CLOUD_QWEN3: 3.0,    # Alibaba Cloud API
             RouteTarget.GEMINI3: 0.04,       # Gemini 3 Flash
+            RouteTarget.GUNSHI: 0.5,         # v10: Qwen3-Coder-Next API (3B active = cheap)
             RouteTarget.SHOGUN: 0.0          # Pro CLI (within quota)
         }
     
@@ -176,21 +184,21 @@ class IntelligentRouter:
     def determine_route(self, complexity: TaskComplexity, context: Optional[Dict[str, Any]] = None) -> RoutingDecision:
         """
         Determine optimal route based on complexity and context
-        
-        Routing logic (運用黄金律):
+
+        Routing logic (運用黄金律 v10):
         - SIMPLE → Groq (instant, free, DON'T wake Qwen)
         - MEDIUM → Local Qwen3 → Cloud Qwen3 → Gemini3
-        - COMPLEX → Local Qwen3 → Cloud Qwen3 → Gemini3
+        - COMPLEX → Gunshi (作戦立案) → Local Qwen3 → Cloud Qwen3 → Gemini3
         - STRATEGIC → Shogun (Claude Sonnet handles directly)
-        
+
         Args:
             complexity: Task complexity level
             context: Optional context for routing decision
-        
+
         Returns:
             RoutingDecision with target, fallback chain, and metadata
         """
-        
+
         if complexity == TaskComplexity.STRATEGIC:
             # Strategic: Shogun handles directly (no delegation)
             return RoutingDecision(
@@ -202,7 +210,24 @@ class IntelligentRouter:
                 estimated_cost_yen=self.cost_estimates[RouteTarget.SHOGUN],
                 power_saving=True  # Qwen stays asleep
             )
-        
+
+        elif complexity == TaskComplexity.COMPLEX:
+            # v10: Complex → Gunshi plans strategy, then delegates to implementation chain
+            return RoutingDecision(
+                target=RouteTarget.GUNSHI,
+                complexity=complexity,
+                fallback_chain=[
+                    RouteTarget.GUNSHI,        # v10: 軍師が作戦立案 (256K context)
+                    RouteTarget.LOCAL_QWEN3,   # Fallback: Local Qwen3 (¥0)
+                    RouteTarget.CLOUD_QWEN3,   # Shadow: Cloud Qwen3-plus (¥3)
+                    RouteTarget.GEMINI3        # Final defense: Gemini 3 Flash (¥0.04)
+                ],
+                reasoning="Complex task → Gunshi plans strategy (256K context, SWE-Bench 70.6%)",
+                estimated_time_seconds=self.target_times[complexity],
+                estimated_cost_yen=self.cost_estimates[RouteTarget.GUNSHI],
+                power_saving=False  # Wake Qwen after strategy is planned
+            )
+
         elif complexity == TaskComplexity.SIMPLE:
             # Simple: Groq handles (lightning fast, free, power-saving)
             return RoutingDecision(
@@ -214,9 +239,9 @@ class IntelligentRouter:
                 estimated_cost_yen=self.cost_estimates[RouteTarget.GROQ],
                 power_saving=True  # Qwen stays asleep
             )
-        
+
         else:
-            # Medium/Complex: 3-tier fallback chain
+            # Medium: 3-tier fallback chain (no Gunshi needed)
             return RoutingDecision(
                 target=RouteTarget.LOCAL_QWEN3,
                 complexity=complexity,
@@ -225,9 +250,9 @@ class IntelligentRouter:
                     RouteTarget.CLOUD_QWEN3,   # Shadow: Cloud Qwen3-plus (¥3)
                     RouteTarget.GEMINI3        # Final defense: Gemini 3 Flash (¥0.04)
                 ],
-                reasoning=f"{complexity.value.title()} task → 3-tier fallback (Local → Cloud → Gemini)",
+                reasoning="Medium task → 3-tier fallback (Local → Cloud → Gemini)",
                 estimated_time_seconds=self.target_times[complexity],
-                estimated_cost_yen=self.cost_estimates[RouteTarget.LOCAL_QWEN3],  # Optimistic (local)
+                estimated_cost_yen=self.cost_estimates[RouteTarget.LOCAL_QWEN3],
                 power_saving=False  # Wake Qwen for work
             )
     

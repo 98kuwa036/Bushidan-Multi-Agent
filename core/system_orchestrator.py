@@ -1,12 +1,13 @@
 """
-Bushidan Multi-Agent System v9.4 - System Orchestrator (システム統括)
+Bushidan Multi-Agent System v10 - System Orchestrator (システム統括)
 
-4層ハイブリッドアーキテクチャの強化システム調整。
-管理対象: 将軍 → 家老 → 大将 → 足軽（インテリジェントルーティング付き）
+5層ハイブリッドアーキテクチャの強化システム調整。
+管理対象: 将軍 → 軍師 → 家老 → 大将 → 足軽（インテリジェントルーティング付き）
 
-v9.4 機能強化:
-- インテリジェントルーター統合
-- 新規クライアント初期化（ClaudeClientCached, Groq, Gemini3, Qwen3 llama.cpp, AlibabaQwen）
+v10 機能強化:
+- 軍師 (Gunshi) 層追加: Qwen3-Coder-Next 80B API (256K context, SWE-Bench 70.6%)
+- インテリジェントルーター統合 (GUNSHI ルート追加)
+- 新規クライアント初期化（ClaudeClientCached, Groq, Gemini3, Qwen3 llama.cpp, AlibabaQwen, Qwen3-Coder-Next）
 - 3層フォールバックチェーン管理
 - llama.cpp CPU最適化（HP ProDesk 600対応）
 - 省電力最適化
@@ -51,6 +52,10 @@ class SystemConfig:
     groq_api_key: Optional[str] = None
     alibaba_api_key: Optional[str] = None
 
+    # v10: Qwen3-Coder-Next (軍師)
+    qwen3_coder_next_api_key: Optional[str] = None
+    qwen3_coder_next_provider: str = "dashscope"  # dashscope, openrouter
+
     # Optional tokens
     slack_token: Optional[str] = None
     notion_token: Optional[str] = None
@@ -67,8 +72,8 @@ class SystemConfig:
     llamacpp_batch_size: int = 512  # CPU optimal
     llamacpp_mlock: bool = True  # Lock memory to prevent swapping
 
-    # v9.4: Configuration settings
-    version: str = "9.4"
+    # v10: Configuration settings
+    version: str = "10.0"
     intelligent_routing_enabled: bool = True
     prompt_caching_enabled: bool = True
     power_optimization_enabled: bool = True
@@ -81,23 +86,25 @@ class SystemConfig:
 
 class SystemOrchestrator:
     """
-    v9.3.2 システムオーケストレーター - 強化調整層
+    v10 システムオーケストレーター - 強化調整層
 
-    4層ハイブリッドアーキテクチャを管理:
+    5層ハイブリッドアーキテクチャを管理:
     1. 将軍 (Shogun) - 戦略層: Claude Sonnet + Opus
-    2. 家老 (Karo) - 戦術層: 調整 + Groq/Gemini3
-    3. 大将 (Taisho) - 実装層: Qwen3 + 影武者
-    4. 足軽 (Ashigaru) - 実行層: MCPサーバー
+    2. 軍師 (Gunshi) - 作戦立案層: Qwen3-Coder-Next 80B API
+    3. 家老 (Karo) - 戦術層: 調整 + Groq/Gemini3
+    4. 大将 (Taisho) - 実装層: Qwen3 + 影武者
+    5. 足軽 (Ashigaru) - 実行層: MCPサーバー
 
     新機能:
-    - タスク委譲のインテリジェントルーター
+    - 軍師 (Gunshi) 層: 複雑タスクの作戦立案・コード監査
+    - タスク委譲のインテリジェントルーター (GUNSHIルート)
     - 3層フォールバックチェーン管理
     - 省電力最適化
     - コスト削減のプロンプトキャッシング
     - BDIフレームワーク統合
     """
 
-    VERSION = "9.4"
+    VERSION = "10.0"
 
     def __init__(self, config: SystemConfig):
         self.config = config
@@ -107,8 +114,9 @@ class SystemOrchestrator:
         self.mcp_manager = None
         self.initialized = False
 
-        # 4層階層コンポーネント
+        # 5層階層コンポーネント
         self._shogun = None  # 将軍: 戦略層
+        self._gunshi = None  # 軍師: 作戦立案層 (v10)
         self._karo = None    # 家老: 戦術層
         self._taisho = None  # 大将: 実装層
 
@@ -152,8 +160,8 @@ class SystemOrchestrator:
             raise
 
     async def _initialize_tiers(self) -> None:
-        """4層階層コンポーネントの初期化"""
-        logger.info("🏯 4層階層コンポーネント初期化...")
+        """5層階層コンポーネントの初期化"""
+        logger.info("🏯 5層階層コンポーネント初期化...")
 
         # 将軍（戦略層）初期化
         try:
@@ -164,6 +172,15 @@ class SystemOrchestrator:
         except Exception as e:
             logger.error(f"❌ 将軍初期化失敗: {e}")
             raise
+
+        # v10: 軍師（作戦立案層）初期化
+        try:
+            from core.gunshi import Gunshi
+            self._gunshi = Gunshi(self)
+            await self._gunshi.initialize()
+            logger.info("🧠 軍師（作戦立案層）初期化完了")
+        except Exception as e:
+            logger.warning(f"⚠️ 軍師初期化失敗 (複雑タスクは家老に直接委譲): {e}")
 
         # 家老は将軍の初期化時に作成される
         if self._shogun and hasattr(self._shogun, 'karo'):
@@ -292,6 +309,18 @@ class SystemOrchestrator:
             except Exception as e:
                 logger.warning(f"⚠️ Alibaba Qwen client failed: {e}")
 
+        # v10: Qwen3-Coder-Next Client (軍師 - Gunshi)
+        if self.config.qwen3_coder_next_api_key:
+            try:
+                from utils.qwen3_coder_next_client import Qwen3CoderNextClient
+                self.clients["qwen3_coder_next"] = Qwen3CoderNextClient(
+                    api_key=self.config.qwen3_coder_next_api_key,
+                    provider=self.config.qwen3_coder_next_provider
+                )
+                logger.info("✅ Qwen3-Coder-Next Client (軍師) initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ Qwen3-Coder-Next client failed: {e}")
+
         # Opus Client (Premium review)
         try:
             from utils.opus_client import OpusClient
@@ -381,9 +410,10 @@ class SystemOrchestrator:
         logger.info(f"省電力最適化: {'✅' if self.config.power_optimization_enabled else '❌'}")
         logger.info("-" * 60)
 
-        # 4層階層コンポーネント
-        logger.info("【4層階層コンポーネント】")
+        # 5層階層コンポーネント
+        logger.info("【5層階層コンポーネント】")
         logger.info(f"  🎌 将軍（戦略層）: {'✅' if self._shogun else '❌'}")
+        logger.info(f"  🧠 軍師（作戦立案層）: {'✅' if self._gunshi else '❌'}")
         logger.info(f"  👔 家老（戦術層）: {'✅' if self._karo else '❌'}")
         logger.info(f"  ⚔️ 大将（実装層）: {'✅' if self._taisho else '❌'}")
 
@@ -398,6 +428,7 @@ class SystemOrchestrator:
             "groq": "Groq（即応）",
             "gemini3": "Gemini 3.0 Flash",
             "qwen3": f"Qwen3（{'llama.cpp CPU' if self.config.use_llamacpp else 'Ollama'}）",
+            "qwen3_coder_next": "Qwen3-Coder-Next（軍師）",
             "alibaba_qwen": "Alibaba Qwen（影武者）",
             "opus": "Opus（プレミアム）"
         }
@@ -445,12 +476,17 @@ class SystemOrchestrator:
         """インテリジェントルーター取得"""
         return self.router
 
-    # ==================== 4層階層コンポーネントアクセサ ====================
+    # ==================== 5層階層コンポーネントアクセサ ====================
 
     @property
     def shogun(self):
         """将軍（戦略層）取得"""
         return self._shogun
+
+    @property
+    def gunshi(self):
+        """軍師（作戦立案層）取得"""
+        return self._gunshi
 
     @property
     def karo(self):
@@ -469,6 +505,9 @@ class SystemOrchestrator:
         if self._shogun and hasattr(self._shogun, 'get_statistics'):
             stats["shogun"] = self._shogun.get_statistics()
 
+        if self._gunshi and hasattr(self._gunshi, 'get_statistics'):
+            stats["gunshi"] = self._gunshi.get_statistics()
+
         if self._karo and hasattr(self._karo, 'get_statistics'):
             stats["karo"] = self._karo.get_statistics()
 
@@ -483,6 +522,9 @@ class SystemOrchestrator:
 
         if self._shogun and hasattr(self._shogun, 'get_bdi_state'):
             bdi_states["shogun"] = self._shogun.get_bdi_state()
+
+        if self._gunshi and hasattr(self._gunshi, 'get_bdi_state'):
+            bdi_states["gunshi"] = self._gunshi.get_bdi_state()
 
         if self._karo and hasattr(self._karo, 'get_bdi_state'):
             bdi_states["karo"] = self._karo.get_bdi_state()
