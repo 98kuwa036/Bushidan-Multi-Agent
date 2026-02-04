@@ -4,12 +4,13 @@ Bushidan Multi-Agent System v10 - Intelligent Router
 Smart routing orchestrator that implements the 5-tier hybrid architecture:
 - Simple tasks → Groq (instant, free, power-saving)
 - Medium → Local Qwen3 → Cloud Qwen3-plus → Gemini 3 Flash
-- Complex → Gunshi (Qwen3-Coder-Next API) → Local Qwen3 → Cloud → Gemini
+- Complex → Gunshi PDCA (Plan→Do→Check→Act cycle)
 - Strategic → Shogun self-handles
 
-v10 新機能:
-- 軍師 (Gunshi) ルーティング: COMPLEX タスクは軍師に作戦立案を委譲
+v10 PDCA統合:
+- 軍師 (Gunshi) PDCA cycle: COMPLEX タスクは Plan→Do→Check→Act で完遂
 - Qwen3-Coder-Next 80B-A3B (256K context, SWE-Bench 70.6%)
+- Gunshi 256K で cross-file 整合性検証 → Taisho 4096 制限を補完
 
 This router optimizes for speed, cost, and reliability through intelligent
 task delegation and fallback management.
@@ -32,7 +33,7 @@ class TaskComplexity(Enum):
     """Task complexity levels for routing decisions"""
     SIMPLE = "simple"          # 2s - Groq handles instantly
     MEDIUM = "medium"          # 12s - Local Qwen3 → Cloud fallback
-    COMPLEX = "complex"        # 28s - Local → Cloud → Gemini chain
+    COMPLEX = "complex"        # 25-45s - Gunshi PDCA cycle
     STRATEGIC = "strategic"    # 45s - Shogun handles directly
 
 
@@ -80,11 +81,11 @@ class IntelligentRouter:
     Implements the golden rules (運用黄金律):
     1. Simple → Groq (instant, free, power-saving)
     2. Medium → Local Qwen3 (local volume, ¥0)
-    3. Complex → Gunshi (Qwen3-Coder-Next API, 作戦立案)
+    3. Complex → Gunshi PDCA (Plan→Do→Check→Act cycle)
     4. Strategic → Shogun (final authority)
 
-    v10 Features:
-    - 軍師 (Gunshi) layer for complex task strategy planning
+    v10 PDCA Features:
+    - 軍師 PDCA: Plan(256K)→Do(Taisho並列)→Check(256K検証)→Act(修正)
     - Complexity-based routing heuristics
     - Multi-tier fallback management
     - Power-saving logic (don't wake Qwen for simple tasks)
@@ -97,10 +98,11 @@ class IntelligentRouter:
         self.routing_history: list[Tuple[datetime, RoutingDecision]] = []
         
         # Performance targets (seconds)
+        # COMPLEX: Plan(3-5s) + Do(15-25s) + Check(3-5s) + Act(0-30s)
         self.target_times = {
             TaskComplexity.SIMPLE: 2,
             TaskComplexity.MEDIUM: 12,
-            TaskComplexity.COMPLEX: 28,
+            TaskComplexity.COMPLEX: 35,     # PDCA cycle (no correction: ~25s)
             TaskComplexity.STRATEGIC: 45
         }
         
@@ -110,7 +112,7 @@ class IntelligentRouter:
             RouteTarget.LOCAL_QWEN3: 0.0,    # Local inference
             RouteTarget.CLOUD_QWEN3: 3.0,    # Alibaba Cloud API
             RouteTarget.GEMINI3: 0.04,       # Gemini 3 Flash
-            RouteTarget.GUNSHI: 0.5,         # v10: Qwen3-Coder-Next API (3B active = cheap)
+            RouteTarget.GUNSHI: 0.07,        # PDCA: Plan(0.02) + Check(0.02) + maybe Act(0.03)
             RouteTarget.SHOGUN: 0.0          # Pro CLI (within quota)
         }
     
@@ -212,20 +214,25 @@ class IntelligentRouter:
             )
 
         elif complexity == TaskComplexity.COMPLEX:
-            # v10: Complex → Gunshi plans strategy, then delegates to implementation chain
+            # v10 PDCA: Gunshi runs full Plan→Do→Check→Act cycle
+            # Gunshi plans (256K) → Taisho implements (3-tier fallback)
+            # → Gunshi verifies (256K cross-file) → correct if needed
             return RoutingDecision(
                 target=RouteTarget.GUNSHI,
                 complexity=complexity,
                 fallback_chain=[
-                    RouteTarget.GUNSHI,        # v10: 軍師が作戦立案 (256K context)
-                    RouteTarget.LOCAL_QWEN3,   # Fallback: Local Qwen3 (¥0)
+                    RouteTarget.GUNSHI,        # PDCA cycle (Plan+Check: 256K)
+                    RouteTarget.LOCAL_QWEN3,   # Fallback if Gunshi unavailable
                     RouteTarget.CLOUD_QWEN3,   # Shadow: Cloud Qwen3-plus (¥3)
-                    RouteTarget.GEMINI3        # Final defense: Gemini 3 Flash (¥0.04)
+                    RouteTarget.GEMINI3        # Final defense: Gemini 3 Flash
                 ],
-                reasoning="Complex task → Gunshi plans strategy (256K context, SWE-Bench 70.6%)",
+                reasoning=(
+                    "Complex task → Gunshi PDCA: "
+                    "Plan(256K分解)→Do(Taisho実装)→Check(256K検証)→Act(修正)"
+                ),
                 estimated_time_seconds=self.target_times[complexity],
                 estimated_cost_yen=self.cost_estimates[RouteTarget.GUNSHI],
-                power_saving=False  # Wake Qwen after strategy is planned
+                power_saving=False
             )
 
         elif complexity == TaskComplexity.SIMPLE:

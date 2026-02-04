@@ -104,21 +104,46 @@ bdi_framework:
 
 # --- v10 革新的機能 ---
 v10_innovations:
-  gunshi_layer:
+  gunshi_pdca:
     enabled: true
-    description: "軍師 (Gunshi) 作戦立案層 - Qwen3-Coder-Next 80B-A3B API"
+    description: "軍師 PDCA Engine - Plan→Do→Check→Act cycle"
     model: "qwen3-coder-next"
+    engine: "PDCA"
+
+    pdca_cycle:
+      plan:
+        description: "256Kコンテキストでタスク分析 → サブタスク分解"
+        temperature: 0.3
+        max_subtasks: 5
+        subtask_token_limit: 3000  # Taisho の 4096 に収める
+
+      do:
+        description: "サブタスクを Taisho に委譲 (並列実行対応)"
+        execution_strategy: "independent=parallel, dependent=sequential"
+        primary_executor: "Taisho (Local Qwen3, 3層フォールバック)"
+        fallback_executor: "Gunshi API (自力実装)"
+
+      check:
+        description: "全結果を 256K window で一括検証 (cross-file整合性)"
+        temperature: 0.1  # 厳密判定
+        key_value: "Taishoが見えない cross-file 整合性を Gunshi が検証"
+        verification_criteria:
+          - "元タスクの要件充足"
+          - "サブタスク間整合性 (import, 型, インターフェース)"
+          - "コード品質 (バグ, セキュリティ)"
+          - "実装の完全性"
+
+      act:
+        description: "不合格サブタスクに修正指示 → 再実装"
+        temperature: 0.2  # 精密な修正
+        max_correction_loops: 1  # 無限ループ防止
+
     capabilities:
-      - "256K コンテキスト (コードベース全体を俯瞰)"
-      - "SWE-Bench Verified 70.6%"
-      - "Non-thinking mode (即断即決)"
-      - "Ultra-sparse MoE (512 experts, 10 activated)"
-      - "80B total / 3B active params (コスト効率が高い)"
-    responsibilities:
-      - "COMPLEX タスクの作戦立案"
-      - "コードアーキテクチャ監査"
-      - "タスク分解 (サブタスクへの分割)"
-      - "実装結果のレビュー"
+      - "256K context (cross-file verification)"
+      - "SWE-Bench 70.6% (Check精度)"
+      - "Non-thinking mode (低レイテンシ)"
+      - "80B/3B active (コスト効率)"
+
     api_providers:
       - "DashScope (Alibaba Cloud)"
       - "OpenRouter"
@@ -159,10 +184,10 @@ v10_innovations:
         shadow: "Cloud Qwen3-plus (32k context, ¥3)"
         final_defense: "Gemini 3 Flash (¥0.04)"
       complex:
-        primary: "Gunshi (Qwen3-Coder-Next API, 256K context)"
-        fallback_1: "Local Qwen3 llama.cpp (¥0)"
-        fallback_2: "Cloud Qwen3-plus (¥3)"
-        final_defense: "Gemini 3 Flash (¥0.04)"
+        primary: "Gunshi PDCA: Plan(256K) → Do(Taisho) → Check(256K) → Act"
+        do_primary: "Taisho (Local Qwen3, 3-tier fallback)"
+        do_fallback: "Gunshi API (self-implementation)"
+        gunshi_unavailable: "Local Qwen3 → Cloud Qwen3 → Gemini 3 (v9.4互換)"
 
   prompt_caching:
     enabled: true
@@ -242,11 +267,13 @@ gunshi:
     temperature: 0.3  # 低め = 正確な戦略立案
     max_tokens: 8192  # 長めの分析を許容
 
-  modes:
-    strategy: "複雑タスクの実行計画立案"
-    audit: "コードアーキテクチャ監査"
-    decompose: "タスク分解 (サブタスクへの分割)"
-    advise: "技術的助言"
+  pdca_engine:
+    max_subtasks: 5
+    max_correction_loops: 1
+    subtask_token_limit: 3000
+    temperature_plan: 0.3
+    temperature_check: 0.1
+    temperature_act: 0.2
 
   activation_triggers:
     - "task_complexity == COMPLEX"
@@ -400,23 +427,24 @@ proxmox:
         os_overhead: "10GB"
         free_space: "10GB"
 
-# --- パフォーマンス目標 ---
+# --- パフォーマンス目標 (PDCA実測ベース) ---
 performance_targets:
-  v10:
+  v10_pdca:
     simple:
       time_seconds: 2
       route: "Groq"
       cost_yen: 0
 
     medium:
-      time_seconds: 15  # CPU is slower than GPU
+      time_seconds: "12-15"  # CPU推論 (HP ProDesk 600)
       route: "Local Qwen3 llama.cpp"
       cost_yen: 0
 
     complex:
-      time_seconds: 25
-      route: "Gunshi → Local Qwen3 → Cloud → Gemini"
-      cost_yen: "0-3"
+      time_seconds_no_correction: "21-30"  # Plan(3-5) + Do(15-20) + Check(3-5)
+      time_seconds_with_correction: "36-55"  # + Act(15-20) + ReCheck(3-5)
+      route: "Gunshi PDCA: Plan→Do(Taisho)→Check→Act"
+      cost_yen: "0.04-0.10"  # Gunshi API (Plan+Check+maybe Act)
 
     strategic:
       time_seconds: 45
@@ -426,25 +454,33 @@ performance_targets:
 # --- コスト目標 ---
 cost_targets:
   v10:
-    monthly_yen: 3600
+    monthly_yen: 3510
     breakdown:
       claude_pro: 3000
       claude_api: 140
       opus_premium: 100
       gemini_3_flash: 120
       alibaba_cloud: 60
-      qwen3_coder_next: 100  # 軍師 API (3B active = cheap)
+      qwen3_coder_next: 10  # Gunshi PDCA (3B active, ~¥0.05/request × 200/month)
       groq: 0
-      electricity: 80  # CPU more efficient
+      electricity: 80
 
-# --- 品質目標 ---
+# --- 品質目標 (厳密ベンチマーク基準) ---
 quality_targets:
-  v10:
-    overall: "97-98"
-    simple: "90-93"  # Groq
-    medium: "95-97"  # Local Qwen3
-    complex: "97-99"  # Gunshi + fallback chain
-    strategic: "98-99.5"  # Opus Premium
+  v10_pdca:
+    note: "v9.4比較: COMPLEX のみ改善 (+7-8pt), 他は不変"
+    simple: "85-90"       # Groq (変化なし)
+    medium: "88-92"       # Local Qwen3 (変化なし)
+    complex_no_correction: "82-90"   # PDCA Plan+Do+Check (v9.4: 78-85)
+    complex_with_correction: "87-93" # PDCA full cycle (Act修正後)
+    strategic: "95-98"    # Opus Premium (変化なし)
+    overall: "88-92"      # 加重平均
+
+    pdca_improvement_analysis:
+      plan_value: "Taisho 4096制限を Gunshi 256K で補完 → 焦点を絞った実装指示"
+      check_value: "cross-file 整合性検証 → Taisho が見えないバグを検出"
+      act_value: "具体的修正指示 → 盲目的リトライより高い修正成功率"
+      remaining_bottleneck: "実装層は依然 Taisho 30B/4096ctx (ここは変わらない)"
 
 # --- 開発環境 ---
 development:
