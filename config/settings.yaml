@@ -157,7 +157,7 @@ v10_innovations:
       - "メモリロック（mlock）でスワップ防止"
       - "ネイティブC++（Goオーバーヘッド無し）"
       - "HP ProDesk 600完全対応"
-    expected_speed: "15-25 tok/s (i7-10700 CPU)"
+    expected_speed: "10-18 tok/s (i5-8500 CPU)"
 
   intelligent_routing:
     enabled: true
@@ -379,7 +379,7 @@ taisho:
     endpoint: "http://127.0.0.1:8080"
     context_length: 4096
     quantization: "Q4_K_M"
-    threads: 8  # HP ProDesk 600: i7 8 cores
+    threads: 6  # HP ProDesk 600: i5-8500 6 cores
     batch_size: 512
     mlock: true
     expected_speed: "15-25 tok/s (CPU)"
@@ -488,7 +488,7 @@ infrastructure:
 
   local:
     hardware: "HP ProDesk 600"
-    cpu: "Intel Core i5-10500 / i7-10700 (6-8C)"
+    cpu: "Intel Core i5-8500 (6C/6T)"
     ram: "16-32GB DDR4"
     gpu: "なし（CPU推論）"
     os: "Ubuntu 22.04/24.04 LTS"
@@ -497,7 +497,7 @@ infrastructure:
   llamacpp:
     endpoint: "http://127.0.0.1:8080"
     model_path: "models/qwen3/Qwen3-Coder-30B-Q4_K_M.gguf"
-    threads: 8
+    threads: 6  # i5-8500: 6 cores
     context_size: 4096
     batch_size: 512
     mlock: true

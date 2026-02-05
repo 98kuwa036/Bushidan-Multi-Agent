@@ -21,7 +21,7 @@
 #   - ネットワークエラーは自動リトライ
 #
 # HP ProDesk 600 スペック想定:
-#   - Intel Core i5-10500 または i7-10700 (6-8コア)
+#   - Intel Core i5-8500 (6C/6T, HT無し)
 #   - 16-32GB DDR4 RAM
 #   - ディスクリートGPU無し (Intel UHD Graphics)
 #
@@ -48,7 +48,7 @@ MODEL_URL="https://huggingface.co/unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF/reso
 PROJECT_DIR="${HOME}/Bushidan-Multi-Agent"
 
 # HP ProDesk 600 CPU最適化設定
-CPU_THREADS=8          # i7-10700は8コア
+CPU_THREADS=6          # i5-8500は6コア (HT無し)
 CONTEXT_SIZE=4096      # 速度最適化のため縮小
 BATCH_SIZE=512         # CPU最適バッチサイズ
 PARALLEL_REQUESTS=1    # CPUの安定性のため単一リクエスト

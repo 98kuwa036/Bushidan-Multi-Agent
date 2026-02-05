@@ -47,7 +47,7 @@ class LlamaCppConfig:
     port: int = 8080
 
     # CPU Optimization
-    threads: int = 8  # HP ProDesk 600: i5/i7 with 6-8 cores
+    threads: int = 6  # HP ProDesk 600: i5-8500 (6C/6T)
     context_size: int = 4096  # Reduced for speed
     batch_size: int = 512  # Optimal for CPU
     parallel_requests: int = 2  # Concurrent request handling
@@ -91,7 +91,7 @@ class Qwen3LlamaCppClient:
     Model: Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf (Q4_K_M量子化)
     - 4096 context limit (速度最適化)
     - MoE architecture (3.3B active params)
-    - Expected: 15-25 tok/s on CPU (i7-10700)
+    - Expected: 10-18 tok/s on CPU (i5-8500)
     - RAM usage: 16-20GB
     - Cost: ¥0 inference + ~¥3 electricity per task
 
@@ -670,7 +670,7 @@ def create_prodesck_600_client() -> Qwen3LlamaCppClient:
     Create a pre-configured client for HP ProDesk 600
 
     HP ProDesk 600 typical specs:
-    - Intel Core i5-10500 or i7-10700 (6-8 cores)
+    - Intel Core i5-8500 (6C/6T, no HT)
     - 16-32GB DDR4 RAM
     - No discrete GPU (Intel UHD Graphics)
 
@@ -682,7 +682,7 @@ def create_prodesck_600_client() -> Qwen3LlamaCppClient:
         model_path="models/Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf",
         host="127.0.0.1",
         port=8080,
-        threads=8,  # i7-10700 has 8 cores
+        threads=6,  # i5-8500 has 6 cores
         context_size=4096,  # Reduced for CPU speed
         batch_size=512,  # Good for CPU
         parallel_requests=1,  # Single request for CPU stability

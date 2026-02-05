@@ -92,9 +92,9 @@ pathlib2>=2.3.7
 #   ✅ Claude Prompt Caching (90% savings)
 #   ✅ Japanese logging throughout
 #
-# Expected Performance (HP ProDesk 600 i7-10700):
+# Expected Performance (HP ProDesk 600 i5-8500):
 #   - Simple tasks: 2s (Groq)
-#   - Medium tasks: 15s (Local Qwen3 CPU, 15-25 tok/s)
+#   - Medium tasks: 18s (Local Qwen3 CPU, 10-18 tok/s)
 #   - 3-tier fallback: 99.5% reliability
 #
 # Storage Requirements:
