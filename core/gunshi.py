@@ -7,7 +7,7 @@ Bushidan Multi-Agent System v10 - 軍師 (Gunshi) PDCA Operation Layer
 PDCA Operation Cycle:
   Plan  (作戦立案): 256Kコンテキストでタスク分析 → サブタスク分解
   Do    (作戦実行): サブタスクを大将(Taisho)に委譲 → 並列実行
-  Check (戦果検証): 全実装結果を256Kで一括レビュー
+  Check (戦果検証): 全実装結果を256Kで一括レビュー + 検校ビジュアル検証
   Act   (修正指示): 不合格サブタスクに修正指示 → 再実行 (最大1回)
 
 Temperature Strategy (各フェーズで最適化):
@@ -125,6 +125,7 @@ class Gunshi:
     Plan:  Gunshi が全体を俯瞰してサブタスクに分解 (各≤3000tok)
     Do:    各サブタスクを Taisho に委譲 (4096 window に収まる)
     Check: 全結果を Gunshi に戻して 256K で一括検証 (cross-file整合性)
+           + 検校(Kengyo)がUI関連タスクのビジュアル検証を実施
     Act:   不合格に具体的修正指示 → Taisho が再実装 (最大1回)
 
     ■ Temperature 戦略:
@@ -262,7 +263,7 @@ class Gunshi:
                 f"({phase_times['do']:.1f}s)"
             )
 
-            # ===== Phase 3: CHECK (戦果検証) =====
+            # ===== Phase 3: CHECK (戦果検証 + ビジュアル検証) =====
             logger.info("🔍 Phase 3/4: CHECK (戦果検証)...")
             t0 = asyncio.get_event_loop().time()
 
@@ -270,10 +271,20 @@ class Gunshi:
                 task_content, plan_summary, subtasks
             )
 
+            # 検校 (Kengyo) ビジュアル検証
+            visual_result = await self._phase_check_visual(
+                task_content, subtasks, context
+            )
+            if visual_result:
+                passed, quality_score = self._merge_visual_verdict(
+                    passed, quality_score, visual_result
+                )
+
             phase_times["check"] = asyncio.get_event_loop().time() - t0
             self._stats["total_check_time"] += phase_times["check"]
+            visual_tag = " + 検校" if visual_result else ""
             logger.info(
-                f"🔍 CHECK完了: {'合格' if passed else '不合格'} "
+                f"🔍 CHECK完了{visual_tag}: {'合格' if passed else '不合格'} "
                 f"(品質 {quality_score:.0%}, {phase_times['check']:.1f}s)"
             )
 
@@ -739,6 +750,84 @@ class Gunshi:
             ))
 
         return overall_passed, quality_score, verdicts
+
+    # ==================== Phase 3.5: CHECK Visual (検校) ====================
+
+    async def _phase_check_visual(
+        self,
+        task_content: str,
+        subtasks: List[SubTask],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Phase 3 拡張: 検校 (Kengyo) によるビジュアル検証
+
+        UI 関連タスクの場合のみ実行。
+        検校が未初期化、またはタスクに UI 要素がない場合はスキップ。
+
+        Returns:
+            ビジュアル検証結果 or None (スキップ時)
+        """
+        kengyo = self._get_kengyo()
+        if not kengyo or not kengyo.is_available():
+            return None
+
+        subtask_results = [
+            {
+                "id": st.id,
+                "description": st.description,
+                "status": st.status,
+                "result": st.result or "",
+            }
+            for st in subtasks
+        ]
+
+        result = await kengyo.check_phase_visual_verify(
+            task_content=task_content,
+            subtask_results=subtask_results,
+            context=context,
+        )
+        return result
+
+    def _get_kengyo(self):
+        """検校 (Kengyo) インスタンス取得"""
+        if hasattr(self.orchestrator, '_kengyo') and self.orchestrator._kengyo:
+            return self.orchestrator._kengyo
+        return None
+
+    def _merge_visual_verdict(
+        self,
+        text_passed: bool,
+        text_quality: float,
+        visual_result: Dict[str, Any],
+    ) -> tuple:
+        """
+        テキスト検証結果とビジュアル検証結果を統合
+
+        ビジュアル検証は補助的な位置づけ:
+        - テキスト合格 + ビジュアル不合格(重大) → 不合格に引き下げ
+        - テキスト不合格 + ビジュアル合格 → 不合格のまま
+        - 品質スコアはビジュアルを 20% で加重
+        """
+        visual_passed = visual_result.get("overall_passed", True)
+        critical = visual_result.get("critical_issues", 0)
+
+        # テキスト合格でもビジュアルに重大問題があれば不合格
+        merged_passed = text_passed
+        if text_passed and not visual_passed and critical > 0:
+            merged_passed = False
+            logger.info(
+                f"👁️ 検校が重大問題を検出 ({critical}件) → 不合格に引き下げ"
+            )
+
+        # 品質スコア: テキスト 80% + ビジュアル 20%
+        # ビジュアルスコアは issue 数で概算
+        total_issues = visual_result.get("total_issues", 0)
+        visual_score = max(0.0, 1.0 - (total_issues * 0.1))
+        merged_quality = (text_quality * 0.8) + (visual_score * 0.2)
+        merged_quality = min(1.0, max(0.0, merged_quality))
+
+        return merged_passed, merged_quality
 
     # ==================== Phase 4: ACT ====================
 

@@ -100,6 +100,9 @@ class SystemOrchestrator:
     4. 大将 (Taisho) - 実装層: Qwen3 + 影武者
     5. 足軽 (Ashigaru) - 実行層: MCPサーバー
 
+    補助役:
+    - 検校 (Kengyo) - ビジュアル検証: Kimi K2.5 Vision + Playwright MCP
+
     新機能:
     - 軍師 (Gunshi) 層: 複雑タスクの作戦立案・コード監査
     - タスク委譲のインテリジェントルーター (GUNSHIルート)
@@ -124,6 +127,7 @@ class SystemOrchestrator:
         self._gunshi = None  # 軍師: 作戦立案層 (v10)
         self._karo = None    # 家老: 戦術層
         self._taisho = None  # 大将: 実装層
+        self._kengyo = None  # 検校: ビジュアル検証 (v10.1)
 
         # 統計
         self.health_status: Dict[str, bool] = {}
@@ -196,6 +200,19 @@ class SystemOrchestrator:
         if self._karo and hasattr(self._karo, 'taisho'):
             self._taisho = self._karo.taisho
             logger.info("⚔️ 大将（実装層）参照取得完了")
+
+        # v10.1: 検校（ビジュアル・デバッガー）初期化
+        try:
+            from core.kengyo import Kengyo
+            kimi_client = self.clients.get("kimi_k2")
+            self._kengyo = Kengyo(
+                kimi_client=kimi_client,
+                smithery_mcp=getattr(self, 'smithery_mcp', None),
+            )
+            await self._kengyo.initialize()
+            logger.info("👁️ 検校（ビジュアル・デバッガー）初期化完了")
+        except Exception as e:
+            logger.warning(f"⚠️ 検校初期化失敗 (ビジュアル検証スキップ): {e}")
 
     async def _initialize_mcps(self) -> None:
         """Initialize Model Context Protocol servers"""
@@ -448,6 +465,7 @@ class SystemOrchestrator:
         logger.info(f"  🧠 軍師（作戦立案層）: {'✅' if self._gunshi else '❌'}")
         logger.info(f"  👔 家老（戦術層）: {'✅' if self._karo else '❌'}")
         logger.info(f"  ⚔️ 大将（実装層）: {'✅' if self._taisho else '❌'}")
+        logger.info(f"  👁️ 検校（ビジュアル検証）: {'✅' if self._kengyo and self._kengyo.is_available() else '❌'}")
 
         # BDI状態
         if self._shogun and hasattr(self._shogun, 'bdi_enabled'):
@@ -531,6 +549,11 @@ class SystemOrchestrator:
         """大将（実装層）取得"""
         return self._taisho
 
+    @property
+    def kengyo(self):
+        """検校（ビジュアル検証）取得"""
+        return self._kengyo
+
     def get_tier_statistics(self) -> Dict[str, Any]:
         """全階層統計を取得"""
         stats = {}
@@ -546,6 +569,9 @@ class SystemOrchestrator:
 
         if self._taisho and hasattr(self._taisho, 'get_statistics'):
             stats["taisho"] = self._taisho.get_statistics()
+
+        if self._kengyo and hasattr(self._kengyo, 'get_statistics'):
+            stats["kengyo"] = self._kengyo.get_statistics()
 
         return stats
 

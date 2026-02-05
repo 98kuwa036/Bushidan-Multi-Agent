@@ -6,7 +6,7 @@ OpenAI-compatible API at api.moonshot.cn/v1 or via OpenRouter.
 
 Role in v10.1:
 - PDCA Do フェーズの第1実行者 (128K context, 本当の並列実行)
-- マルチモーダル: Check フェーズの視覚検証 (将来拡張)
+- マルチモーダル: 検校(Kengyo) と連携した Check フェーズ視覚検証
 - 傭兵 (Yohei): クラウドの物量で並列サブタスク実行
 
 Fallback chain position:
@@ -59,7 +59,7 @@ class KimiK2Client:
     特性:
     - 128K context: 軍師(256K) と 大将(4K) のギャップを埋める
     - クラウド推論: asyncio.gather で本当の並列サブタスク実行が可能
-    - マルチモーダル: 画像入力に対応 (Check フェーズ視覚検証用)
+    - マルチモーダル: 画像入力に対応 (検校 Kengyo ビジュアル検証)
     - OpenAI互換API: 既存の統合パターンと親和性が高い
     """
 
@@ -321,7 +321,7 @@ class KimiK2Client:
         check_prompt: str,
     ) -> str:
         """
-        ビジュアル検証 (Check フェーズ向け, 将来拡張)
+        ビジュアル検証 (検校 Kengyo から呼び出される)
 
         Playwright MCP でキャプチャしたスクリーンショットを
         Kimi K2.5 のマルチモーダル能力で視覚的に検証する。

@@ -124,14 +124,15 @@ v10_innovations:
         fallback_executor: "Gunshi API (Taisho未初期化時のみ)"
 
       check:
-        description: "全結果を 256K window で一括検証 (cross-file整合性)"
+        description: "全結果を 256K window で一括検証 + 検校ビジュアル検証"
         temperature: 0.1  # 厳密判定
-        key_value: "Taishoが見えない cross-file 整合性を Gunshi が検証"
+        key_value: "テキスト検証(Gunshi 256K) + ビジュアル検証(検校) = 完全品質保証"
         verification_criteria:
           - "元タスクの要件充足"
           - "サブタスク間整合性 (import, 型, インターフェース)"
           - "コード品質 (バグ, セキュリティ)"
           - "実装の完全性"
+          - "UI/ビジュアル検証 (検校: Kimi Vision + Playwright)"
 
       act:
         description: "不合格サブタスクに修正指示 → 再実装"
@@ -304,18 +305,49 @@ yohei:
   strengths:
     - "128K context: 軍師(256K)と大将(4K)のギャップを埋める"
     - "クラウドAPI: asyncio.gather で真の並列サブタスク実行"
-    - "マルチモーダル: Check フェーズのUI視覚検証 (将来)"
+    - "マルチモーダル: 検校(Kengyo)と連携したUI視覚検証"
     - "高速推論: ローカル llama.cpp より低レイテンシ"
 
   role_in_pdca:
     do_phase: "独立サブタスクを implement_subtasks_parallel() で並列実行"
-    check_phase: "将来: Playwright スクリーンショット + Kimi Vision 検証"
+    check_phase: "検校(Kengyo): Playwright スクリーンショット + Kimi Vision 検証"
     confidential: "秘匿タスクはスキップ → Local Qwen3 が直接処理"
 
   cost:
     input_per_1k_tokens_yen: 0.002
     output_per_1k_tokens_yen: 0.008
     estimated_monthly_yen: 30  # ~100 Complex tasks/month
+
+# --- 検校 (Kengyo) - Visual Debugger (v10.1) ---
+kengyo:
+  codename: "Kengyo"
+  role: "検校 - ビジュアル・デバッガー (Kimi K2.5 Vision + Playwright MCP)"
+  description: "PDCA Check フェーズのビジュアル検証拡張"
+
+  capabilities:
+    - "スクリーンショット取得: Playwright MCP (Desktop + Mobile)"
+    - "ビジュアル解析: Kimi K2.5 Vision (レイアウト・表示・アクセシビリティ)"
+    - "リグレッション検出: Before/After 比較"
+    - "マルチビューポート: Desktop (1280px) / Tablet (768px) / Mobile (375px)"
+
+  check_criteria:
+    - "レイアウト崩れ (重なり、はみ出し、不正な空白)"
+    - "テキスト可読性 (フォントサイズ、コントラスト)"
+    - "ボタン・リンクの視認性"
+    - "画像・アイコン表示状態"
+    - "レスポンシブ対応"
+    - "色使いの一貫性とアクセシビリティ"
+
+  integration:
+    pdca_phase: "Check (Phase 3)"
+    text_weight: 0.8   # テキスト検証 80%
+    visual_weight: 0.2  # ビジュアル検証 20%
+    activation: "タスクコンテキストに URL or UI キーワードが含まれる場合のみ"
+    graceful_degradation: "Kimi/Playwright 未設定時はスキップ (テキスト検証のみ)"
+
+  dependencies:
+    required: "Kimi K2.5 (Vision)"
+    optional: "Playwright MCP (Smithery)"
 
 # --- 家老 (Karo) - Tactical Layer ---
 karo:
@@ -401,7 +433,7 @@ ashigaru:
     # Browser
     - name: "playwright"
       type: "MCP (Smithery)"
-      role: "ブラウザ操作・スクリーンショット・UI検証"
+      role: "ブラウザ操作・スクリーンショット・検校(Kengyo)ビジュアル検証"
 
     # Search
     - name: "tavily"

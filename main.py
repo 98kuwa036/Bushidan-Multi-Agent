@@ -8,6 +8,7 @@ Universal Multi-LLM Framework based on Samurai hierarchy.
 
 v10.1 Features:
 - 傭兵 (Kimi K2.5): 128K context, 並列サブタスク実行, マルチモーダル
+- 検校 (Kengyo): ビジュアル・デバッガー (Kimi Vision + Playwright MCP)
 - 軍師 (Gunshi) 層: Qwen3-Coder-Next 80B API (256K context, PDCA Engine)
 - 4層フォールバックチェーン: Kimi → Local Qwen3 → Kagemusha → Gemini 3 Flash
 - Smithery MCP 管理: Sequential Thinking, Playwright, Exa, Graph Memory, Prisma
@@ -44,11 +45,13 @@ def print_banner() -> None:
 ║    👔 家老 (Karo)     - Groq + Gemini 3.0 + BDI             ║
 ║    ⚔️ 大将 (Taisho)   - 4層鉄壁チェーン + BDI               ║
 ║    🗡️ 傭兵 (Kimi K2.5) - 128K + 並列実行 + Vision          ║
+║    👁️ 検校 (Kengyo)    - ビジュアル・デバッガー              ║
 ║    👣 足軽 (Ashigaru) - Smithery MCP × 10                   ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  v10.1 新機能:                                                ║
 ║    🗡️ Kimi K2.5 傭兵 (128K, 真の並列サブタスク実行)         ║
-║    🧠 PDCA Engine (Plan→Do(Kimi並列)→Check→Act)             ║
+║    👁️ 検校 Kengyo (Kimi Vision + Playwright ビジュアル検証)  ║
+║    🧠 PDCA Engine (Plan→Do(Kimi並列)→Check(+検校)→Act)      ║
 ║    🔗 4-tier Fallback (Kimi→Qwen3→Kagemusha→Gemini)        ║
 ║    📦 Smithery MCP (Playwright, Exa, Graph Memory, Prisma)  ║
 ╚══════════════════════════════════════════════════════════════╝
@@ -142,6 +145,12 @@ def _print_component_status(orchestrator: SystemOrchestrator) -> None:
     for name in mcps:
         status = "✅" if orchestrator.get_mcp(name) else "❌"
         print(f"  {status} {name}")
+
+    # Kengyo (Visual Debugger)
+    kengyo = orchestrator.kengyo
+    kengyo_status = "✅" if kengyo and kengyo.is_available() else "❌"
+    print(f"\nVisual Debugger:")
+    print(f"  {kengyo_status} 検校 (Kengyo) - Kimi Vision + Playwright")
 
     # Router
     router_status = "✅" if orchestrator.get_router() else "❌"
