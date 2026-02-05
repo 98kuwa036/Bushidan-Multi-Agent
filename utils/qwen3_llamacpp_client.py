@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v9.4 - llama.cpp Qwen3-Coder-30B Client
+Bushidan Multi-Agent System v10.1 - llama.cpp Qwen3-Coder-30B Client
 
 CPU推論に最適化されたllama.cppクライアント
 HP ProDesk 600 (CPU only) での高速推論を実現
@@ -100,7 +100,7 @@ class Qwen3LlamaCppClient:
     - Falls back to Cloud Qwen3 (Kagemusha) if context > 4k
     """
 
-    VERSION = "9.4"
+    VERSION = "10.1"
 
     def __init__(
         self,

@@ -9,10 +9,10 @@ Key Improvements vs 2.0:
 - Enhanced Japanese language support
 - Same cost structure (¥0.04/1000 requests estimated)
 
-Role in v9.3.2:
-- Final defense line in 3-tier fallback chain
+Role in v10.1:
+- Final defense line (Tier 4) in 4-tier fallback chain
 - Tactical coordination (家老 role for complex cases)
-- Activates when: Local Qwen3 fails → Cloud Qwen3 fails → Gemini 3
+- Activates when: Kimi K2.5 fails → Local Qwen3 fails → Cloud Qwen3 fails → Gemini 3
 - Reliable, fast, cost-effective last resort
 """
 

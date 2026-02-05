@@ -147,7 +147,7 @@ class TestRouteDetermination:
         assert decision.estimated_time_seconds == 12
     
     def test_route_medium_has_fallback_chain(self, mock_config):
-        """Test medium tasks have 3-tier fallback"""
+        """Test medium tasks have route-level fallback chain"""
         router = IntelligentRouter(mock_config)
         
         decision = router.determine_route(TaskComplexity.MEDIUM)
@@ -168,7 +168,7 @@ class TestRouteDetermination:
         assert decision.estimated_time_seconds == 28
     
     def test_route_complex_has_same_fallback(self, mock_config):
-        """Test complex tasks have same 3-tier fallback"""
+        """Test complex tasks route through Gunshi with fallback chain"""
         router = IntelligentRouter(mock_config)
         
         decision = router.determine_route(TaskComplexity.COMPLEX)

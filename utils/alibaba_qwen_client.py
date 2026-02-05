@@ -57,7 +57,7 @@ class AlibabaQwenClient:
     Role: Shadow backup (影武者) for local Qwen3
     - Seamless continuation when local hits limits
     - Maintains reasoning quality and style
-    - Middle tier in 3-tier fallback chain
+    - Tier 3 in 4-tier fallback chain (Kimi→Local→Kagemusha→Gemini)
     """
     
     def __init__(self, api_key: str, model: str = "qwen3-coder-plus"):

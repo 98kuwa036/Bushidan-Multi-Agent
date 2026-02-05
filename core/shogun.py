@@ -36,7 +36,7 @@ class TaskComplexity(Enum):
     """Task complexity levels for delegation decisions (v9.3.2 timing)"""
     SIMPLE = "simple"      # 2s - Groq handles instantly
     MEDIUM = "medium"      # 12s - Local Qwen3 → Cloud fallback
-    COMPLEX = "complex"    # 28s - 3-tier fallback chain
+    COMPLEX = "complex"    # 28s - 4-tier fallback chain
     STRATEGIC = "strategic" # 45s - Shogun handles directly
 
 
@@ -80,10 +80,10 @@ class Shogun:
     - 軍師 PDCA Engine (COMPLEX→GUNSHI ルート)
     - 省電力最適化付きインテリジェントルーティング
     - 90%コスト削減のプロンプトキャッシング
-    - 3層フォールバックチェーン管理
+    - 4層フォールバックチェーン管理（Kimi→Local→Kagemusha→Gemini）
     """
 
-    VERSION = "9.4"
+    VERSION = "10.1"
 
     def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator

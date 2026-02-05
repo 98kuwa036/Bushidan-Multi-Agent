@@ -1,17 +1,18 @@
 """
-Bushidan Multi-Agent System v10 - System Orchestrator (システム統括)
+Bushidan Multi-Agent System v10.1 - System Orchestrator (システム統括)
 
 5層ハイブリッドアーキテクチャの強化システム調整。
-管理対象: 将軍 → 軍師 → 家老 → 大将 → 足軽（インテリジェントルーティング付き）
+管理対象: 将軍 → 軍師 → 家老 → 大将(+傭兵) → 足軽（インテリジェントルーティング付き）
 
-v10 機能強化:
-- 軍師 (Gunshi) 層追加: Qwen3-Coder-Next 80B API (256K context, SWE-Bench 70.6%)
+v10.1 機能強化:
+- 傭兵 (Kimi K2.5) 追加: 128K context, 並列サブタスク実行, マルチモーダル
+- 軍師 (Gunshi) 層: Qwen3-Coder-Next 80B API (256K context, SWE-Bench 70.6%)
+- 4層フォールバックチェーン: Kimi K2.5 → ローカルQwen3 → 影武者 → Gemini 3 Flash
+- Smithery MCP 管理: npm → Smithery 移行
+- 新MCP: Sequential Thinking, Playwright, Exa, Graph Memory, Prisma
 - インテリジェントルーター統合 (GUNSHI ルート追加)
-- 新規クライアント初期化（ClaudeClientCached, Groq, Gemini3, Qwen3 llama.cpp, AlibabaQwen, Qwen3-Coder-Next）
-- 3層フォールバックチェーン管理
 - llama.cpp CPU最適化（HP ProDesk 600対応）
 - 省電力最適化
-- 強化ヘルスチェック
 - BDIフレームワーク統合
 """
 
@@ -56,6 +57,10 @@ class SystemConfig:
     qwen3_coder_next_api_key: Optional[str] = None
     qwen3_coder_next_provider: str = "dashscope"  # dashscope, openrouter
 
+    # v10.1: Kimi K2.5 (傭兵)
+    kimi_api_key: Optional[str] = None
+    kimi_provider: str = "moonshot"  # moonshot, openrouter
+
     # Optional tokens
     slack_token: Optional[str] = None
     notion_token: Optional[str] = None
@@ -98,13 +103,13 @@ class SystemOrchestrator:
     新機能:
     - 軍師 (Gunshi) 層: 複雑タスクの作戦立案・コード監査
     - タスク委譲のインテリジェントルーター (GUNSHIルート)
-    - 3層フォールバックチェーン管理
+    - 4層フォールバックチェーン管理（Kimi→Local→Kagemusha→Gemini）
     - 省電力最適化
     - コスト削減のプロンプトキャッシング
     - BDIフレームワーク統合
     """
 
-    VERSION = "10.0"
+    VERSION = "10.1"
 
     def __init__(self, config: SystemConfig):
         self.config = config
@@ -212,13 +217,25 @@ class SystemOrchestrator:
             except Exception as e:
                 logger.warning(f"⚠️ {name.title()} MCP initialization failed: {e}")
 
-        # Initialize MCP Manager
+        # Initialize MCP Manager (legacy)
         try:
             from core.mcp_manager import MCPManager
             self.mcp_manager = MCPManager()
             logger.info("✅ MCP Manager initialized")
         except Exception as e:
             logger.warning(f"⚠️ MCP Manager not available: {e}")
+
+        # v10.1: Smithery MCP Manager
+        try:
+            from mcp.smithery_manager import SmitheryMCPManager
+            self.smithery_mcp = SmitheryMCPManager()
+            smithery_status = await self.smithery_mcp.initialize()
+            available = sum(1 for v in smithery_status.values() if v)
+            total = len(smithery_status)
+            logger.info(f"✅ Smithery MCP Manager: {available}/{total} servers ready")
+        except Exception as e:
+            self.smithery_mcp = None
+            logger.warning(f"⚠️ Smithery MCP Manager not available: {e}")
 
     async def _initialize_clients(self) -> None:
         """Initialize all v10 AI clients"""
@@ -308,6 +325,21 @@ class SystemOrchestrator:
                 logger.info("✅ Alibaba Qwen Client (Kagemusha) initialized")
             except Exception as e:
                 logger.warning(f"⚠️ Alibaba Qwen client failed: {e}")
+
+        # v10.1: Kimi K2.5 Client (傭兵 - Yohei)
+        if self.config.kimi_api_key:
+            try:
+                from utils.kimi_k2_client import KimiK2Client, KimiConfig
+                kimi_config = KimiConfig(
+                    api_key=self.config.kimi_api_key,
+                    provider=self.config.kimi_provider
+                )
+                client = KimiK2Client(config=kimi_config)
+                await client.initialize()
+                self.clients["kimi_k2"] = client
+                logger.info("✅ Kimi K2.5 Client (傭兵) initialized - 128K context")
+            except Exception as e:
+                logger.warning(f"⚠️ Kimi K2.5 client failed: {e}")
 
         # v10: Qwen3-Coder-Next Client (軍師 - Gunshi)
         if self.config.qwen3_coder_next_api_key:
@@ -428,6 +460,7 @@ class SystemOrchestrator:
             "groq": "Groq（即応）",
             "gemini3": "Gemini 3.0 Flash",
             "qwen3": f"Qwen3（{'llama.cpp CPU' if self.config.use_llamacpp else 'Ollama'}）",
+            "kimi_k2": "Kimi K2.5（傭兵, 128K）",
             "qwen3_coder_next": "Qwen3-Coder-Next（軍師）",
             "alibaba_qwen": "Alibaba Qwen（影武者）",
             "opus": "Opus（プレミアム）"

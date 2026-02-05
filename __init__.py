@@ -1,2 +1,2 @@
-"""武士団マルチエージェントシステム v10 - 軍師 PDCA Engine + BDI Framework + llama.cpp CPU最適化"""
-__version__ = "10.0"
+"""武士団マルチエージェントシステム v10.1 - 傭兵(Kimi K2.5) + 軍師 PDCA Engine + Smithery MCP + BDI Framework"""
+__version__ = "10.1"

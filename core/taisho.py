@@ -1,11 +1,13 @@
 """
-Bushidan Multi-Agent System v10 - Taisho (大将: 実装層)
+Bushidan Multi-Agent System v10.1 - Taisho (大将: 実装層)
 
-大将は3層フォールバックチェーンを持つ主要実装層として機能。
+大将は4層フォールバックチェーンを持つ主要実装層として機能。
 実際のコード生成、ファイル操作、重量計算タスクを処理する。
 
-v9.4 機能強化:
-- 3層フォールバックチェーン: ローカルQwen3 → クラウドQwen3（影武者）→ Gemini 3 Flash
+v10.1 機能強化:
+- 4層フォールバックチェーン: Kimi K2.5(傭兵) → ローカルQwen3 → クラウドQwen3（影武者）→ Gemini 3 Flash
+- Kimi K2.5 (128K context): 並列サブタスク実行、大規模コンテキスト処理
+- ローカルQwen3: 秘匿情報処理・オフライン保証・Kimi成果物の統合
 - llama.cpp CPU最適化（HP ProDesk 600対応、Ollama不要）
 - Qwen3-Coder-30B-A3B-instruct-q4_k_m.gguf（4kコンテキスト、CPU推論）
 - クラウドQwen3-plus（影武者）コンテキストオーバーフロー対応（32k容量）
@@ -55,48 +57,52 @@ class ImplementationTask:
 
 class FallbackStatus(Enum):
     """Status of fallback chain execution"""
-    LOCAL_SUCCESS = "local_qwen3_success"
-    CLOUD_SUCCESS = "cloud_qwen3_success"
-    GEMINI_SUCCESS = "gemini3_success"
+    KIMI_SUCCESS = "kimi_k2_success"        # Tier 1: 傭兵 Kimi K2.5
+    LOCAL_SUCCESS = "local_qwen3_success"    # Tier 2: ローカル Qwen3
+    CLOUD_SUCCESS = "cloud_qwen3_success"    # Tier 3: 影武者 Cloud Qwen3+
+    GEMINI_SUCCESS = "gemini3_success"       # Tier 4: 最終防衛 Gemini 3 Flash
     ALL_FAILED = "all_failed"
 
 
 class Taisho:
     """
-    大将 (Taisho) - 実装層 v10
+    大将 (Taisho) - 実装層 v10.1
 
     武士団システムの実装担当として、以下の責務を担う:
 
     主要責務:
-    1. 3層フォールバックチェーン付き重量実装タスク
-    2. ローカルQwen3（4kコンテキスト、¥0）をプライマリ
-    3. クラウドQwen3-plus（影武者、32kコンテキスト）オーバーフロー対応
-    4. Gemini 3.0 Flash最終防衛
-    5. MCP駆動ファイル操作
-    6. 自己修復コード実行（Layer 2）
-    7. DSPy検証（Layer 3）
+    1. 4層フォールバックチェーン付き重量実装タスク
+    2. Kimi K2.5（傭兵、128Kコンテキスト）で並列実行
+    3. ローカルQwen3（4kコンテキスト、¥0）で秘匿処理・統合・オフライン保証
+    4. クラウドQwen3-plus（影武者、32kコンテキスト）容量拡張
+    5. Gemini 3.0 Flash最終防衛
+    6. MCP駆動ファイル操作
+    7. 自己修復コード実行（Layer 2）
+    8. DSPy検証（Layer 3）
 
     BDI統合:
     - 信念基盤: クライアント可用性、コンテキストサイズ
     - 願望集合: 正確実装、効率実行、品質検証、自己修復
     - 意図スタック: 実装計画の実行
 
-    v10 フォールバックチェーン:
-    プライマリ: ローカルQwen3-Coder-30B (4k ctx, ¥0, 高速)
-    フォールバック1: クラウドQwen3-plus (32k ctx, ¥3, 影武者)
-    フォールバック2: Gemini 3.0 Flash (防衛, ¥0.04)
+    v10.1 フォールバックチェーン (4層鉄壁):
+    Tier 1: Kimi K2.5 傭兵 (128K ctx, 並列実行, マルチモーダル)
+    Tier 2: ローカルQwen3-Coder-30B (4K ctx, ¥0, 秘匿・統合・オフライン)
+    Tier 3: クラウドQwen3-plus (32K ctx, ¥3, 影武者/容量拡張)
+    Tier 4: Gemini 3.0 Flash (防衛, ¥0.04)
     """
 
-    VERSION = "9.4"
+    VERSION = "10.1"
     LOCAL_CONTEXT_LIMIT = 4096  # ローカルQwen3最適化コンテキスト
 
     def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator
 
         # AI clients (initialized from orchestrator)
-        self.qwen3_client = None
-        self.alibaba_qwen_client = None
-        self.gemini3_client = None
+        self.kimi_client = None           # Tier 1: 傭兵 Kimi K2.5
+        self.qwen3_client = None          # Tier 2: ローカル Qwen3
+        self.alibaba_qwen_client = None   # Tier 3: 影武者 Cloud Qwen3+
+        self.gemini3_client = None        # Tier 4: 最終防衛 Gemini 3 Flash
 
         # MCP connections
         self.mcp_manager = None
@@ -117,6 +123,7 @@ class Taisho:
         # Statistics
         self.execution_stats = {
             "total_tasks": 0,
+            "kimi_success": 0,
             "local_success": 0,
             "cloud_fallback": 0,
             "gemini_fallback": 0,
@@ -131,27 +138,33 @@ class Taisho:
         }
 
     async def initialize(self) -> None:
-        """大将と3層フォールバックチェーンの初期化"""
+        """大将と4層フォールバックチェーンの初期化"""
         logger.info(f"⚔️ 大将 v{self.VERSION} 初期化開始...")
 
-        # AIクライアント取得
+        # AIクライアント取得 (4層フォールバックチェーン順)
+        self.kimi_client = self.orchestrator.get_client("kimi_k2")
         self.qwen3_client = self.orchestrator.get_client("qwen3")
         self.alibaba_qwen_client = self.orchestrator.get_client("alibaba_qwen")
         self.gemini3_client = self.orchestrator.get_client("gemini3")
 
         # 利用可能クライアントログ
+        if self.kimi_client:
+            logger.info("✅ Kimi K2.5（傭兵, Tier 1）有効 - 128K context, 並列実行")
+        else:
+            logger.warning("⚠️ Kimi K2.5利用不可 → ローカルQwen3がプライマリ")
+
         if self.qwen3_client:
-            logger.info("✅ ローカルQwen3クライアント有効（プライマリ）")
+            logger.info("✅ ローカルQwen3（Tier 2）有効 - 秘匿処理・統合・オフライン")
         else:
             logger.warning("⚠️ ローカルQwen3利用不可")
 
         if self.alibaba_qwen_client:
-            logger.info("✅ クラウドQwen3-plus（影武者）有効")
+            logger.info("✅ クラウドQwen3-plus（影武者, Tier 3）有効")
         else:
             logger.warning("⚠️ 影武者利用不可")
 
         if self.gemini3_client:
-            logger.info("✅ Gemini 3.0 Flash（最終防衛）有効")
+            logger.info("✅ Gemini 3.0 Flash（最終防衛, Tier 4）有効")
         else:
             # 標準Geminiにフォールバック
             self.gemini3_client = self.orchestrator.get_client("gemini")
@@ -202,29 +215,32 @@ class Taisho:
             logger.warning(f"⚠️ DSPy validator not available: {e}")
 
     def _log_fallback_chain_status(self) -> None:
-        """3層フォールバックチェーンの状態をログ出力"""
+        """4層フォールバックチェーンの状態をログ出力"""
 
         chain = []
+        if self.kimi_client:
+            chain.append("Kimi K2.5 傭兵 (128K ctx)")
         if self.qwen3_client:
-            chain.append("ローカルQwen3 (4k ctx, ¥0)")
+            chain.append("ローカルQwen3 (4K ctx, ¥0)")
         if self.alibaba_qwen_client:
-            chain.append("クラウドQwen3+ (32k ctx, ¥3)")
+            chain.append("クラウドQwen3+ (32K ctx, ¥3)")
         if self.gemini3_client:
             chain.append("Gemini 3 Flash (防衛)")
 
         if chain:
-            logger.info(f"🔗 フォールバックチェーン: {' → '.join(chain)}")
+            logger.info(f"🔗 4層フォールバックチェーン: {' → '.join(chain)}")
         else:
             logger.error("❌ AIクライアント利用不可！")
 
     async def execute_implementation(self, task: ImplementationTask) -> Dict[str, Any]:
         """
-        3層フォールバックチェーン付きメイン実装実行
+        4層フォールバックチェーン付きメイン実装実行
 
         優先順位:
-        1. ローカルQwen3（コンテキストが4k制限内の場合）
-        2. クラウドQwen3-plus（影武者）コンテキストオーバーフロー対応
-        3. Gemini 3.0 Flash最終防衛
+        1. Kimi K2.5（128Kコンテキスト, クラウド並列実行）
+        2. ローカルQwen3（4Kコンテキスト, 秘匿・統合・オフライン）
+        3. クラウドQwen3-plus（影武者）コンテキストオーバーフロー対応
+        4. Gemini 3.0 Flash最終防衛
         """
         start_time = time.time()
         logger.info(f"⚔️ 大将、実装開始: {task.content[:50]}...")
@@ -240,7 +256,7 @@ class Taisho:
             # Plan implementation
             plan = await self._plan_implementation(task, context)
 
-            # Execute with 3-tier fallback chain
+            # Execute with 4-tier fallback chain
             result, fallback_status = await self._execute_with_fallback(
                 task, plan, context, context_size
             )
@@ -296,29 +312,53 @@ class Taisho:
         context_size: int
     ) -> tuple[Dict[str, Any], FallbackStatus]:
         """
-        Execute with 3-tier fallback chain
+        Execute with 4-tier fallback chain (鉄壁チェーン)
 
-        1. Try Local Qwen3 (if context fits)
-        2. Fallback to Cloud Qwen3-plus (Kagemusha)
-        3. Final fallback to Gemini 3 Flash
+        1. Kimi K2.5 傭兵 (128K context, 並列実行可能)
+        2. ローカル Qwen3 (4K context, 秘匿・統合・オフライン)
+        3. Cloud Qwen3-plus 影武者 (32K context, 容量拡張)
+        4. Gemini 3.0 Flash (最終防衛)
+
+        秘匿タスク (from_gunshi + confidential) はローカル Qwen3 から開始。
         """
 
-        # Tier 1: Local Qwen3 (if context fits)
+        # 秘匿タスク判定: ローカル直行 (API に送信しない)
+        is_confidential = (
+            task.context
+            and task.context.get("confidential", False)
+        )
+
+        # Tier 1: Kimi K2.5 傭兵 (非秘匿 + クライアント有効時)
+        if self.kimi_client and not is_confidential:
+            try:
+                result = await self._execute_with_kimi(task, plan, context)
+                if result.get("status") != "failed":
+                    self.execution_stats["kimi_success"] += 1
+                    return result, FallbackStatus.KIMI_SUCCESS
+                logger.warning("⚠️ Kimi K2.5 failed, falling back to local Qwen3")
+            except Exception as e:
+                logger.warning(f"⚠️ Kimi K2.5 error: {e}, falling back to local Qwen3")
+
+        # Tier 2: ローカル Qwen3 (context fits + 秘匿処理 + Kimi 成果物統合)
         if self.qwen3_client and context_size <= self.LOCAL_CONTEXT_LIMIT:
             try:
                 result = await self._execute_with_qwen3(task, plan, context)
                 if result.get("status") != "failed":
+                    self.execution_stats["local_success"] += 1
                     return result, FallbackStatus.LOCAL_SUCCESS
-                logger.warning("⚠️ Local Qwen3 execution failed, activating Kagemusha")
+                logger.warning("⚠️ Local Qwen3 failed, activating Kagemusha")
             except Exception as e:
                 logger.warning(f"⚠️ Local Qwen3 error: {e}, activating Kagemusha")
 
-        # Context overflow or local failure
+        # Context overflow logging
         if context_size > self.LOCAL_CONTEXT_LIMIT:
             self.execution_stats["context_overflows"] += 1
-            logger.info(f"🏯 Context overflow ({context_size} > {self.LOCAL_CONTEXT_LIMIT}), activating Kagemusha")
+            logger.info(
+                f"🏯 Context overflow ({context_size} > {self.LOCAL_CONTEXT_LIMIT}), "
+                "activating Kagemusha"
+            )
 
-        # Tier 2: Cloud Qwen3-plus (Kagemusha)
+        # Tier 3: Cloud Qwen3-plus (影武者 / 容量拡張)
         if self.alibaba_qwen_client:
             try:
                 result = await self._execute_with_kagemusha(task, plan, context)
@@ -329,7 +369,7 @@ class Taisho:
             except Exception as e:
                 logger.warning(f"⚠️ Kagemusha error: {e}, activating Gemini final defense")
 
-        # Tier 3: Gemini 3.0 Flash (Final Defense)
+        # Tier 4: Gemini 3.0 Flash (最終防衛)
         if self.gemini3_client:
             try:
                 result = await self._execute_with_gemini(task, plan, context)
@@ -339,8 +379,39 @@ class Taisho:
             except Exception as e:
                 logger.error(f"❌ Gemini final defense failed: {e}")
 
-        # All tiers failed
-        return {"status": "failed", "error": "All fallback tiers exhausted"}, FallbackStatus.ALL_FAILED
+        # All 4 tiers failed
+        return {"status": "failed", "error": "All 4 fallback tiers exhausted"}, FallbackStatus.ALL_FAILED
+
+    async def _execute_with_kimi(
+        self,
+        task: ImplementationTask,
+        plan: Dict[str, Any],
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute implementation with Kimi K2.5 (傭兵, Tier 1)
+
+        128K context で大規模タスクも処理可能。
+        クラウド推論のため asyncio.gather で真の並列実行が可能。
+        """
+        logger.info("⚔️ Executing with Kimi K2.5 傭兵 (Tier 1, 128K context)")
+
+        implementation_prompt = self._create_implementation_prompt(task, plan, context)
+
+        response = await self.kimi_client.generate(
+            messages=[{"role": "user", "content": implementation_prompt}],
+            max_tokens=8192,
+            temperature=0.7,
+        )
+
+        files_created = await self._parse_and_save_files(response)
+
+        return {
+            "status": "completed",
+            "files_created": files_created,
+            "implementation": response,
+            "client": "kimi_k2"
+        }
 
     async def _execute_with_qwen3(
         self,
@@ -348,7 +419,7 @@ class Taisho:
         plan: Dict[str, Any],
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute implementation with Local Qwen3"""
+        """Execute implementation with Local Qwen3 (Tier 2: 秘匿・統合・オフライン)"""
 
         logger.info("🏯 Executing with Local Qwen3 (primary)")
 

@@ -1,11 +1,11 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Integration Tests
+Bushidan Multi-Agent System v10.1 - Integration Tests
 
-Tests for v9.3.2 component integration:
+Tests for component integration:
 - Intelligent Router integration in Shogun
-- 3-tier fallback chain in Taisho
+- 4-tier fallback chain in Taisho (Kimi→Local→Kagemusha→Gemini)
 - Routing execution in Karo
-- New client integrations
+- Client integrations
 """
 
 import pytest

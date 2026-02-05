@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Bushidan Multi-Agent System v10 - Main Entry Point
+Bushidan Multi-Agent System v10.1 - Main Entry Point
 
-武士団マルチエージェントシステム v10
+武士団マルチエージェントシステム v10.1
 Universal Multi-LLM Framework based on Samurai hierarchy.
-5-Tier Hybrid Architecture with PDCA Engine + Intelligent Routing + BDI Framework.
+5-Tier Hybrid Architecture with Kimi K2.5 + PDCA Engine + Smithery MCP + BDI Framework.
 
-v10 Features:
+v10.1 Features:
+- 傭兵 (Kimi K2.5): 128K context, 並列サブタスク実行, マルチモーダル
 - 軍師 (Gunshi) 層: Qwen3-Coder-Next 80B API (256K context, PDCA Engine)
+- 4層フォールバックチェーン: Kimi → Local Qwen3 → Kagemusha → Gemini 3 Flash
+- Smithery MCP 管理: Sequential Thinking, Playwright, Exa, Graph Memory, Prisma
 - BDI Framework integration (Belief-Desire-Intention)
 - Intelligent Router for optimal task delegation
 - Prompt Caching for 90% cost reduction
-- 3-tier fallback chain (99.5% reliability)
-- Full Japanese logging support
-- Power-saving optimization
 """
 
 import asyncio
@@ -27,30 +27,30 @@ from utils.config import load_config
 from utils.logger import setup_logger
 
 
-VERSION = "10.0"
+VERSION = "10.1"
 
 
 def print_banner() -> None:
-    """Print Bushidan v10 startup banner"""
+    """Print Bushidan v10.1 startup banner"""
 
     banner = f"""
 ╔══════════════════════════════════════════════════════════════╗
-║        🏯 武士団マルチエージェントシステム v{VERSION}            ║
-║        "Universal Multi-LLM Framework + PDCA + BDI"          ║
+║     🏯 武士団マルチエージェントシステム v{VERSION}               ║
+║     "Universal Multi-LLM Framework + Kimi + PDCA + BDI"     ║
 ╠══════════════════════════════════════════════════════════════╣
-║  5層階層 (5-Tier Hierarchy):                                  ║
+║  5層階層 + 傭兵:                                              ║
 ║    🎌 将軍 (Shogun)   - Claude Sonnet + Opus + BDI          ║
 ║    🧠 軍師 (Gunshi)   - Qwen3-Coder-Next 80B + PDCA        ║
 ║    👔 家老 (Karo)     - Groq + Gemini 3.0 + BDI             ║
-║    ⚔️ 大将 (Taisho)   - Qwen3 + 影武者 + BDI                ║
-║    👣 足軽 (Ashigaru) - MCP Servers × 8                     ║
+║    ⚔️ 大将 (Taisho)   - 4層鉄壁チェーン + BDI               ║
+║    🗡️ 傭兵 (Kimi K2.5) - 128K + 並列実行 + Vision          ║
+║    👣 足軽 (Ashigaru) - Smithery MCP × 10                   ║
 ╠══════════════════════════════════════════════════════════════╣
-║  v10 新機能:                                                  ║
-║    🧠 PDCA Engine (Plan→Do→Check→Act 作戦立案)              ║
-║    🎯 Intelligent Routing (GUNSHI route for COMPLEX)        ║
-║    💾 Prompt Caching (90% cost reduction)                   ║
-║    🔗 3-tier Fallback (99.5% reliability)                   ║
-║    📝 Japanese Logging (全コンポーネント日本語)              ║
+║  v10.1 新機能:                                                ║
+║    🗡️ Kimi K2.5 傭兵 (128K, 真の並列サブタスク実行)         ║
+║    🧠 PDCA Engine (Plan→Do(Kimi並列)→Check→Act)             ║
+║    🔗 4-tier Fallback (Kimi→Qwen3→Kagemusha→Gemini)        ║
+║    📦 Smithery MCP (Playwright, Exa, Graph Memory, Prisma)  ║
 ╚══════════════════════════════════════════════════════════════╝
 """
     print(banner)
@@ -123,6 +123,7 @@ def _print_component_status(orchestrator: SystemOrchestrator) -> None:
     clients = {
         "Claude (Cached)": "claude_cached",
         "Qwen3-Coder-Next (Gunshi)": "qwen3_coder_next",
+        "Kimi K2.5 (Yohei)": "kimi_k2",
         "Groq": "groq",
         "Gemini 3.0 Flash": "gemini3",
         "Local Qwen3": "qwen3",

@@ -215,7 +215,7 @@ class IntelligentRouter:
 
         elif complexity == TaskComplexity.COMPLEX:
             # v10 PDCA: Gunshi runs full Plan→Do→Check→Act cycle
-            # Gunshi plans (256K) → Taisho implements (3-tier fallback)
+            # Gunshi plans (256K) → Taisho implements (4-tier fallback: Kimi→Local→Cloud→Gemini)
             # → Gunshi verifies (256K cross-file) → correct if needed
             return RoutingDecision(
                 target=RouteTarget.GUNSHI,
@@ -248,7 +248,7 @@ class IntelligentRouter:
             )
 
         else:
-            # Medium: 3-tier fallback chain (no Gunshi needed)
+            # Medium: Taisho handles (internal 4-tier: Kimi→Local→Cloud→Gemini)
             return RoutingDecision(
                 target=RouteTarget.LOCAL_QWEN3,
                 complexity=complexity,
@@ -257,7 +257,7 @@ class IntelligentRouter:
                     RouteTarget.CLOUD_QWEN3,   # Shadow: Cloud Qwen3-plus (¥3)
                     RouteTarget.GEMINI3        # Final defense: Gemini 3 Flash (¥0.04)
                 ],
-                reasoning="Medium task → 3-tier fallback (Local → Cloud → Gemini)",
+                reasoning="Medium task → Taisho (internal 4-tier: Kimi → Local → Cloud → Gemini)",
                 estimated_time_seconds=self.target_times[complexity],
                 estimated_cost_yen=self.cost_estimates[RouteTarget.LOCAL_QWEN3],
                 power_saving=False  # Wake Qwen for work

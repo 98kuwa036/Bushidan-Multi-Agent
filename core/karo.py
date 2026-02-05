@@ -75,7 +75,7 @@ class Karo:
     1. 将軍からのルーティング決定を実行
     2. 動的クライアント選択（Groq高速化、Gemini3防衛）
     3. 重量実装のための大将調整
-    4. 3層フォールバックチェーン管理
+    4. 4層フォールバックチェーン管理（Kimi→Local→Kagemusha→Gemini）
     5. 並列サポートのための足軽調整
     6. DSPy最適化タスク分解
 
@@ -90,7 +90,7 @@ class Karo:
     - Groq簡易タスク即時応答
     """
 
-    VERSION = "9.4"
+    VERSION = "10.1"
 
     def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator

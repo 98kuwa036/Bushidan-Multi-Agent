@@ -456,20 +456,32 @@ class Gunshi:
         """
         Phase 2: DO (作戦実行)
 
-        サブタスクを大将(Taisho)に委譲して実行する。
-        - 依存関係のないタスク → asyncio.gather で並列実行
-        - 依存関係のあるタスク → 依存解決後に順次実行
+        サブタスクの実行先:
+        - Kimi K2.5 有効時: implement_subtasks_parallel() で真の並列実行
+          (クラウド API なので asyncio.gather が実際に並列動作)
+        - Kimi 無効 / Taisho のみ: Taisho に委譲
+          (llama.cpp シングルスレッドのため実質直列)
+
+        依存関係処理:
+        - 独立タスク → 並列実行
+        - 依存タスク → 依存解決後に順次実行
         """
         # 依存関係で分類
         independent = [st for st in subtasks if not st.dependencies]
         dependent = [st for st in subtasks if st.dependencies]
 
-        # 独立タスクを並列実行
+        # 独立タスクの並列実行
         if independent:
-            await asyncio.gather(
-                *[self._execute_single_subtask(st) for st in independent],
-                return_exceptions=True
-            )
+            kimi_client = self._get_kimi_client()
+            if kimi_client and len(independent) > 1:
+                # Kimi K2.5 で真の並列実行
+                await self._execute_parallel_with_kimi(independent, kimi_client)
+            else:
+                # Taisho 経由 (4層フォールバック)
+                await asyncio.gather(
+                    *[self._execute_single_subtask(st) for st in independent],
+                    return_exceptions=True
+                )
 
         # 依存タスクを順次実行
         completed_ids = {
@@ -489,12 +501,83 @@ class Gunshi:
         self._stats["subtasks_delegated"] += len(subtasks)
         return subtasks
 
+    def _get_kimi_client(self):
+        """Kimi K2.5 クライアント取得 (Taisho 経由)"""
+        taisho = self.orchestrator.taisho
+        if taisho and hasattr(taisho, 'kimi_client') and taisho.kimi_client:
+            return taisho.kimi_client
+        return None
+
+    async def _execute_parallel_with_kimi(
+        self,
+        subtasks: List[SubTask],
+        kimi_client
+    ) -> None:
+        """
+        Kimi K2.5 で複数サブタスクを真に並列実行
+
+        llama.cpp はシングルスレッドで asyncio.gather が実質直列だが、
+        Kimi API は複数リクエストを真に並列処理できる。
+        """
+        logger.info(
+            f"⚔️ Kimi K2.5 並列実行: {len(subtasks)} サブタスク"
+        )
+
+        # SubTask → Kimi API 入力形式に変換
+        kimi_tasks = []
+        for st in subtasks:
+            prompt = st.description
+            if st.focused_context:
+                prompt = (
+                    f"## コンテキスト\n{st.focused_context}\n\n"
+                    f"## タスク\n{st.description}"
+                )
+            kimi_tasks.append({
+                "id": st.id,
+                "description": prompt,
+                "context": st.focused_context or "",
+            })
+
+        start_time = asyncio.get_event_loop().time()
+        results = await kimi_client.implement_subtasks_parallel(
+            kimi_tasks,
+            max_tokens=8192,
+            temperature=0.7,
+            max_concurrency=4,
+        )
+
+        # 結果を SubTask に反映
+        result_map = {r["id"]: r for r in results}
+        for st in subtasks:
+            r = result_map.get(st.id)
+            if r and r["status"] == "completed":
+                st.result = r["result"]
+                st.status = "completed"
+                st.executed_by = "kimi_k2/parallel"
+                st.execution_time = r.get("time", 0.0)
+            elif r:
+                # Kimi 失敗 → Taisho にフォールバック
+                logger.warning(
+                    f"⚠️ Kimi failed for {st.id}, falling back to Taisho"
+                )
+                await self._execute_single_subtask(st)
+            else:
+                st.status = "failed"
+                st.result = "Kimi result missing"
+
+        total_time = asyncio.get_event_loop().time() - start_time
+        logger.info(
+            f"✅ Kimi 並列実行完了: {total_time:.1f}s "
+            f"({len([s for s in subtasks if s.status == 'completed'])}"
+            f"/{len(subtasks)} 成功)"
+        )
+
     async def _execute_single_subtask(self, subtask: SubTask) -> None:
         """
         単一サブタスクの実行
 
         実行先:
-        - Taisho 有効時: Taisho に委譲 (内部3層フォールバック: Local→Kagemusha→Gemini)
+        - Taisho 有効時: Taisho に委譲 (内部4層フォールバック: Kimi→Local→Kagemusha→Gemini)
         - Taisho 未初期化時: Gunshi API で自力実装 (緊急パス)
         """
         subtask.status = "running"
@@ -510,7 +593,7 @@ class Gunshi:
 
         taisho = self.orchestrator.taisho
         if taisho:
-            # Taisho に委譲 (内部で Local→Kagemusha→Gemini 3層フォールバック)
+            # Taisho に委譲 (内部で Kimi→Local→Kagemusha→Gemini 4層フォールバック)
             try:
                 from core.taisho import ImplementationTask, ImplementationMode
                 task = ImplementationTask(
@@ -530,9 +613,9 @@ class Gunshi:
                     )
                     return
 
-                # Taisho が completed 以外を返した (3層全滅)
+                # Taisho が completed 以外を返した (4層全滅)
                 subtask.status = "failed"
-                subtask.result = result.get("error", "Taisho 3層フォールバック全滅")
+                subtask.result = result.get("error", "Taisho 4層フォールバック全滅")
                 subtask.executed_by = "taisho/exhausted"
 
             except Exception as e:
@@ -706,7 +789,7 @@ class Gunshi:
         """
         修正実行: Taisho に委譲 (Taisho未初期化時のみ Gunshi API)
 
-        Taisho 内部で Local→Kagemusha→Gemini の3層フォールバックが動く。
+        Taisho 内部で Kimi→Local→Kagemusha→Gemini の4層フォールバックが動く。
         Gunshi API は Taisho が未初期化の場合のみ使用する緊急パス。
         """
         taisho = self.orchestrator.taisho

@@ -118,9 +118,9 @@ v10_innovations:
         subtask_token_limit: 3000  # Taisho の 4096 に収める
 
       do:
-        description: "サブタスクを Taisho に委譲 (並列実行対応)"
-        execution_strategy: "independent=parallel, dependent=sequential"
-        primary_executor: "Taisho (Local Qwen3, 3層フォールバック)"
+        description: "サブタスクを Kimi K2.5 / Taisho に委譲 (真の並列実行)"
+        execution_strategy: "independent=Kimi並列, dependent=sequential"
+        primary_executor: "Kimi K2.5 (128K, 並列API) → Taisho (4層フォールバック)"
         fallback_executor: "Gunshi API (Taisho未初期化時のみ)"
 
       check:
@@ -184,10 +184,10 @@ v10_innovations:
         shadow: "Cloud Qwen3-plus (32k context, ¥3)"
         final_defense: "Gemini 3 Flash (¥0.04)"
       complex:
-        primary: "Gunshi PDCA: Plan(256K) → Do(Taisho) → Check(256K) → Act"
-        do_primary: "Taisho (Local Qwen3, 3-tier fallback)"
-        do_fallback: "Gunshi API (self-implementation)"
-        gunshi_unavailable: "Local Qwen3 → Cloud Qwen3 → Gemini 3 (v9.4互換)"
+        primary: "Gunshi PDCA: Plan(256K) → Do(Kimi並列+Taisho) → Check(256K) → Act"
+        do_chain: "Kimi K2.5 (128K, 並列) → Local Qwen3 → Kagemusha → Gemini 3"
+        do_parallel: "Kimi K2.5 の asyncio.gather で真の並列サブタスク実行"
+        gunshi_unavailable: "Kimi → Local Qwen3 → Cloud Qwen3 → Gemini 3 (4層)"
 
   prompt_caching:
     enabled: true
@@ -281,6 +281,42 @@ gunshi:
     - "multi_file_changes"
     - "architecture_related"
 
+# --- 傭兵 (Yohei) - Kimi K2.5 Mercenary (v10.1) ---
+yohei:
+  codename: "Kimi K2.5"
+  role: "傭兵 - 並列サブタスク実行・大規模コンテキスト処理・ビジュアル検証"
+  model: "kimi-k2-0711"
+  context_window: 131072  # 128K
+  multimodal: true
+
+  api:
+    primary_provider: "moonshot"
+    providers:
+      moonshot:
+        base_url: "https://api.moonshot.cn/v1"
+        model_name: "kimi-k2-0711"
+      openrouter:
+        base_url: "https://openrouter.ai/api/v1"
+        model_name: "moonshot/kimi-k2.5"
+    default_max_tokens: 8192
+    timeout_seconds: 120
+
+  strengths:
+    - "128K context: 軍師(256K)と大将(4K)のギャップを埋める"
+    - "クラウドAPI: asyncio.gather で真の並列サブタスク実行"
+    - "マルチモーダル: Check フェーズのUI視覚検証 (将来)"
+    - "高速推論: ローカル llama.cpp より低レイテンシ"
+
+  role_in_pdca:
+    do_phase: "独立サブタスクを implement_subtasks_parallel() で並列実行"
+    check_phase: "将来: Playwright スクリーンショット + Kimi Vision 検証"
+    confidential: "秘匿タスクはスキップ → Local Qwen3 が直接処理"
+
+  cost:
+    input_per_1k_tokens_yen: 0.002
+    output_per_1k_tokens_yen: 0.008
+    estimated_monthly_yen: 30  # ~100 Complex tasks/month
+
 # --- 家老 (Karo) - Tactical Layer ---
 karo:
   codename: "Karo"
@@ -339,32 +375,75 @@ taisho:
   # Final fallback: Gemini 3 Flash
   final_defense:
     model: "gemini-3.0-flash"
-    activation: "When both Local & Cloud Qwen3 fail"
+    activation: "When Kimi, Local Qwen3, and Cloud Qwen3 all fail"
     cost_yen: 0.04
+
+  # v10.1: 4層フォールバックチェーン
+  fallback_chain_v10_1:
+    tier_1: "Kimi K2.5 傭兵 (128K ctx, 並列実行) - 非秘匿タスク"
+    tier_2: "ローカルQwen3 (4K ctx, ¥0) - 秘匿処理・統合・オフライン"
+    tier_3: "クラウドQwen3+ 影武者 (32K ctx, ¥3) - 容量拡張"
+    tier_4: "Gemini 3 Flash (防衛, ¥0.04) - 最終防衛"
 
 # --- 足軽 (Ashigaru) - Execution Layer ---
 ashigaru:
   codename: "Ashigaru"
   role: "足軽 - MCP実行・並列処理"
 
+  # v10.1: Smithery MCP 経由
+  mcp_manager: "smithery"
   members:
+    # AI
+    - name: "sequential_thinking"
+      type: "MCP (Smithery)"
+      role: "動的思考チェーン: 分岐・修正可能な推論"
+
+    # Browser
+    - name: "playwright"
+      type: "MCP (Smithery)"
+      role: "ブラウザ操作・スクリーンショット・UI検証"
+
+    # Search
+    - name: "tavily"
+      type: "MCP (Smithery)"
+      role: "Web検索 (1,000/月 free)"
+
+    - name: "exa"
+      type: "MCP (Smithery)"
+      role: "セマンティック検索"
+      optional: true
+
+    # Data
     - name: "filesystem"
-      type: "MCP"
+      type: "MCP (Smithery)"
       role: "ファイル読み書き"
 
+    - name: "graph_memory"
+      type: "MCP (Smithery)"
+      role: "グラフ型記憶 (エンティティ関係)"
+      optional: true
+
+    - name: "prisma"
+      type: "MCP (Smithery)"
+      role: "DB操作 (Prisma経由)"
+      optional: true
+
+    # Integration
+    - name: "slack"
+      type: "MCP (Smithery)"
+      role: "Slack連携"
+      optional: true
+
+    - name: "notion"
+      type: "MCP (Smithery)"
+      role: "Notion連携"
+      optional: true
+
     - name: "git"
-      type: "MCP"
-      role: "バージョン管理"
+      type: "MCP (Smithery)"
+      role: "Git操作"
 
-    - name: "memory"
-      type: "MCP"
-      role: "知識保持・Web検索キャッシュ"
-
-    - name: "web_search"
-      type: "MCP"
-      role: "最新情報取得"
-      technology: "Tavily + Playwright"
-
+    # API (non-MCP)
     - name: "groq"
       type: "API"
       role: "瞬速実行（Simple tasks）"
@@ -443,7 +522,7 @@ performance_targets:
     complex:
       time_seconds_no_correction: "21-30"  # Plan(3-5) + Do(15-20) + Check(3-5)
       time_seconds_with_correction: "36-55"  # + Act(15-20) + ReCheck(3-5)
-      route: "Gunshi PDCA: Plan→Do(Taisho)→Check→Act"
+      route: "Gunshi PDCA: Plan→Do(Kimi並列+Taisho)→Check→Act"
       cost_yen: "0.04-0.10"  # Gunshi API (Plan+Check+maybe Act)
 
     strategic:
@@ -453,8 +532,8 @@ performance_targets:
 
 # --- コスト目標 ---
 cost_targets:
-  v10:
-    monthly_yen: 3510
+  v10_1:
+    monthly_yen: 3540
     breakdown:
       claude_pro: 3000
       claude_api: 140
@@ -462,6 +541,7 @@ cost_targets:
       gemini_3_flash: 120
       alibaba_cloud: 60
       qwen3_coder_next: 10  # Gunshi PDCA (3B active, ~¥0.05/request × 200/month)
+      kimi_k2: 30  # 傭兵 (¥0.01/request × ~100 Complex tasks × 3 subtasks)
       groq: 0
       electricity: 80
 
@@ -480,7 +560,8 @@ quality_targets:
       plan_value: "Taisho 4096制限を Gunshi 256K で補完 → 焦点を絞った実装指示"
       check_value: "cross-file 整合性検証 → Taisho が見えないバグを検出"
       act_value: "具体的修正指示 → 盲目的リトライより高い修正成功率"
-      remaining_bottleneck: "実装層は依然 Taisho 30B/4096ctx (ここは変わらない)"
+      kimi_value: "128K context + 並列実行 → Taisho 4096制限のボトルネック解消"
+      remaining_bottleneck: "Kimi API レート制限 (max_concurrency=4)"
 
 # --- 開発環境 ---
 development:

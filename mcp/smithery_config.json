@@ -1,0 +1,71 @@
+{
+  "$schema": "https://smithery.ai/schema/config.json",
+  "description": "武士団 Multi-Agent System v10.1 - MCP Server Configuration (Smithery)",
+  "mcpServers": {
+    "sequential_thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "description": "動的思考チェーン: 分岐・修正可能な推論プロセス"
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"],
+      "description": "ブラウザ操作・スクリーンショット・UI検証"
+    },
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp"],
+      "env": {
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+      },
+      "description": "Web検索 (1,000 searches/month free)"
+    },
+    "exa": {
+      "command": "npx",
+      "args": ["-y", "exa-mcp-server"],
+      "env": {
+        "EXA_API_KEY": "${EXA_API_KEY}"
+      },
+      "description": "セマンティック検索 (意味ベースの高精度検索)"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "./"],
+      "description": "ファイル読み書き・ディレクトリ操作"
+    },
+    "graph_memory": {
+      "command": "npx",
+      "args": ["-y", "@mem0ai/mem0-mcp"],
+      "env": {
+        "MEM0_API_KEY": "${MEM0_API_KEY}"
+      },
+      "description": "グラフ型記憶: エンティティ関係を保持する長期記憶"
+    },
+    "prisma": {
+      "command": "npx",
+      "args": ["-y", "prisma-mcp-server"],
+      "description": "DB操作: Prisma経由のデータベースアクセス"
+    },
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}"
+      },
+      "description": "Slack連携: メッセージ送受信・チャンネル操作"
+    },
+    "notion": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-notion"],
+      "env": {
+        "NOTION_TOKEN": "${NOTION_TOKEN}"
+      },
+      "description": "Notion連携: ページ読み書き・データベース操作"
+    },
+    "git": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git"],
+      "description": "Git操作: コミット・ブランチ・差分管理"
+    }
+  }
+}

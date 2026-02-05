@@ -42,6 +42,10 @@ def load_config() -> SystemConfig:
     qwen3_coder_next_api_key = os.getenv("QWEN3_CODER_NEXT_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
     qwen3_coder_next_provider = os.getenv("QWEN3_CODER_NEXT_PROVIDER", "dashscope")
 
+    # v10.1: Kimi K2.5 (傭兵)
+    kimi_api_key = os.getenv("KIMI_API_KEY") or os.getenv("MOONSHOT_API_KEY")
+    kimi_provider = os.getenv("KIMI_PROVIDER", "moonshot")
+
     # Optional tokens
     slack_token = os.getenv("SLACK_BOT_TOKEN")
     notion_token = os.getenv("NOTION_TOKEN")
@@ -72,6 +76,8 @@ def load_config() -> SystemConfig:
         alibaba_api_key=alibaba_api_key,
         qwen3_coder_next_api_key=qwen3_coder_next_api_key,
         qwen3_coder_next_provider=qwen3_coder_next_provider,
+        kimi_api_key=kimi_api_key,
+        kimi_provider=kimi_provider,
         slack_token=slack_token,
         notion_token=notion_token,
         ollama_endpoint=ollama_endpoint,
@@ -81,7 +87,7 @@ def load_config() -> SystemConfig:
         power_optimization_enabled=power_optimization
     )
 
-    logger.info(f"✅ Configuration v10 loaded - Mode: {mode.value}")
+    logger.info(f"✅ Configuration v10.1 loaded - Mode: {mode.value}")
     logger.info(f"  Intelligent Routing: {'✅' if intelligent_routing else '❌'}")
     logger.info(f"  Prompt Caching: {'✅' if prompt_caching else '❌'}")
     logger.info(f"  Power Optimization: {'✅' if power_optimization else '❌'}")
