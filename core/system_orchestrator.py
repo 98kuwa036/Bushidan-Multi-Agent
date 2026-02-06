@@ -14,6 +14,7 @@ v10.1 機能強化:
 - llama.cpp CPU最適化（HP ProDesk 600対応）
 - 省電力最適化
 - BDIフレームワーク統合
+- MCP権限マトリクス: 役職別アクセス制御
 """
 
 import asyncio
@@ -32,6 +33,241 @@ from mcp.web_search_mcp import SmartWebSearchMCP as WebSearchMCP
 
 
 logger = get_logger(__name__)
+
+
+# =============================================================================
+# MCP権限マトリクス管理
+# =============================================================================
+
+class MCPPermissionLevel(Enum):
+    """MCPアクセスレベル"""
+    EXCLUSIVE = "exclusive"   # 専属 - この役職のみ直接使用可能
+    PRIMARY = "primary"       # 優先 - 他役職も使用可能だが優先される
+    SECONDARY = "secondary"   # 補助 - 必要に応じて使用可能
+    READONLY = "readonly"     # 読取専用 - 監視・分析目的
+    DELEGATED = "delegated"   # 委譲 - 上位役職の指示に基づく
+    FORBIDDEN = "forbidden"   # 禁止 - 使用不可
+
+
+class MCPPermissionManager:
+    """
+    MCP権限マトリクス管理
+
+    役職ごとのMCPアクセス権限を管理し、
+    不正なアクセスを防止する。
+    """
+
+    # 役職優先度順序（上位ほど優先）
+    ROLE_PRIORITY = ["shogun", "gunshi", "karo", "taisho", "kengyo", "ashigaru"]
+
+    def __init__(self, config_path: Optional[str] = None):
+        self.permissions: Dict[str, Dict[str, Dict]] = {}
+        self.mcp_registry: Dict[str, Dict] = {}
+        self.config_path = config_path or "config/mcp_permissions.yaml"
+        self._loaded = False
+
+    def load_permissions(self) -> bool:
+        """権限設定をYAMLファイルから読み込む"""
+        try:
+            config_file = Path(self.config_path)
+            if not config_file.exists():
+                logger.warning(f"⚠️ MCP権限設定ファイルが見つかりません: {self.config_path}")
+                self._load_default_permissions()
+                return False
+
+            with open(config_file, 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+
+            self.mcp_registry = config.get('mcp_registry', {})
+            role_permissions = config.get('role_permissions', {})
+
+            # 権限を構造化して保存
+            for role, role_config in role_permissions.items():
+                self.permissions[role] = role_config.get('permissions', {})
+
+            self._loaded = True
+            logger.info(f"✅ MCP権限設定読み込み完了: {len(self.permissions)} 役職")
+            return True
+
+        except Exception as e:
+            logger.error(f"❌ MCP権限設定読み込み失敗: {e}")
+            self._load_default_permissions()
+            return False
+
+    def _load_default_permissions(self) -> None:
+        """デフォルト権限を設定"""
+        self.permissions = {
+            "shogun": {
+                "graph_memory": {"level": "primary"},
+                "notion": {"level": "primary"},
+                "slack": {"level": "primary"},
+                "sequential_thinking": {"level": "secondary"},
+                "filesystem": {"level": "readonly"},
+                "git": {"level": "readonly"},
+                "playwright": {"level": "forbidden"},
+                "prisma": {"level": "forbidden"},
+            },
+            "gunshi": {
+                "sequential_thinking": {"level": "exclusive", "priority": 1},
+                "filesystem": {"level": "primary"},
+                "git": {"level": "primary"},
+                "graph_memory": {"level": "primary"},
+                "playwright": {"level": "forbidden"},
+                "slack": {"level": "forbidden"},
+            },
+            "karo": {
+                "sequential_thinking": {"level": "primary", "priority": 2},
+                "slack": {"level": "primary"},
+                "filesystem": {"level": "secondary"},
+                "playwright": {"level": "forbidden"},
+                "prisma": {"level": "forbidden"},
+            },
+            "taisho": {
+                "filesystem": {"level": "exclusive", "priority": 1},
+                "git": {"level": "exclusive", "priority": 1},
+                "prisma": {"level": "exclusive"},
+                "sequential_thinking": {"level": "secondary", "priority": 3},
+                "playwright": {"level": "forbidden"},
+                "slack": {"level": "forbidden"},
+            },
+            "kengyo": {
+                "playwright": {"level": "exclusive", "priority": 1},
+                "filesystem": {"level": "primary"},
+                "sequential_thinking": {"level": "forbidden"},
+                "prisma": {"level": "forbidden"},
+            },
+            "ashigaru": {
+                "filesystem": {"level": "delegated"},
+                "git": {"level": "delegated"},
+                "playwright": {"level": "delegated"},
+                "prisma": {"level": "delegated"},
+            },
+        }
+        self._loaded = True
+        logger.info("ℹ️ デフォルトMCP権限設定を使用")
+
+    def check_permission(self, role: str, mcp_name: str) -> MCPPermissionLevel:
+        """
+        役職がMCPにアクセス可能かチェック
+
+        Args:
+            role: 役職名 (shogun, gunshi, karo, taisho, kengyo, ashigaru)
+            mcp_name: MCP名
+
+        Returns:
+            アクセスレベル
+        """
+        if not self._loaded:
+            self.load_permissions()
+
+        role_perms = self.permissions.get(role, {})
+        mcp_perm = role_perms.get(mcp_name, {})
+
+        level_str = mcp_perm.get('level', 'forbidden')
+
+        try:
+            return MCPPermissionLevel(level_str)
+        except ValueError:
+            return MCPPermissionLevel.FORBIDDEN
+
+    def can_access(self, role: str, mcp_name: str) -> bool:
+        """
+        役職がMCPにアクセス可能か判定
+
+        Returns:
+            True: アクセス可能 (exclusive, primary, secondary, readonly, delegated)
+            False: アクセス不可 (forbidden)
+        """
+        level = self.check_permission(role, mcp_name)
+        return level != MCPPermissionLevel.FORBIDDEN
+
+    def can_write(self, role: str, mcp_name: str) -> bool:
+        """
+        役職がMCPに書き込み可能か判定
+
+        Returns:
+            True: 書き込み可能 (exclusive, primary, secondary, delegated)
+            False: 読み取りのみまたは禁止 (readonly, forbidden)
+        """
+        level = self.check_permission(role, mcp_name)
+        return level in [
+            MCPPermissionLevel.EXCLUSIVE,
+            MCPPermissionLevel.PRIMARY,
+            MCPPermissionLevel.SECONDARY,
+            MCPPermissionLevel.DELEGATED
+        ]
+
+    def get_exclusive_owner(self, mcp_name: str) -> Optional[str]:
+        """
+        MCPの専属所有者を取得
+
+        Returns:
+            専属所有役職名、またはNone
+        """
+        for role in self.ROLE_PRIORITY:
+            level = self.check_permission(role, mcp_name)
+            if level == MCPPermissionLevel.EXCLUSIVE:
+                return role
+        return None
+
+    def resolve_conflict(self, mcp_name: str, requesting_roles: list) -> str:
+        """
+        複数役職が同時にMCPを要求した場合の競合解決
+
+        Args:
+            mcp_name: MCP名
+            requesting_roles: 要求している役職のリスト
+
+        Returns:
+            優先される役職名
+        """
+        # 1. exclusive が最優先
+        for role in requesting_roles:
+            if self.check_permission(role, mcp_name) == MCPPermissionLevel.EXCLUSIVE:
+                return role
+
+        # 2. priority 属性による解決
+        role_priorities = []
+        for role in requesting_roles:
+            role_perms = self.permissions.get(role, {})
+            mcp_perm = role_perms.get(mcp_name, {})
+            priority = mcp_perm.get('priority', 99)
+            role_priorities.append((role, priority))
+
+        role_priorities.sort(key=lambda x: x[1])
+
+        # 同一 priority の場合は役職階層で解決
+        best_priority = role_priorities[0][1]
+        candidates = [r for r, p in role_priorities if p == best_priority]
+
+        if len(candidates) == 1:
+            return candidates[0]
+
+        # 階層順で解決
+        for role in self.ROLE_PRIORITY:
+            if role in candidates:
+                return role
+
+        return requesting_roles[0]
+
+    def get_role_permissions(self, role: str) -> Dict[str, str]:
+        """
+        役職の全MCP権限を取得
+
+        Returns:
+            {mcp_name: level} の辞書
+        """
+        if not self._loaded:
+            self.load_permissions()
+
+        role_perms = self.permissions.get(role, {})
+        return {mcp: perm.get('level', 'forbidden') for mcp, perm in role_perms.items()}
+
+    def log_access_attempt(self, role: str, mcp_name: str, granted: bool) -> None:
+        """アクセス試行をログ記録"""
+        status = "✅ 許可" if granted else "❌ 拒否"
+        level = self.check_permission(role, mcp_name)
+        logger.debug(f"🔐 MCP アクセス {status}: {role} → {mcp_name} ({level.value})")
 
 
 class SystemMode(Enum):
@@ -122,6 +358,9 @@ class SystemOrchestrator:
         self.mcp_manager = None
         self.initialized = False
 
+        # MCP権限マネージャー
+        self.permission_manager = MCPPermissionManager()
+
         # 5層階層コンポーネント
         self._shogun = None  # 将軍: 戦略層
         self._gunshi = None  # 軍師: 作戦立案層 (v10)
@@ -145,6 +384,9 @@ class SystemOrchestrator:
         logger.info(f"🔧 武士団 v{self.VERSION} コンポーネント初期化開始...")
 
         try:
+            # MCP権限マトリクス読み込み
+            self.permission_manager.load_permissions()
+
             # MCPサーバー初期化
             await self._initialize_mcps()
 
@@ -553,6 +795,66 @@ class SystemOrchestrator:
     def kengyo(self):
         """検校（ビジュアル検証）取得"""
         return self._kengyo
+
+    # ==================== MCP権限制御 ====================
+
+    def check_mcp_permission(self, role: str, mcp_name: str) -> MCPPermissionLevel:
+        """
+        役職のMCPアクセス権限をチェック
+
+        Args:
+            role: 役職名
+            mcp_name: MCP名
+
+        Returns:
+            MCPPermissionLevel
+        """
+        return self.permission_manager.check_permission(role, mcp_name)
+
+    def request_mcp_access(self, role: str, mcp_name: str, write: bool = False) -> bool:
+        """
+        MCPアクセスをリクエスト
+
+        Args:
+            role: 要求元役職
+            mcp_name: MCP名
+            write: 書き込み権限が必要か
+
+        Returns:
+            True: 許可, False: 拒否
+        """
+        if write:
+            granted = self.permission_manager.can_write(role, mcp_name)
+        else:
+            granted = self.permission_manager.can_access(role, mcp_name)
+
+        self.permission_manager.log_access_attempt(role, mcp_name, granted)
+        return granted
+
+    def get_mcp_for_role(self, role: str, mcp_name: str) -> Optional[Any]:
+        """
+        役職用にMCPを取得（権限チェック付き）
+
+        Args:
+            role: 要求元役職
+            mcp_name: MCP名
+
+        Returns:
+            MCPインスタンス、または権限がない場合None
+        """
+        if not self.request_mcp_access(role, mcp_name):
+            logger.warning(f"⚠️ {role} は {mcp_name} へのアクセス権限がありません")
+            return None
+
+        return self.mcps.get(mcp_name)
+
+    def get_exclusive_mcp_owner(self, mcp_name: str) -> Optional[str]:
+        """MCPの専属所有者を取得"""
+        return self.permission_manager.get_exclusive_owner(mcp_name)
+
+    def get_role_mcp_permissions(self, role: str) -> Dict[str, str]:
+        """役職の全MCP権限を取得"""
+        return self.permission_manager.get_role_permissions(role)
 
     def get_tier_statistics(self) -> Dict[str, Any]:
         """全階層統計を取得"""

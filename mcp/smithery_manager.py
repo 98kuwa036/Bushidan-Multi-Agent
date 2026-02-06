@@ -4,6 +4,11 @@ Bushidan Multi-Agent System v10.1 - Smithery MCP Manager
 Smithery 経由で MCP サーバーを管理する統合マネージャー。
 npm 直接実行を廃止し、Smithery レジストリ経由のインストール・起動に統一。
 
+v10.1 追加機能:
+  - 役職別MCP権限制御 (exclusive/primary/secondary/readonly/delegated/forbidden)
+  - アクセス試行のログ記録
+  - 権限マトリクス参照
+
 MCP サーバー一覧:
   AI:
     - Sequential Thinking MCP   (思考チェーン)
@@ -158,7 +163,20 @@ class SmitheryMCPManager:
     - 環境変数ベースのサーバー有効/無効判定
     - サブプロセスによるサーバー起動・停止
     - JSON-RPC over stdio による通信
+    - 役職別MCP権限制御 (v10.1)
     """
+
+    # MCP専属所有者マッピング
+    EXCLUSIVE_OWNERS: Dict[str, str] = {
+        "sequential_thinking": "gunshi",
+        "playwright": "kengyo",
+        "filesystem": "taisho",
+        "git": "taisho",
+        "prisma": "taisho",
+    }
+
+    # 役職優先度順序
+    ROLE_PRIORITY: List[str] = ["shogun", "gunshi", "karo", "taisho", "kengyo", "ashigaru"]
 
     def __init__(self, config_dir: Optional[str] = None):
         self.config_dir = Path(config_dir or ".")
@@ -167,6 +185,7 @@ class SmitheryMCPManager:
         }
         self._processes: Dict[str, asyncio.subprocess.Process] = {}
         self._initialized: Dict[str, bool] = {}
+        self._permission_manager = None  # Lazy initialization
 
     async def initialize(self) -> Dict[str, bool]:
         """
@@ -321,6 +340,184 @@ class SmitheryMCPManager:
         except Exception as e:
             logger.error(f"❌ MCP {server_name} request error: {e}")
             return None
+
+    # ==================== 役職別アクセス制御 (v10.1) ====================
+
+    def _get_permission_manager(self):
+        """権限マネージャーを遅延初期化"""
+        if self._permission_manager is None:
+            try:
+                from core.system_orchestrator import MCPPermissionManager
+                self._permission_manager = MCPPermissionManager()
+                self._permission_manager.load_permissions()
+            except ImportError:
+                logger.warning("⚠️ MCPPermissionManager not available, using defaults")
+                self._permission_manager = None
+        return self._permission_manager
+
+    def check_role_permission(self, role: str, server_name: str, write: bool = False) -> bool:
+        """
+        役職がMCPサーバーへのアクセス権限を持っているか確認
+
+        Args:
+            role: 役職名 (shogun, gunshi, karo, taisho, kengyo, ashigaru)
+            server_name: MCPサーバー名
+            write: 書き込み権限が必要か
+
+        Returns:
+            True: 許可, False: 拒否
+        """
+        pm = self._get_permission_manager()
+
+        if pm is None:
+            # Fallback: 基本的な exclusive チェック
+            owner = self.EXCLUSIVE_OWNERS.get(server_name)
+            if owner and owner != role:
+                # 専属所有者以外は、上位役職のみ readonly 可
+                if not write and role in self.ROLE_PRIORITY:
+                    role_idx = self.ROLE_PRIORITY.index(role)
+                    owner_idx = self.ROLE_PRIORITY.index(owner)
+                    if role_idx < owner_idx:
+                        return True  # 上位役職は読み取り可
+                logger.warning(f"⚠️ {role} は {server_name} の専属ではありません ({owner})")
+                return False
+            return True
+
+        # 権限マネージャーを使用
+        if write:
+            granted = pm.can_write(role, server_name)
+        else:
+            granted = pm.can_access(role, server_name)
+
+        pm.log_access_attempt(role, server_name, granted)
+        return granted
+
+    def get_exclusive_owner(self, server_name: str) -> Optional[str]:
+        """
+        MCPサーバーの専属所有者を取得
+
+        Args:
+            server_name: サーバー名
+
+        Returns:
+            専属所有役職名、または None
+        """
+        pm = self._get_permission_manager()
+        if pm:
+            return pm.get_exclusive_owner(server_name)
+        return self.EXCLUSIVE_OWNERS.get(server_name)
+
+    async def send_request_with_role(
+        self,
+        role: str,
+        server_name: str,
+        method: str,
+        params: Optional[Dict[str, Any]] = None,
+        write: bool = False,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        役職ベースの権限チェック付きリクエスト送信
+
+        Args:
+            role: 要求元役職
+            server_name: サーバー名
+            method: JSON-RPC メソッド名
+            params: パラメータ
+            write: 書き込み操作か
+
+        Returns:
+            レスポンス or None (権限なし/エラー時)
+        """
+        # 権限チェック
+        if not self.check_role_permission(role, server_name, write):
+            logger.error(f"❌ 権限拒否: {role} → {server_name}.{method}")
+            return None
+
+        # 通常のリクエスト送信
+        return await self.send_request(server_name, method, params)
+
+    def request_delegation(
+        self,
+        from_role: str,
+        to_role: str,
+        server_name: str,
+        operations: List[str],
+    ) -> Dict[str, Any]:
+        """
+        MCP操作権限の委譲
+
+        上位役職から下位役職（主に足軽）への権限委譲を記録。
+
+        Args:
+            from_role: 委譲元役職
+            to_role: 委譲先役職
+            server_name: サーバー名
+            operations: 許可する操作のリスト
+
+        Returns:
+            委譲トークン（辞書形式）
+        """
+        # 委譲元が対象MCPの権限を持っているか確認
+        if not self.check_role_permission(from_role, server_name, write=True):
+            logger.error(f"❌ {from_role} は {server_name} の委譲権限を持っていません")
+            return {"error": "delegation_denied", "reason": "source has no permission"}
+
+        # 専属所有者のみ委譲可能
+        owner = self.get_exclusive_owner(server_name)
+        if owner and owner != from_role:
+            logger.error(f"❌ {server_name} は {owner} の専属です ({from_role} からは委譲不可)")
+            return {"error": "delegation_denied", "reason": f"exclusive to {owner}"}
+
+        delegation_token = {
+            "from_role": from_role,
+            "to_role": to_role,
+            "server_name": server_name,
+            "allowed_operations": operations,
+            "granted": True,
+        }
+
+        logger.info(f"🔑 権限委譲: {from_role} → {to_role} ({server_name}: {operations})")
+        return delegation_token
+
+    def get_role_available_servers(self, role: str) -> Dict[str, Dict[str, Any]]:
+        """
+        特定役職が使用可能なサーバー一覧
+
+        Args:
+            role: 役職名
+
+        Returns:
+            {server_name: {info...}} の辞書
+        """
+        result = {}
+        pm = self._get_permission_manager()
+
+        for name, config in self.servers.items():
+            if pm:
+                level = pm.check_permission(role, name)
+                level_str = level.value
+            else:
+                # Fallback logic
+                owner = self.EXCLUSIVE_OWNERS.get(name)
+                if owner == role:
+                    level_str = "exclusive"
+                elif owner and role in self.ROLE_PRIORITY[:self.ROLE_PRIORITY.index(owner)]:
+                    level_str = "readonly"
+                elif not owner:
+                    level_str = "secondary"
+                else:
+                    level_str = "forbidden"
+
+            if level_str != "forbidden":
+                result[name] = {
+                    "category": config.category.value,
+                    "description": config.description,
+                    "permission_level": level_str,
+                    "available": self._initialized.get(name, False),
+                    "running": name in self._processes,
+                }
+
+        return result
 
     async def shutdown(self) -> None:
         """全サーバー停止"""
