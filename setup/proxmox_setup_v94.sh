@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# 武士団マルチエージェントシステム v9.4 - Proxmox コンテナセットアップ
+# 武士団マルチエージェントシステム v10.1 - Proxmox コンテナセットアップ
 # ============================================================================
 #
 # 【コア要件】必ず達成すべきこと:
@@ -49,6 +49,8 @@ TEMPLATE="local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
 BRIDGE="vmbr0"
 GATEWAY="192.168.1.1"  # Change to your gateway
 NETMASK="24"
+DNS_PRIMARY="8.8.8.8"    # Google DNS
+DNS_SECONDARY="8.8.4.4"  # Google DNS backup
 
 # CT 100 (本陣) - Orchestration only
 CT100_IP="192.168.1.100"  # Change to your IP
@@ -62,7 +64,7 @@ CT101_IP="192.168.1.101"  # Change to your IP
 CT101_HOSTNAME="bushidan-qwen3"
 CT101_DISK="45"   # GB (17GB model + system)
 CT101_RAM="24576" # MB (24GB for model loading)
-CT101_CORES="8"   # All CPU cores for inference
+CT101_CORES="6"   # HP ProDesk 600: i5-8500 (6C/6T)
 
 # Root password
 ROOT_PASSWORD="bushidan2024"
@@ -198,6 +200,7 @@ create_container() {
         --memory $RAM \
         --cores $CORES \
         --net0 name=eth0,bridge=$BRIDGE,ip=${IP}/${NETMASK},gw=$GATEWAY \
+        --nameserver "${DNS_PRIMARY} ${DNS_SECONDARY}" \
         --features nesting=1 \
         --unprivileged 1 \
         --start 0 2>/dev/null; then
@@ -231,7 +234,17 @@ configure_ct100() {
         apt update && apt upgrade -y 2>/dev/null
 
         # 基本パッケージ
-        apt install -y python3-pip python3-venv git curl wget sudo 2>/dev/null
+        apt install -y python3-pip python3-venv git curl wget sudo ca-certificates gnupg 2>/dev/null
+
+        # Node.js インストール (MCP サーバー用)
+        if ! command -v node &>/dev/null; then
+            mkdir -p /etc/apt/keyrings
+            curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg 2>/dev/null
+            echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+            apt update 2>/dev/null
+            apt install -y nodejs 2>/dev/null
+            echo "NODEJS_INSTALLED"
+        fi
 
         # claude ユーザー作成
         if ! id claude &>/dev/null; then
@@ -403,8 +416,8 @@ show_usage() {
 run_full_setup() {
     echo ""
     echo "============================================="
-    echo "  武士団 v9.4 - Proxmox セットアップ"
-    echo "  BDI Framework + llama.cpp CPU最適化"
+    echo "  武士団 v10.1 - Proxmox セットアップ"
+    echo "  BDI + Kimi K2.5 + 検校 + MCP権限マトリクス"
     echo "============================================="
     echo ""
 
