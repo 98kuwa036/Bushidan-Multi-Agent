@@ -47,20 +47,20 @@ TEMPLATE="local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
 
 # Network
 BRIDGE="vmbr0"
-GATEWAY="192.168.1.1"  # Change to your gateway
+GATEWAY="192.168.11.1"  # Change to your gateway
 NETMASK="24"
 DNS_PRIMARY="8.8.8.8"    # Google DNS
 DNS_SECONDARY="8.8.4.4"  # Google DNS backup
 
 # CT 100 (本陣) - Orchestration only
-CT100_IP="192.168.1.100"  # Change to your IP
+CT100_IP="192.168.11.231"  # Change to your IP
 CT100_HOSTNAME="bushidan-honin"
 CT100_DISK="10"   # GB
 CT100_RAM="2048"  # MB
 CT100_CORES="2"
 
 # CT 101 (Qwen3) - LLM inference
-CT101_IP="192.168.1.101"  # Change to your IP
+CT101_IP="192.168.11.232"  # Change to your IP
 CT101_HOSTNAME="bushidan-qwen3"
 CT101_DISK="45"   # GB (17GB model + system)
 CT101_RAM="24576" # MB (24GB for model loading)
