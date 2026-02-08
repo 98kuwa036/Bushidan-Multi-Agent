@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================================
-# 武士団マルチエージェントシステム v9.4 - 本陣セットアップ (CT 100)
+# 武士団マルチエージェントシステム v10.1 - 本陣セットアップ (CT 100)
 # ============================================================================
 #
 # 【コア要件】必ず達成すべきこと:
@@ -279,7 +279,7 @@ NPMPATH
     MCP_CONFIG_DIR="${HOME}/.config/claude"
     mkdir -p "$MCP_CONFIG_DIR"
 
-    # MCP設定ファイル (npx経由で実行時にダウンロード)
+    # MCP設定ファイル (npx経由で実行時にダウンロード) - v10.1 Smithery対応
     cat > "${MCP_CONFIG_DIR}/mcp_servers.json" << 'MCPCONFIG'
 {
   "mcpServers": {
@@ -302,12 +302,27 @@ NPMPATH
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
     },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp"]
+    },
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp"],
+      "env": {
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+      }
+    },
     "notion": {
       "command": "npx",
       "args": ["-y", "@notionhq/notion-mcp-server"],
       "env": {
         "NOTION_API_KEY": "${NOTION_API_KEY}"
       }
+    },
+    "git": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git"]
     }
   }
 }
@@ -494,7 +509,7 @@ install_all() {
     if [ "$(id -u)" -eq 0 ]; then
         echo ""
         echo "============================================="
-        echo "  武士団マルチエージェントシステム v9.4"
+        echo "  武士団マルチエージェントシステム v10.1"
         echo "  本陣セットアップ (一括インストール)"
         echo "============================================="
 
@@ -510,7 +525,7 @@ install_all() {
     else
         echo ""
         echo "============================================="
-        echo "  武士団マルチエージェントシステム v9.4"
+        echo "  武士団マルチエージェントシステム v10.1"
         echo "  本陣セットアップ (ユーザーパッケージのみ)"
         echo "============================================="
 
