@@ -60,28 +60,44 @@ class AlibabaQwenClient:
     - Tier 3 in 4-tier fallback chain (Kimi→Local→Kagemusha→Gemini)
     """
     
-    def __init__(self, api_key: str, model: str = "qwen3-coder-plus"):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "qwen/qwen3-coder-plus",
+        provider: str = "openrouter",
+    ):
         self.api_key = api_key
-        self.model = model
-        self.base_url = "https://dashscope.aliyuncs.com/api/v1"
-        
+        self.provider = provider
+
+        # OpenRouter uses OpenAI-compatible endpoint with qwen/ prefix
+        if provider == "openrouter":
+            self.model = model if "/" in model else f"qwen/{model}"
+            self.base_url = "https://openrouter.ai/api/v1"
+        else:
+            # Legacy DashScope fallback (not recommended)
+            self.model = model.split("/")[-1] if "/" in model else model
+            self.base_url = "https://dashscope.aliyuncs.com/api/v1"
+
         # Statistics
         self.stats = AlibabaQwenStats()
-        
+
         # Configuration
         self.default_max_tokens = 4096
         self.default_temperature = 0.7
         self.default_top_p = 0.8
-        
-        # Cost tracking (estimated rates for Qwen3-Coder-Plus)
-        # Alibaba Cloud pricing: ~¥0.008 per 1k tokens
+
+        # Cost tracking
+        # OpenRouter Qwen3-Coder-Plus: ~¥0.008 per 1k tokens (approx)
         self.cost_per_1k_tokens_yen = 0.008
-        
+
         # Context limits
         self.max_context_tokens = 32000  # 32k context
         self.local_context_limit = 4096  # Local Qwen3's limit
-        
-        logger.info(f"🏯 Alibaba Qwen3-Coder-Plus client initialized (Kagemusha): {self.model}")
+
+        logger.info(
+            f"🏯 Kagemusha (影武者) client initialized: "
+            f"{self.model} via {self.provider}"
+        )
     
     async def generate(
         self,
@@ -183,74 +199,63 @@ class AlibabaQwenClient:
         
         try:
             import httpx
-            
-            url = f"{self.base_url}/services/aigc/text-generation/generation"
-            
+
+            url = f"{self.base_url}/chat/completions"
+
             headers = {
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
-                "X-DashScope-SSE": "disable"  # Disable streaming for simplicity
             }
-            
-            # Format messages for Alibaba API
-            formatted_messages = []
-            for msg in messages:
-                role = msg.get("role", "user")
-                content = msg.get("content", "")
-                
-                # Alibaba uses "system", "user", "assistant"
-                formatted_messages.append({
-                    "role": role,
-                    "content": content
-                })
-            
+
+            # OpenRouter requires referrer header
+            if self.provider == "openrouter":
+                headers["HTTP-Referer"] = (
+                    "https://github.com/98kuwa036/Bushidan-Multi-Agent"
+                )
+
             payload = {
                 "model": self.model,
-                "input": {
-                    "messages": formatted_messages
-                },
-                "parameters": {
-                    "max_tokens": max_tokens,
-                    "temperature": temperature,
-                    "top_p": self.default_top_p,
-                    "result_format": "message"
-                }
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "top_p": self.default_top_p,
+                "stream": False,
             }
-            
+
             async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(
-                    url,
-                    headers=headers,
-                    json=payload
-                )
-                
+                response = await client.post(url, headers=headers, json=payload)
+
                 if response.status_code != 200:
                     error_detail = response.text
-                    raise Exception(f"Alibaba API error {response.status_code}: {error_detail}")
-                
+                    raise Exception(
+                        f"API error {response.status_code}: {error_detail}"
+                    )
+
                 result = response.json()
-                
-                # Check for API-level errors
-                if "code" in result and result["code"] != "200":
-                    raise Exception(f"Alibaba API error: {result.get('message', 'Unknown error')}")
-                
-                # Extract response
-                output = result.get("output", {})
-                response_text = output.get("text", "")
-                
-                if not response_text and "choices" in output:
-                    # Alternative format
-                    response_text = output["choices"][0]["message"]["content"]
-                
-                # Extract token counts
+
+                if "choices" not in result or not result["choices"]:
+                    raise Exception("Empty response from API")
+
+                choice = result["choices"][0]
+                response_text = choice["message"]["content"]
                 usage = result.get("usage", {})
-                input_tokens = usage.get("input_tokens", len(" ".join([m["content"] for m in messages]).split()))
-                output_tokens = usage.get("output_tokens", len(response_text.split()))
-                
+
+                # OpenAI-compatible token field names
+                input_tokens = usage.get(
+                    "prompt_tokens",
+                    usage.get("input_tokens", len(" ".join(
+                        [m.get("content", "") for m in messages]
+                    ).split()))
+                )
+                output_tokens = usage.get(
+                    "completion_tokens",
+                    usage.get("output_tokens", len(response_text.split()))
+                )
+
                 return response_text, input_tokens, output_tokens
-                
+
         except Exception as e:
-            logger.error(f"❌ Alibaba API request failed: {e}")
+            logger.error(f"❌ Kagemusha API request failed: {e}")
             raise
     
     def should_activate_kagemusha(self, context_size_estimate: int) -> bool:

@@ -291,7 +291,7 @@ class SystemConfig:
 
     # v10: Qwen3-Coder-Next (軍師)
     qwen3_coder_next_api_key: Optional[str] = None
-    qwen3_coder_next_provider: str = "dashscope"  # dashscope, openrouter
+    qwen3_coder_next_provider: str = "openrouter"  # openrouter, dashscope
 
     # v10.1: Kimi K2.5 (傭兵)
     kimi_api_key: Optional[str] = None
@@ -574,14 +574,15 @@ class SystemOrchestrator:
         except Exception as e:
             logger.warning(f"⚠️ Qwen3 client failed: {e}")
 
-        # Alibaba Qwen Client (Kagemusha - Shadow backup)
+        # Kagemusha Client (影武者 - qwen3-coder-plus via OpenRouter)
         if self.config.alibaba_api_key:
             try:
                 from utils.alibaba_qwen_client import AlibabaQwenClient
                 self.clients["alibaba_qwen"] = AlibabaQwenClient(
-                    api_key=self.config.alibaba_api_key
+                    api_key=self.config.alibaba_api_key,
+                    provider="openrouter",
                 )
-                logger.info("✅ Alibaba Qwen Client (Kagemusha) initialized")
+                logger.info("✅ Kagemusha Client (影武者) initialized via OpenRouter")
             except Exception as e:
                 logger.warning(f"⚠️ Alibaba Qwen client failed: {e}")
 

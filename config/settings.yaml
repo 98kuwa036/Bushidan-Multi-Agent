@@ -391,11 +391,12 @@ taisho:
       - "No Ollama overhead"
       - "HP ProDesk 600 optimized"
 
-  # Shadow: Cloud Qwen3-plus (Kagemusha)
+  # Shadow: Cloud Qwen3-plus (Kagemusha) via OpenRouter
   kagemusha:
     enabled: true
-    model: "qwen3-coder-plus"
-    provider: "Alibaba Cloud Model Studio"
+    model: "qwen/qwen3-coder-plus"
+    provider: "openrouter"
+    base_url: "https://openrouter.ai/api/v1"
     context_length: 32000
     activation_triggers:
       - "Local Qwen3 fails"
@@ -571,7 +572,7 @@ cost_targets:
       claude_api: 140
       opus_premium: 100
       gemini_3_flash: 120
-      alibaba_cloud: 60
+      openrouter_qwen: 70  # Gunshi (qwen3-coder-next) + Kagemusha (qwen3-coder-plus) via OpenRouter
       qwen3_coder_next: 10  # Gunshi PDCA (3B active, ~¥0.05/request × 200/month)
       kimi_k2: 30  # 傭兵 (¥0.01/request × ~100 Complex tasks × 3 subtasks)
       groq: 0
