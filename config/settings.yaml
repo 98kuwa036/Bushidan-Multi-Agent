@@ -257,14 +257,14 @@ gunshi:
   swe_bench: "70.6%"
 
   api:
-    primary_provider: "dashscope"
+    primary_provider: "openrouter"
     providers:
-      dashscope:
-        base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        model_name: "qwen3-coder-next"
       openrouter:
         base_url: "https://openrouter.ai/api/v1"
         model_name: "qwen/qwen3-coder-next"
+      dashscope:
+        base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        model_name: "qwen3-coder-next"
     temperature: 0.3  # 低め = 正確な戦略立案
     max_tokens: 8192  # 長めの分析を許容
 

@@ -113,7 +113,58 @@ TAVILY_API_KEY=tvly-xxxxx
 
 ---
 
-## Step 3: Slack Bot 起動
+## Step 3: Slack App Token 取得 (Socket Mode)
+
+Request URL の設定は**不要**です。Socket Mode を使用するため WebSocket 接続で動作します。
+
+### 3-1: Socket Mode を有効化
+
+1. [Slack API Apps](https://api.slack.com/apps) にアクセス
+2. 対象のアプリを選択
+3. 左メニュー → **Socket Mode** → **Enable Socket Mode** をオン
+
+### 3-2: App-Level Token を生成
+
+1. 左メニュー → **Basic Information** → **App-Level Tokens**
+2. **Generate Token and Scopes** をクリック
+3. Token Name: `bushidan-socket` など任意の名前
+4. Scope: **`connections:write`** を追加
+5. **Generate** をクリック
+6. 表示される `xapp-1-...` トークンをコピー
+
+### 3-3: .env に追加
+
+```bash
+# CT 100 で
+nano ~/Bushidan-Multi-Agent/.env
+```
+
+以下の行を追記:
+```bash
+SLACK_APP_TOKEN=xapp-1-XXXXXXXXX-XXXXXXXXXXXXX-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+```
+
+### 3-4: Event Subscriptions の設定
+
+1. 左メニュー → **Event Subscriptions** → **Enable Events** をオン
+2. **Request URL は入力不要** (Socket Mode の場合)
+3. **Subscribe to bot events** に以下を追加:
+   - `app_mention`
+   - `message.channels`（オプション）
+4. **Save Changes**
+
+### 3-5: Bot Scopes の確認
+
+左メニュー → **OAuth & Permissions** → **Scopes** に以下があることを確認:
+- `app_mentions:read`
+- `chat:write`
+- `channels:history`
+
+不足していれば追加して **Reinstall to Workspace** を実行。
+
+---
+
+## Step 4: Slack Bot 起動
 
 ### 手動起動 (テスト用)
 
@@ -124,6 +175,8 @@ python -m bushidan.slack_bot
 ```
 
 ### systemd サービス化 (本番用)
+
+> **注意**: systemd サービス化する前に `SLACK_APP_TOKEN` を `.env` に設定してください。
 
 ```bash
 # サービスファイル作成
