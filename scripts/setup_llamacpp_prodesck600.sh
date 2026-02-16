@@ -357,7 +357,7 @@ echo "============================================="
     -t \$THREADS \\
     -b \$BATCH \\
     --parallel \$PARALLEL \\
-    --host 127.0.0.1 \\
+    --host 0.0.0.0 \\
     --port \$PORT \\
     --mlock \\
     --mmap
@@ -408,7 +408,7 @@ ExecStart=$SERVER_PATH \\
     -t $CPU_THREADS \\
     -b $BATCH_SIZE \\
     --parallel $PARALLEL_REQUESTS \\
-    --host 127.0.0.1 \\
+    --host 0.0.0.0 \\
     --port $PORT \\
     --mlock \\
     --mmap
