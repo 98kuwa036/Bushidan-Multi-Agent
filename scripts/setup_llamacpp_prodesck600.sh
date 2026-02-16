@@ -342,6 +342,9 @@ if [ ! -f "\$MODEL_PATH" ]; then
     exit 1
 fi
 
+# メモリロック制限を解除 (17GB モデル用)
+ulimit -l unlimited
+
 echo "============================================="
 echo "  Bushidan llama.cpp Server 起動"
 echo "============================================="
@@ -349,6 +352,7 @@ echo "  Model: \$MODEL_PATH"
 echo "  Threads: \$THREADS"
 echo "  Context: \$CONTEXT"
 echo "  Port: \$PORT"
+echo "  MemLock: unlimited"
 echo "============================================="
 
 \$SERVER_PATH \\
@@ -415,6 +419,7 @@ ExecStart=$SERVER_PATH \\
 Restart=on-failure
 RestartSec=10
 MemoryMax=20G
+LimitMEMLOCK=infinity
 
 [Install]
 WantedBy=multi-user.target
