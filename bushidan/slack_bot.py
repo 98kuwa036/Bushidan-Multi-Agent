@@ -14,7 +14,16 @@ import logging
 import os
 import re
 import sys
+from pathlib import Path
 from typing import Any
+
+# .env ファイルを読み込む
+try:
+    from dotenv import load_dotenv
+    env_path = Path(__file__).parent.parent / ".env"
+    load_dotenv(env_path)
+except ImportError:
+    pass  # dotenv がない場合は環境変数から直接読み込む
 
 logging.basicConfig(
     level=logging.INFO,
