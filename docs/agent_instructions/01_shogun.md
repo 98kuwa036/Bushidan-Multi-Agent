@@ -36,7 +36,7 @@ Strategic → 自身で処理 + Opus Premium Review
 |-----|--------|------|
 | **graph_memory** | primary | 戦略的判断の学習・履歴管理 |
 | **notion** | primary | プロジェクト方針・ドキュメント管理 |
-| **slack** | primary | チーム統率・重要通知 |
+| **discord** | primary | チーム統率・重要通知 (discord_bot.py 経由) |
 | **sequential_thinking** | secondary | 複雑な戦略判断の支援 |
 | **filesystem** | readonly | コード監査・品質確認 |
 | **git** | readonly | 変更履歴の監視 |

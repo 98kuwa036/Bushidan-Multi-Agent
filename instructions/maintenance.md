@@ -69,8 +69,7 @@ npm update -g @modelcontextprotocol/server-filesystem \
     @modelcontextprotocol/server-memory \
     @modelcontextprotocol/server-postgres \
     @modelcontextprotocol/server-puppeteer \
-    @modelcontextprotocol/server-brave-search \
-    @modelcontextprotocol/server-slack
+    @modelcontextprotocol/server-brave-search
 ```
 
 ### 4. システムヘルスチェック
@@ -207,5 +206,5 @@ maintenance:
     timezone: "Asia/Tokyo"
 
   notification:
-    slack_channel: "#shogun-maintenance"
+    discord_channel_id: ""  # Discord channel ID for maintenance notifications
 ```

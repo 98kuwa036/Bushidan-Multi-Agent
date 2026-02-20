@@ -11,7 +11,7 @@
   5. postgres    - データベース
   6. puppeteer   - ブラウザ自動化
   7. brave-search - Web検索
-  8. slack       - チーム連携
+  8. discord     - チーム連携 (discord_bot.py で直接処理)
 """
 
 import asyncio
@@ -78,15 +78,8 @@ DEFAULT_SERVERS = [
         args=["-y", "@modelcontextprotocol/server-brave-search"],
         env={"BRAVE_API_KEY": "${BRAVE_API_KEY}"},
     ),
-    MCPServer(
-        id=8, name="slack",
-        command="npx",
-        args=["-y", "@modelcontextprotocol/server-slack"],
-        env={
-            "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}",
-            "SLACK_TEAM_ID": "${SLACK_TEAM_ID}",
-        },
-    ),
+    # Discord 連携は bushidan/discord_bot.py で直接処理 (MCP不要)
+    # MCPServer(id=8, name="discord", ...) は不使用
 ]
 
 

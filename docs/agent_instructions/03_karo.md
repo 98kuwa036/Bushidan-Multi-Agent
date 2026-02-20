@@ -41,7 +41,7 @@ Medium タスク受信
 | MCP | レベル | 用途 |
 |-----|--------|------|
 | **sequential_thinking** | primary (priority=2) | タスク分解・優先度判断 |
-| **slack** | primary | 進捗報告・調整連絡 |
+| **discord** | primary | 進捗報告・調整連絡 (discord_bot.py 経由) |
 | **filesystem** | secondary | タスクコンテキスト把握 |
 | **graph_memory** | secondary | タスクパターンの記憶 |
 | **git** | readonly | 変更状況の監視 |
@@ -106,7 +106,7 @@ def should_decompose(task):
 3. **優先度**: クリティカルパスを先に処理
 4. **並列性**: 独立タスクは並列実行
 
-## Slack連携詳細
+## Discord連携詳細
 
 ### 報告タイミング
 - タスク開始時: 分解計画の概要
@@ -114,7 +114,7 @@ def should_decompose(task):
 - ボトルネック検出時: 警告通知
 - タスク完了時: 結果サマリー
 
-### メッセージ形式
+### メッセージ形式 (Discord)
 ```
 👔 [家老] {action}
   タスク: {task_summary}

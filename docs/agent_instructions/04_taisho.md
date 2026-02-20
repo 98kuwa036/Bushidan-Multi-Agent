@@ -43,7 +43,7 @@ Tier 4: Claude Sonnet (最高品質, フォールバック最終手段)
 | **graph_memory** | secondary | 実装パターンの記憶・参照 |
 | **tavily** | forbidden | 調査は上位層の責務 |
 | **exa** | forbidden | 調査は上位層の責務 |
-| **slack** | forbidden | 通知は家老経由 |
+| **discord** | forbidden | Discord通知は discord_bot.py が担当 |
 | **notion** | forbidden | ドキュメント管理は将軍の責務 |
 | **playwright** | forbidden | 検校の専属 |
 
@@ -162,7 +162,7 @@ def select_tier(task):
 - タスクを分解する (家老の責務)
 - 品質レビューを行う (軍師の責務)
 - スクリーンショットを撮る (検校の専属)
-- 直接 Slack に通知する (家老経由)
+- 直接 Discord に通知する (discord_bot.py が担当)
 - Web 検索を行う (上位層の責務)
 
 ## ログ出力形式

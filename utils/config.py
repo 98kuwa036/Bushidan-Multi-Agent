@@ -47,7 +47,7 @@ def load_config() -> SystemConfig:
     kimi_provider = os.getenv("KIMI_PROVIDER", "moonshot")
 
     # Optional tokens
-    slack_token = os.getenv("SLACK_BOT_TOKEN")
+    discord_token = os.getenv("DISCORD_BOT_TOKEN")
     notion_token = os.getenv("NOTION_TOKEN")
 
     # System mode
@@ -78,7 +78,7 @@ def load_config() -> SystemConfig:
         qwen3_coder_next_provider=qwen3_coder_next_provider,
         kimi_api_key=kimi_api_key,
         kimi_provider=kimi_provider,
-        slack_token=slack_token,
+        discord_token=discord_token,
         notion_token=notion_token,
         ollama_endpoint=ollama_endpoint,
         litellm_endpoint=litellm_endpoint,

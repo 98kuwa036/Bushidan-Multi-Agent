@@ -127,7 +127,7 @@ class AshigaruSelectionManager:
             "データベース": ["database", "sql", "data_management"],
             "ブラウザ自動化": ["browser", "automation", "web_scraping"],
             "Web検索": ["search", "information_retrieval"],
-            "チーム連携": ["communication", "notifications", "slack"],
+            "チーム連携": ["communication", "notifications", "discord"],
         }
         
         return capability_map.get(role, ["general"])

@@ -50,7 +50,7 @@ Kimi Vision 分析
 | **sequential_thinking** | forbidden | 複雑な推論は軍師の責務 |
 | **tavily** | forbidden | 調査は上位層の責務 |
 | **exa** | forbidden | 調査は上位層の責務 |
-| **slack** | forbidden | 通知は家老経由 |
+| **discord** | forbidden | Discord通知は discord_bot.py が担当 |
 | **notion** | forbidden | ドキュメント管理は将軍の責務 |
 | **prisma** | forbidden | 大将の責務 |
 
@@ -163,7 +163,7 @@ async def check_phase_visual_verify(task_content, subtask_results, context):
 - 戦略的判断を行う (将軍の責務)
 - タスクを分解する (家老の責務)
 - 複雑な推論を行う (軍師の責務)
-- 直接 Slack に通知する (家老経由)
+- 直接 Discord に通知する (discord_bot.py が担当)
 - Web 検索を行う (上位層の責務)
 
 ## ログ出力形式

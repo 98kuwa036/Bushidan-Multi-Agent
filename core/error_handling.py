@@ -90,7 +90,7 @@ class ShogunErrorHandler:
         """Initialize circuit breakers for key components."""
         components = [
             "taisho_r1", "groq_api", "notion_api", "anthropic_api",
-            "slack_api", "github_api", "file_operations"
+            "discord_api", "github_api", "file_operations"
         ]
         
         for component in components:
@@ -429,7 +429,7 @@ class ShogunErrorHandler:
         logger.critical(alert_msg)
         
         # In a real implementation, this would:
-        # - Send Slack notification
+        # - Send Discord notification
         # - Write to alert log
         # - Potentially trigger PagerDuty/email alerts
     

@@ -22,7 +22,7 @@ MCP サーバー一覧:
     - Graph Memory MCP           (グラフ型記憶)
     - Prisma MCP                 (DB操作)
   連携:
-    - Slack MCP                  (Slack連携)
+    - Discord連携は bushidan/discord_bot.py で直接処理 (MCP不要)
     - Notion MCP                 (Notion連携)
     - Git MCP                    (Git操作)
 """
@@ -126,16 +126,8 @@ MCP_SERVERS: List[MCPServerConfig] = [
         optional=True,
     ),
 
+    # Discord連携は bushidan/discord_bot.py で直接処理 (MCP不要)
     # Integration
-    MCPServerConfig(
-        name="slack",
-        package="@anthropic/mcp-server-slack",
-        category=MCPCategory.INTEGRATION,
-        description="Slack連携: メッセージ送受信・チャンネル操作",
-        required_env=["SLACK_BOT_TOKEN"],
-        env_vars={"SLACK_BOT_TOKEN": ""},
-        optional=True,
-    ),
     MCPServerConfig(
         name="notion",
         package="@anthropic/mcp-server-notion",

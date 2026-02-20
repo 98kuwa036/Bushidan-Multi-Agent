@@ -100,7 +100,6 @@ class MCPPermissionManager:
             "shogun": {
                 "graph_memory": {"level": "primary"},
                 "notion": {"level": "primary"},
-                "slack": {"level": "primary"},
                 "sequential_thinking": {"level": "secondary"},
                 "filesystem": {"level": "readonly"},
                 "git": {"level": "readonly"},
@@ -113,11 +112,9 @@ class MCPPermissionManager:
                 "git": {"level": "primary"},
                 "graph_memory": {"level": "primary"},
                 "playwright": {"level": "forbidden"},
-                "slack": {"level": "forbidden"},
             },
             "karo": {
                 "sequential_thinking": {"level": "primary", "priority": 2},
-                "slack": {"level": "primary"},
                 "filesystem": {"level": "secondary"},
                 "playwright": {"level": "forbidden"},
                 "prisma": {"level": "forbidden"},
@@ -128,7 +125,6 @@ class MCPPermissionManager:
                 "prisma": {"level": "exclusive"},
                 "sequential_thinking": {"level": "secondary", "priority": 3},
                 "playwright": {"level": "forbidden"},
-                "slack": {"level": "forbidden"},
             },
             "kengyo": {
                 "playwright": {"level": "exclusive", "priority": 1},
@@ -298,7 +294,7 @@ class SystemConfig:
     kimi_provider: str = "moonshot"  # moonshot, openrouter
 
     # Optional tokens
-    slack_token: Optional[str] = None
+    discord_token: Optional[str] = None
     notion_token: Optional[str] = None
 
     # Service endpoints

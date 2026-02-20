@@ -462,9 +462,9 @@ ashigaru:
       optional: true
 
     # Integration
-    - name: "slack"
-      type: "MCP (Smithery)"
-      role: "Slack連携"
+    - name: "discord"
+      type: "API (discord.py)"
+      role: "Discord連携"
       optional: true
 
     - name: "notion"
@@ -652,7 +652,7 @@ mcp_permissions:
 
   role_specializations:
     shogun:
-      primary_mcps: ["graph_memory", "notion", "slack"]
+      primary_mcps: ["graph_memory", "notion"]
       purpose: "戦略的意思決定・チーム統率・品質保証"
 
     gunshi:
@@ -661,7 +661,7 @@ mcp_permissions:
       purpose: "PDCA作戦立案・コード監査"
 
     karo:
-      primary_mcps: ["sequential_thinking", "slack"]
+      primary_mcps: ["sequential_thinking"]
       purpose: "タスク分解・調整・進捗報告"
       note: "sequential_thinking は軍師が使用中は待機"
 

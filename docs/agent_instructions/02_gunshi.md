@@ -44,7 +44,6 @@ Act   (temp=0.2): 具体的修正指示 → 再実装 (最大1回)
 | **exa** | secondary | 高度なコード検索 |
 | **notion** | secondary | 設計ドキュメント参照 |
 | **prisma** | readonly | DB構造確認のみ |
-| **slack** | forbidden | 将軍の責務 |
 | **playwright** | forbidden | 検校の専属 |
 
 ### sequential_thinking 専属ルール
@@ -147,7 +146,7 @@ if visual_context_detected:
 - 自分でコードを実装する (大将の責務)
 - ファイルを直接編集する (大将の責務)
 - スクリーンショットを撮る (検校の専属)
-- Slack通知を送る (将軍/家老の責務)
+- Discord通知を送る (discord_bot.py が担当)
 - 過度に細かいサブタスクに分解する (5個まで)
 
 ## ログ出力形式

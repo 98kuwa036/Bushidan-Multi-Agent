@@ -21,7 +21,6 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 import logging
 
-from integrations.slack_bot import SlackBot
 from core.activity_memory import ActivityMemory
 
 
@@ -50,7 +49,6 @@ class HanseiKaiManager:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.slack_bot = SlackBot(config.get('slack', {}))
         self.activity_memory = ActivityMemory(config.get('activity_memory', {}))
         self.logger = logging.getLogger(__name__)
     
@@ -90,9 +88,10 @@ class HanseiKaiManager:
     async def _get_hansei_channel_data(self, channel_name: str) -> Optional[List[Dict[str, Any]]]:
         """反省会チャンネルのデータを取得"""
         try:
-            # Slackチャンネル検索・メッセージ取得
-            messages = await self.slack_bot.get_channel_messages(channel_name)
-            return messages if messages else None
+            # Discord への移行に伴い、チャンネルデータ収集は未実装
+            # 将来的に Discord API 経由での取得を実装予定
+            self.logger.info(f"Discord移行後: チャンネルデータ収集未実装 ({channel_name})")
+            return None
         except Exception as e:
             self.logger.error(f"チャンネルデータ取得エラー: {e}")
             return None

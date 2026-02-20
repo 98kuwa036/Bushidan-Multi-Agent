@@ -206,7 +206,7 @@ class MaintenanceManager:
             "@modelcontextprotocol/server-postgres",
             "@modelcontextprotocol/server-puppeteer",
             "@modelcontextprotocol/server-brave-search",
-            "@modelcontextprotocol/server-slack",
+            # Discord連携は bushidan/discord_bot.py で直接処理 (MCP不要)
         ]
 
         # 現在のバージョンと最新版を比較

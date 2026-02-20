@@ -24,7 +24,7 @@ tavily-python>=0.3.0          # Precise URL discovery
 playwright>=1.40.0            # Targeted content extraction
 
 # Optional integrations
-slack-sdk>=3.21.0             # Slack Bot interface
+discord.py>=2.3.0             # Discord Bot interface
 notion-client>=2.0.0          # Long-term memory (Notion)
 
 # Development dependencies (dev only)

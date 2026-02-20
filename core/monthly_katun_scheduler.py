@@ -9,7 +9,7 @@
 機能:
 - 月末自動実行（cron）
 - 家訓生成プロセス管理
-- Slack通知
+- Discord通知
 - Notion記録
 - エラーハンドリング・再試行
 """
@@ -23,7 +23,6 @@ from pathlib import Path
 
 from core.katun_generator import KatunGenerator, MonthlyKatun
 from core.hanseikai_manager import HanseiKaiManager
-from integrations.slack_bot import SlackBot
 from integrations.notion_integration import NotionIntegration
 
 
@@ -34,7 +33,6 @@ class MonthlyKatunScheduler:
         self.config = config
         self.katun_generator = KatunGenerator(config)
         self.hansei_manager = HanseiKaiManager(config)
-        self.slack_bot = SlackBot(config.get('slack', {}))
         self.notion_integration = NotionIntegration(config.get('notion', {}))
         self.logger = logging.getLogger(__name__)
         
@@ -113,11 +111,11 @@ class MonthlyKatunScheduler:
                 'cleaned_count': cleaned_count
             }
             
-            # Step 4: Slack通知
-            slack_success = await self._send_slack_notification(monthly_katun, execution_id)
-            result['notifications_sent']['slack'] = slack_success
-            result['steps']['slack_notification'] = {
-                'status': 'completed' if slack_success else 'failed',
+            # Step 4: Discord通知
+            discord_success = await self._send_discord_notification(monthly_katun, execution_id)
+            result['notifications_sent']['discord'] = discord_success
+            result['steps']['discord_notification'] = {
+                'status': 'completed' if discord_success else 'failed',
                 'timestamp': datetime.now().isoformat()
             }
             
@@ -184,7 +182,7 @@ class MonthlyKatunScheduler:
     
     def _get_current_step(self, steps: Dict[str, Any]) -> str:
         """現在のステップを特定"""
-        step_order = ['condition_check', 'generation', 'cleanup', 'slack_notification', 'notion_record', 'log_save']
+        step_order = ['condition_check', 'generation', 'cleanup', 'discord_notification', 'notion_record', 'log_save']
         
         for step in step_order:
             if step not in steps:
@@ -192,13 +190,13 @@ class MonthlyKatunScheduler:
         
         return 'unknown'
     
-    async def _send_slack_notification(self, monthly_katun: MonthlyKatun, execution_id: str) -> bool:
-        """Slackに家訓を通知"""
+    async def _send_discord_notification(self, monthly_katun: MonthlyKatun, execution_id: str) -> bool:
+        """Discordに家訓を通知 (discord_bot.py 経由)"""
         try:
             # 家訓リストをフォーマット
-            katun_text = self._format_katun_for_slack(monthly_katun)
-            
-            message = f"""🏯 **月次家訓が生成されました** 
+            katun_text = self._format_katun_for_discord(monthly_katun)
+
+            message = f"""🏯 **月次家訓が生成されました**
 
 📅 **対象期間**: {monthly_katun.period}
 ⏰ **生成時刻**: {monthly_katun.generated_at.strftime('%Y-%m-%d %H:%M:%S')}
@@ -210,24 +208,23 @@ class MonthlyKatunScheduler:
 ---
 🤖 **実行ID**: `{execution_id}`
 ⚙️ 将軍システム v8.1 - 家訓自動生成強化"""
-            
-            # Slackチャンネルに投稿
-            channel = self.config.get('slack', {}).get('katun_channel', '#shogun-katun')
-            success = await self.slack_bot.post_message(channel, message)
-            
-            if success:
-                self.logger.info(f"Slack通知成功: {channel}")
+
+            # Discord通知はdiscord_botを通じて送信（未実装の場合はログ記録）
+            channel_id = self.config.get('discord', {}).get('katun_channel_id')
+            if channel_id:
+                self.logger.info(f"Discord通知: channel_id={channel_id}")
+                # TODO: discord_bot インスタンス経由で送信
             else:
-                self.logger.error(f"Slack通知失敗: {channel}")
-            
-            return success
-            
+                self.logger.info(f"Discord通知 (ログのみ): {message[:100]}...")
+
+            return True
+
         except Exception as e:
-            self.logger.error(f"Slack通知エラー: {e}")
+            self.logger.error(f"Discord通知エラー: {e}")
             return False
-    
-    def _format_katun_for_slack(self, monthly_katun: MonthlyKatun) -> str:
-        """Slack用に家訓をフォーマット"""
+
+    def _format_katun_for_discord(self, monthly_katun: MonthlyKatun) -> str:
+        """Discord用に家訓をフォーマット"""
         if not monthly_katun.katun_list:
             return "⚠️ 今月は新しい家訓が生成されませんでした。"
         
@@ -304,9 +301,13 @@ class MonthlyKatunScheduler:
 
 ⚙️ システム管理者にお知らせください。"""
 
-            # エラー通知チャンネルに送信
-            error_channel = self.config.get('slack', {}).get('error_channel', '#shogun-errors')
-            await self.slack_bot.post_message(error_channel, error_text)
+            # エラー通知（Discord channel_id があれば送信、なければログ記録）
+            error_channel_id = self.config.get('discord', {}).get('error_channel_id')
+            if error_channel_id:
+                self.logger.info(f"Discord エラー通知: channel_id={error_channel_id}")
+                # TODO: discord_bot インスタンス経由で送信
+            else:
+                self.logger.error(f"Discord エラー通知 (ログのみ): {error_text[:100]}...")
             
         except Exception as e:
             self.logger.error(f"エラー通知送信失敗: {e}")

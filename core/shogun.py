@@ -54,7 +54,7 @@ class Task:
     complexity: TaskComplexity
     context: Optional[Dict[str, Any]] = None
     priority: int = 1
-    source: str = "direct"  # direct, slack, ha_os
+    source: str = "direct"  # direct, discord, ha_os
 
 
 class Shogun:
