@@ -61,6 +61,7 @@ def load_config() -> SystemConfig:
     # Service endpoints
     ollama_endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
     litellm_endpoint = os.getenv("LITELLM_ENDPOINT", "http://localhost:8000")
+    llamacpp_endpoint = os.getenv("LLAMACPP_ENDPOINT", "http://127.0.0.1:8080")
 
     # Feature flags
     intelligent_routing = os.getenv("INTELLIGENT_ROUTING_ENABLED", "true").lower() == "true"
@@ -82,6 +83,7 @@ def load_config() -> SystemConfig:
         notion_token=notion_token,
         ollama_endpoint=ollama_endpoint,
         litellm_endpoint=litellm_endpoint,
+        llamacpp_endpoint=llamacpp_endpoint,
         intelligent_routing_enabled=intelligent_routing,
         prompt_caching_enabled=prompt_caching,
         power_optimization_enabled=power_optimization
