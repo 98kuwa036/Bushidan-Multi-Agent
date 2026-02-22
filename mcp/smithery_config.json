@@ -97,7 +97,18 @@
         "@modelcontextprotocol/server-git",
         "/home/claude"
       ],
-      "description": "Git操作: コミット・ブランチ・差分管理"
+      "description": "Git操作: コミット・ブランチ・差分管理 (ローカル)"
+    },
+    "github": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {
+        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
+      },
+      "description": "GitHub API: リポジトリ・Issue・PR操作 (リモート同期)"
     }
   }
 }
