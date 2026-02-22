@@ -138,10 +138,19 @@ MCP_SERVERS: List[MCPServerConfig] = [
         optional=True,
     ),
     MCPServerConfig(
+        name="github",
+        package="@modelcontextprotocol/server-github",
+        category=MCPCategory.INTEGRATION,
+        description="GitHub連携: Issue作成・PR管理・コード検索",
+        required_env=["GITHUB_TOKEN"],
+        env_vars={"GITHUB_TOKEN": ""},
+    ),
+    MCPServerConfig(
         name="git",
         package="@modelcontextprotocol/server-git",
         category=MCPCategory.INTEGRATION,
         description="Git操作: コミット・ブランチ・差分管理",
+        args=["/home/claude"],
     ),
 ]
 
