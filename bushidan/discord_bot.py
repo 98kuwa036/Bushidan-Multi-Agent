@@ -72,13 +72,21 @@ class BushidanDiscordBot(discord.Client):
 
     async def on_message(self, message: discord.Message) -> None:
         """メッセージ受信."""
+        # デバッグ: 全メッセージをログ出力 (INFOレベルで一時的に)
+        logger.info("📩 メッセージ受信: author=%s, content='%s', mentions=%s",
+                    message.author, message.content[:100] if message.content else "(空)",
+                    [m.name for m in message.mentions])
+
         # 自分自身のメッセージは無視
         if message.author == self.user:
             return
 
         # メンションされた場合のみ応答
         if self.user not in message.mentions:
+            logger.info("⏭️ メンションなし、スキップ")
             return
+
+        logger.info("メンション検出: %s", message.content)
 
         task = _clean_mention(message.content)
         if not task:
