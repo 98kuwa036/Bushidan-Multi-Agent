@@ -351,7 +351,8 @@ OUTPUT FORMAT:
         
         # If response is a dict (from router), extract content
         if isinstance(response, dict):
-            response = response.get("content", response)
+            content = response.get("content", "")
+            response = content if isinstance(content, str) else str(content)
         
         # Try to extract from code blocks
         if "```python" in response:

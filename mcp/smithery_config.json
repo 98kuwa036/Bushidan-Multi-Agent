@@ -79,17 +79,6 @@
       },
       "description": "Notion連携: ページ読み書き・データベース操作"
     },
-    "github": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-github"
-      ],
-      "env": {
-        "GITHUB_TOKEN": "${GITHUB_TOKEN}"
-      },
-      "description": "GitHub連携: Issue作成・PR管理・コード検索"
-    },
     "git": {
       "command": "npx",
       "args": [

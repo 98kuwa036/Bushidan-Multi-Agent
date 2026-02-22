@@ -146,7 +146,8 @@ class DSPyValidator:
                     
                     # Extract content if response is dict
                     if isinstance(refined_response, dict):
-                        current_output = refined_response.get("content", refined_response)
+                        content = refined_response.get("content", "")
+                        current_output = content if isinstance(content, str) else str(content)
                     else:
                         current_output = refined_response
                     
