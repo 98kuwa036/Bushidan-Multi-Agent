@@ -875,7 +875,7 @@ Respond with "APPROVED" if acceptable, otherwise provide brief feedback.
         if self.memory_mcp:
             try:
                 history = await self.memory_mcp.search(task.content[:100])
-                if history:
+                if isinstance(history, list) and history:
                     self.belief_base.add_belief(Belief(
                         id=f"historical_context_{id(task)}",
                         type=BeliefType.HISTORICAL,
@@ -1058,7 +1058,7 @@ Respond with "APPROVED" if acceptable, otherwise provide brief feedback.
                     if self.memory_mcp:
                         try:
                             history = await self.memory_mcp.search(task.content[:100])
-                            result["memory_context"] = history[:3] if history else []
+                            result["memory_context"] = history[:3] if isinstance(history, list) and history else []
                         except:
                             pass
 

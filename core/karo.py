@@ -754,7 +754,7 @@ Provide a synthesized, coherent final result.
         if self.memory_mcp:
             try:
                 context = await self.memory_mcp.search(task.content[:100])
-                if context:
+                if isinstance(context, list) and context:
                     self.belief_base.add_belief(Belief(
                         id=f"task_context_{id(task)}",
                         type=BeliefType.CONTEXTUAL,

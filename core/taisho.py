@@ -534,7 +534,10 @@ Output each file separately with clear markers:
             if self.memory_mcp:
                 memory_query = f"project context for: {task.content}"
                 memory_entries = await self.memory_mcp.search(memory_query)
-                context["memory_entries"] = memory_entries[:5] if memory_entries else []
+                if isinstance(memory_entries, list):
+                    context["memory_entries"] = memory_entries[:5]
+                elif memory_entries:
+                    context["memory_entries"] = [memory_entries]
 
             if self.filesystem_mcp and task.files_needed:
                 for file_path in task.files_needed:
