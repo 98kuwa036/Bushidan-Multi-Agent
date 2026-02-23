@@ -285,7 +285,8 @@ class Taisho:
             }
 
         except Exception as e:
-            logger.error(f"❌ Taisho implementation failed: {e}")
+            logger.exception("❌ 大将の実装処理中に致命的なエラーが発生しました")
+    
             self.execution_stats["total_failures"] += 1
             return {"error": str(e), "status": "failed"}
 
