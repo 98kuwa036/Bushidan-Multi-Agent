@@ -227,8 +227,9 @@ class Karo:
             return result
 
         except Exception as e:
-            logger.error(f"❌ Karo task execution failed: {e}")
-            return {"error": str(e), "status": "failed"}
+            import traceback
+            logger.exception(f"❌ Karo task execution failed: {e}")
+            return {"error": str(e), "traceback": traceback.format_exc(), "status": "failed"}
 
     def _determine_delegation(self, task, routing_decision) -> TaskDelegation:
         """Determine delegation strategy based on task and routing decision"""

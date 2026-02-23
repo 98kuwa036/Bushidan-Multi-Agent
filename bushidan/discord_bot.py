@@ -350,6 +350,13 @@ class BushidanDiscordBot(discord.Client):
         # エラー処理
         if result.get("status") == "failed" or "error" in result:
             error_msg = result.get("error", "不明なエラー")
+            tb = result.get("traceback", "")
+            if tb:
+                # トレースバックの最後の数行だけ表示（Discord の文字数制限対策）
+                tb_lines = tb.strip().splitlines()
+                tb_short = "\n".join(tb_lines[-10:])
+                logger.error("スタックトレース:\n%s", tb)
+                return f"❌ 処理失敗: {error_msg}\n```\n{tb_short}\n```"
             return f"❌ 処理失敗: {error_msg}"
 
         content = result.get("result", "")

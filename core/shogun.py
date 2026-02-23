@@ -247,8 +247,9 @@ class Shogun:
             return result
 
         except Exception as e:
-            logger.error(f"❌ 任務処理失敗: {e}")
-            return {"error": str(e), "status": "failed", "execution_id": execution_id}
+            import traceback
+            logger.exception(f"❌ 任務処理失敗: {e}")
+            return {"error": str(e), "traceback": traceback.format_exc(), "status": "failed", "execution_id": execution_id}
 
     async def _assess_complexity_v932(self, task: Task) -> TaskComplexity:
         """

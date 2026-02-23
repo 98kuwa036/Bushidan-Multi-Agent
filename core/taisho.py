@@ -285,10 +285,10 @@ class Taisho:
             }
 
         except Exception as e:
-            logger.exception("❌ 大将の実装処理中に致命的なエラーが発生しました")
-    
+            import traceback
+            logger.exception(f"❌ 大将の実装処理中に致命的なエラーが発生しました: {e}")
             self.execution_stats["total_failures"] += 1
-            return {"error": str(e), "status": "failed"}
+            return {"error": str(e), "traceback": traceback.format_exc(), "status": "failed"}
 
     def _estimate_context_size(self, task: ImplementationTask, context: Dict[str, Any]) -> int:
         """Estimate context size in tokens (rough approximation)"""
