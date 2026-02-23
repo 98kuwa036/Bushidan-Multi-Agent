@@ -546,6 +546,8 @@ Provide a comprehensive strategic response.
             return result
 
         implementation = result.get("result", "")
+        if not isinstance(implementation, str):
+            implementation = str(implementation)
 
         quality_context = ""
         if quality_report:
