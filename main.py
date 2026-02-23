@@ -20,6 +20,7 @@ v10.1 Features:
 import asyncio
 import logging
 import json
+import traceback
 from typing import Optional
 
 from core.shogun import Shogun
@@ -66,7 +67,8 @@ async def main() -> None:
     logger = setup_logger(f"bushidan_v{VERSION}")
     print_banner()
     logger.info(f"🏯 Bushidan Multi-Agent System v{VERSION} starting...")
-
+    logging.getLogger().setLevel(logging.DEBUG)
+    
     orchestrator = None
     shogun = None
 
