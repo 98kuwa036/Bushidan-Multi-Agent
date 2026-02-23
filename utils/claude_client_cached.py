@@ -230,13 +230,18 @@ class ClaudeClientCached:
                     system_messages = [{"type": "text", "text": system_prompt}]
             
             # Make API request
-            response = await client.messages.create(
-                model=self.model,
-                system=system_messages,
-                messages=api_messages,
-                max_tokens=max_tokens,
-                temperature=temperature
-            )
+            api_request = {
+                "model": self.model,
+                "messages": api_messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature
+            }
+
+            # Only add system if it's not None
+            if system_messages is not None:
+                api_request["system"] = system_messages
+
+            response = await client.messages.create(**api_request)
             
             # Track usage and costs
             usage = response.usage
