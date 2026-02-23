@@ -261,12 +261,16 @@ class Taisho:
                 task, plan, context, context_size
             )
 
-            # Validate results
-            validation = await self._validate_implementation(result)
+            # Diagnostic tasks: skip file validation and git commit
+            if self._is_diagnostic_task(task):
+                validation = {"valid": True, "skipped": "diagnostic_task"}
+            else:
+                # Validate results
+                validation = await self._validate_implementation(result)
 
-            # Git operations if successful
-            if validation.get("valid", False):
-                await self._commit_changes(task, result)
+                # Git operations if successful
+                if validation.get("valid", False):
+                    await self._commit_changes(task, result)
 
             # Update statistics
             elapsed_time = time.time() - start_time
@@ -495,13 +499,27 @@ class Taisho:
             "client": "gemini3"
         }
 
+    _DIAGNOSTIC_KEYWORDS = (
+        "status", "check", "確認", "状態", "diagnose", "diagnos",
+        "inspect", "verify", "health", "report", "show", "list",
+        "表示", "一覧", "調べ", "確かめ",
+    )
+
+    def _is_diagnostic_task(self, task: ImplementationTask) -> bool:
+        """Return True if the task is a read-only diagnostic/inspection request."""
+        content_lower = task.content.lower()
+        return any(kw in content_lower for kw in self._DIAGNOSTIC_KEYWORDS)
+
     def _create_implementation_prompt(
         self,
         task: ImplementationTask,
         plan: Dict[str, Any],
         context: Dict[str, Any]
     ) -> str:
-        """Create implementation prompt for LLM"""
+        """Create appropriate prompt based on task type."""
+
+        if self._is_diagnostic_task(task):
+            return self._create_diagnostic_prompt(task)
 
         return f"""
 As Taisho (大将) in Bushidan v{self.VERSION}, implement this task following the plan:
@@ -520,6 +538,24 @@ Output each file separately with clear markers:
 === FILENAME: path/to/file.py ===
 [file content]
 === END FILE ===
+"""
+
+    def _create_diagnostic_prompt(self, task: ImplementationTask) -> str:
+        """Create a diagnostic prompt that returns a status report, not code."""
+
+        return f"""
+As Taisho (大将) in Bushidan v{self.VERSION}, answer this diagnostic request directly.
+
+Request: {task.content}
+
+Do NOT write or generate any new files or code.
+Instead, report the current status based on what you know about the Bushidan system:
+
+- MCP servers initialized: Memory, Filesystem, Git, Web Search, Smithery (sequential_thinking, playwright, tavily, filesystem, prisma, github, git)
+- AI clients available: Claude (API), Groq, Gemini 3.0 Flash, Qwen3 (llama.cpp), Kimi K2.5, Qwen3-Coder-Next, Alibaba Qwen, Opus
+- Known issues: LiteLLM unavailable, Ashigaru (足軽) init failure
+
+Provide a concise plain-text status summary. No code, no file output.
 """
 
     async def _gather_context(self, task: ImplementationTask) -> Dict[str, Any]:

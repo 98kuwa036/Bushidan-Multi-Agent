@@ -69,9 +69,9 @@ class ClaudeClientCached:
         self.api_key = api_key
         self.model = model
         
-        # Pro CLI management
+        # Pro CLI management (disabled - set to 0 if not using Claude Pro CLI)
         self.pro_calls_used = 0
-        self.pro_limit = 2000  # Monthly Pro limit
+        self.pro_limit = 0  # Set to 0 to skip Pro CLI and use API directly
         
         # Cache management
         self.cache_stats = CacheStats()
