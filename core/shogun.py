@@ -85,6 +85,21 @@ class Shogun:
 
     VERSION = "10.1"
 
+    # Action keywords that require actual execution, not just explanation
+    _ACTION_KEYWORDS = (
+        "clone", "クローン", "作成", "create", "make", "build",
+        "delete", "削除", "remove", "install", "インストール",
+        "run", "実行", "execute", "deploy", "デプロイ",
+        "update", "更新", "modify", "変更", "edit", "編集",
+        "download", "ダウンロード", "fetch", "pull", "push",
+        "write", "書", "save", "保存", "copy", "コピー",
+    )
+
+    def _is_action_task(self, task) -> bool:
+        """Return True if the task requires actual execution (not just explanation)."""
+        content_lower = task.content.lower()
+        return any(kw in content_lower for kw in self._ACTION_KEYWORDS)
+
     def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator
         self.claude_client = None
@@ -222,7 +237,8 @@ class Shogun:
             if task.complexity == TaskComplexity.STRATEGIC:
                 logger.info("⚔️ 将軍自ら出陣。戦略的判断を行う。")
                 result = await self._handle_strategic_task(task)
-            elif task.complexity == TaskComplexity.SIMPLE and self.orchestrator.get_client("groq"):
+            elif task.complexity == TaskComplexity.SIMPLE and self.orchestrator.get_client("groq") and not self._is_action_task(task):
+                # Only use Groq for simple Q&A tasks, NOT for action tasks
                 logger.info("⚡ 簡易任務 → Groq即応")
                 result = await self._handle_simple_task_groq(task)
             else:
