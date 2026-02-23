@@ -49,9 +49,18 @@ try:
 except ImportError:
     pass
 
+# ログディレクトリの準備
+LOG_DIR = Path(__file__).parent.parent / "logs"
+LOG_DIR.mkdir(exist_ok=True)
+LOG_FILE = LOG_DIR / "discord_bot.log"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(),  # コンソール出力
+        logging.FileHandler(LOG_FILE, encoding="utf-8"),  # ファイル出力
+    ],
 )
 logger = logging.getLogger("bushidan.discord")
 
