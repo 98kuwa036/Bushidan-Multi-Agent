@@ -246,6 +246,21 @@ class Taisho:
         logger.info(f"⚔️ 大将、実装開始: {task.content[:50]}...")
 
         try:
+            # Check for action tasks (clone, install, etc.) - execute directly via MCP
+            if self._is_git_action_task(task):
+                logger.info("🔧 Action task detected - executing directly")
+                result = await self._execute_action_task(task)
+                elapsed_time = time.time() - start_time
+                return {
+                    "status": "completed",
+                    "result": result,
+                    "validation": {"valid": True, "skipped": "action_task"},
+                    "mode": task.mode.value,
+                    "handled_by": "taisho_action",
+                    "fallback_status": "direct_execution",
+                    "execution_time": elapsed_time
+                }
+
             # Gather context
             context = await self._gather_context(task)
 
@@ -505,10 +520,23 @@ class Taisho:
         "表示", "一覧", "調べ", "確かめ",
     )
 
+    _ACTION_KEYWORDS = (
+        "clone", "クローン", "git clone",
+        "pull", "push", "fetch",
+        "install", "インストール",
+        "run", "実行", "execute",
+        "download", "ダウンロード",
+    )
+
     def _is_diagnostic_task(self, task: ImplementationTask) -> bool:
         """Return True if the task is a read-only diagnostic/inspection request."""
         content_lower = task.content.lower()
         return any(kw in content_lower for kw in self._DIAGNOSTIC_KEYWORDS)
+
+    def _is_git_action_task(self, task: ImplementationTask) -> bool:
+        """Return True if the task requires Git operations (clone, pull, etc.)."""
+        content_lower = task.content.lower()
+        return any(kw in content_lower for kw in self._ACTION_KEYWORDS)
 
     def _create_implementation_prompt(
         self,
@@ -520,6 +548,9 @@ class Taisho:
 
         if self._is_diagnostic_task(task):
             return self._create_diagnostic_prompt(task)
+
+        if self._is_git_action_task(task):
+            return self._create_action_prompt(task)
 
         return f"""
 As Taisho (大将) in Bushidan v{self.VERSION}, implement this task following the plan:
@@ -557,6 +588,256 @@ Instead, report the current status based on what you know about the Bushidan sys
 
 Provide a concise plain-text status summary. No code, no file output.
 """
+
+    def _create_action_prompt(self, task: ImplementationTask) -> str:
+        """Create a prompt for action tasks (git clone, install, etc.)."""
+
+        return f"""
+As Taisho (大将) in Bushidan v{self.VERSION}, EXECUTE this action task directly.
+
+Action Request: {task.content}
+
+IMPORTANT INSTRUCTIONS:
+1. This is an ACTION task - you must PERFORM the operation, not generate code about it
+2. Do NOT create README files, documentation, or explanatory code
+3. Do NOT write files that describe how to do the task
+
+For git operations (clone, pull, push, fetch):
+- Use the git MCP tool to execute the command directly
+- Report the result of the operation
+
+For install operations:
+- Execute the installation command
+- Report success or failure
+
+For download operations:
+- Download the requested resource
+- Report the download result
+
+Expected output format:
+=== ACTION RESULT ===
+Action: [what was executed]
+Status: [success/failure]
+Details: [output or error message]
+=== END RESULT ===
+
+Execute the action NOW. Do not generate code files.
+"""
+
+    async def _execute_action_task(self, task: ImplementationTask) -> Dict[str, Any]:
+        """Execute action tasks directly using MCP tools (git clone, install, etc.)."""
+        import subprocess
+        import re
+
+        content = task.content.lower()
+        result = {
+            "action": "unknown",
+            "status": "pending",
+            "output": "",
+            "error": ""
+        }
+
+        try:
+            # Git clone operation
+            if "clone" in content or "クローン" in content:
+                # Extract repository URL from task content
+                url_pattern = r'(https?://[^\s]+|git@[^\s]+)'
+                urls = re.findall(url_pattern, task.content)
+
+                if not urls:
+                    # Try to find repository name pattern (e.g., "codium repository")
+                    repo_pattern = r'(\w+(?:/\w+)?)\s*(?:repository|repo|レポジトリ|リポジトリ)'
+                    repo_match = re.search(repo_pattern, task.content, re.IGNORECASE)
+                    if repo_match:
+                        repo_name = repo_match.group(1)
+                        # Search for the repository on GitHub
+                        if "/" not in repo_name:
+                            # Search common patterns
+                            possible_urls = [
+                                f"https://github.com/{repo_name}/{repo_name}",
+                                f"https://github.com/microsoft/{repo_name}",
+                                f"https://github.com/VSCodium/{repo_name}",
+                            ]
+                            result["action"] = f"git_clone_search"
+                            result["output"] = f"Repository name detected: {repo_name}. Possible URLs: {possible_urls}"
+                            # Try VSCodium for 'codium'
+                            if "codium" in repo_name.lower():
+                                urls = ["https://github.com/VSCodium/vscodium.git"]
+
+                if urls:
+                    url = urls[0]
+                    result["action"] = f"git_clone {url}"
+                    logger.info(f"🔧 Executing git clone: {url}")
+
+                    # Use git MCP if available
+                    if self.git_mcp and hasattr(self.git_mcp, 'clone'):
+                        try:
+                            clone_result = await self.git_mcp.clone(url)
+                            result["status"] = "success"
+                            result["output"] = str(clone_result)
+                        except Exception as e:
+                            # Fallback to subprocess
+                            proc = subprocess.run(
+                                ["git", "clone", url],
+                                capture_output=True,
+                                text=True,
+                                timeout=300
+                            )
+                            if proc.returncode == 0:
+                                result["status"] = "success"
+                                result["output"] = proc.stdout or "Clone successful"
+                            else:
+                                result["status"] = "error"
+                                result["error"] = proc.stderr
+                    else:
+                        # Direct subprocess execution
+                        proc = subprocess.run(
+                            ["git", "clone", url],
+                            capture_output=True,
+                            text=True,
+                            timeout=300
+                        )
+                        if proc.returncode == 0:
+                            result["status"] = "success"
+                            result["output"] = proc.stdout or "Clone successful"
+                        else:
+                            result["status"] = "error"
+                            result["error"] = proc.stderr
+                else:
+                    result["status"] = "error"
+                    result["error"] = "No repository URL found in task content"
+
+            # Git pull operation
+            elif "pull" in content:
+                result["action"] = "git_pull"
+                proc = subprocess.run(
+                    ["git", "pull"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                if proc.returncode == 0:
+                    result["status"] = "success"
+                    result["output"] = proc.stdout or "Pull successful"
+                else:
+                    result["status"] = "error"
+                    result["error"] = proc.stderr
+
+            # Git push operation
+            elif "push" in content:
+                result["action"] = "git_push"
+                proc = subprocess.run(
+                    ["git", "push"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                if proc.returncode == 0:
+                    result["status"] = "success"
+                    result["output"] = proc.stdout or "Push successful"
+                else:
+                    result["status"] = "error"
+                    result["error"] = proc.stderr
+
+            # Git fetch operation
+            elif "fetch" in content:
+                result["action"] = "git_fetch"
+                proc = subprocess.run(
+                    ["git", "fetch"],
+                    capture_output=True,
+                    text=True,
+                    timeout=120
+                )
+                if proc.returncode == 0:
+                    result["status"] = "success"
+                    result["output"] = proc.stdout or "Fetch successful"
+                else:
+                    result["status"] = "error"
+                    result["error"] = proc.stderr
+
+            # Install operation (npm, pip, etc.)
+            elif "install" in content or "インストール" in content:
+                result["action"] = "install"
+                # Detect package manager and package name
+                if "npm" in content:
+                    pkg_match = re.search(r'npm\s+install\s+([^\s]+)', content)
+                    if pkg_match:
+                        pkg = pkg_match.group(1)
+                        proc = subprocess.run(
+                            ["npm", "install", pkg],
+                            capture_output=True,
+                            text=True,
+                            timeout=300
+                        )
+                        result["action"] = f"npm install {pkg}"
+                        if proc.returncode == 0:
+                            result["status"] = "success"
+                            result["output"] = proc.stdout
+                        else:
+                            result["status"] = "error"
+                            result["error"] = proc.stderr
+                elif "pip" in content:
+                    pkg_match = re.search(r'pip\s+install\s+([^\s]+)', content)
+                    if pkg_match:
+                        pkg = pkg_match.group(1)
+                        proc = subprocess.run(
+                            ["pip", "install", pkg],
+                            capture_output=True,
+                            text=True,
+                            timeout=300
+                        )
+                        result["action"] = f"pip install {pkg}"
+                        if proc.returncode == 0:
+                            result["status"] = "success"
+                            result["output"] = proc.stdout
+                        else:
+                            result["status"] = "error"
+                            result["error"] = proc.stderr
+                else:
+                    result["status"] = "error"
+                    result["error"] = "Could not determine package manager or package name"
+
+            # Run/Execute operation
+            elif "run" in content or "実行" in content or "execute" in content:
+                result["action"] = "run_command"
+                # Extract command to run
+                cmd_match = re.search(r'(?:run|実行|execute)\s+["\']?([^"\']+)["\']?', content, re.IGNORECASE)
+                if cmd_match:
+                    cmd = cmd_match.group(1).strip()
+                    proc = subprocess.run(
+                        cmd,
+                        shell=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=300
+                    )
+                    result["action"] = f"run: {cmd}"
+                    if proc.returncode == 0:
+                        result["status"] = "success"
+                        result["output"] = proc.stdout
+                    else:
+                        result["status"] = "error"
+                        result["error"] = proc.stderr
+                else:
+                    result["status"] = "error"
+                    result["error"] = "Could not extract command to run"
+
+            else:
+                result["status"] = "error"
+                result["error"] = f"Unknown action type in: {task.content[:100]}"
+
+            logger.info(f"🔧 Action result: {result['action']} -> {result['status']}")
+            return result
+
+        except subprocess.TimeoutExpired:
+            result["status"] = "error"
+            result["error"] = "Command timed out"
+            return result
+        except Exception as e:
+            logger.error(f"❌ Action execution failed: {e}")
+            result["status"] = "error"
+            result["error"] = str(e)
+            return result
 
     async def _gather_context(self, task: ImplementationTask) -> Dict[str, Any]:
         """Gather relevant context from Memory MCP and filesystem"""
