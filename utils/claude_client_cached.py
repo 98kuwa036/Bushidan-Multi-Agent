@@ -69,9 +69,10 @@ class ClaudeClientCached:
         self.api_key = api_key
         self.model = model
         
-        # Pro CLI management (disabled - set to 0 if not using Claude Pro CLI)
+        # Pro CLI management (Claude Pro subscription - 2000 free calls/month)
         self.pro_calls_used = 0
-        self.pro_limit = 0  # Set to 0 to skip Pro CLI and use API directly
+        self.pro_limit = 2000  # Monthly Pro limit
+        self._cli_provider = None  # Lazy initialization
         
         # Cache management
         self.cache_stats = CacheStats()
@@ -139,31 +140,50 @@ class ClaudeClientCached:
     ) -> str:
         """
         Generate using Claude Pro CLI
-        
+
         Note: Pro CLI doesn't support prompt caching, but it's free (2000/month)
         """
-        
+
         logger.info("🎌 Using Claude Pro CLI (free tier)")
         self.pro_calls_used += 1
         self.cache_stats.total_requests += 1
-        
+
         try:
-            from providers.claude_cli import call_claude_cli
-            
+            from providers.claude_cli import ClaudeCLIProvider
+
+            # Lazy initialize CLI provider
+            if self._cli_provider is None:
+                self._cli_provider = ClaudeCLIProvider()
+
+            # Check availability
+            if not await self._cli_provider.check_available():
+                logger.warning("⚠️ Claude CLI not available, falling back to API")
+                return await self._generate_api_cached(
+                    messages, max_tokens, 0.1, system_prompt, use_cache=True
+                )
+
             # Convert messages to prompt
             prompt = self._messages_to_prompt(messages, system_prompt)
-            
+
             # Call Pro CLI
-            result = await call_claude_cli(
+            result = await self._cli_provider.generate(
                 prompt=prompt,
                 model="sonnet",
-                max_tokens=max_tokens
+                system_prompt=system_prompt or "",
             )
-            
-            return result.output
-            
+
+            if result.success:
+                return result.text
+            elif result.rate_limited:
+                logger.warning("⚠️ Pro rate limit reached, falling back to API")
+                return await self._generate_api_cached(
+                    messages, max_tokens, 0.1, system_prompt, use_cache=True
+                )
+            else:
+                raise Exception(result.error)
+
         except ImportError:
-            logger.warning("⚠️ Claude CLI not available, falling back to API")
+            logger.warning("⚠️ Claude CLI provider not available, falling back to API")
             return await self._generate_api_cached(
                 messages, max_tokens, 0.1, system_prompt, use_cache=True
             )
