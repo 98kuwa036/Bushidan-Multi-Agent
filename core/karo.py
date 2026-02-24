@@ -92,6 +92,22 @@ class Karo:
 
     VERSION = "10.1"
 
+    # Action keywords that require actual execution (not explanation)
+    _ACTION_KEYWORDS = (
+        "clone", "クローン", "git clone",
+        "pull", "push", "fetch",
+        "install", "インストール",
+        "run", "実行", "execute",
+        "download", "ダウンロード",
+        "create", "作成", "delete", "削除",
+    )
+
+    def _is_action_task(self, task) -> bool:
+        """Return True if the task requires actual execution (not just explanation)."""
+        content = getattr(task, 'content', str(task))
+        content_lower = content.lower()
+        return any(kw in content_lower for kw in self._ACTION_KEYWORDS)
+
     def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator
 
@@ -252,6 +268,11 @@ class Karo:
 
             except Exception as e:
                 logger.warning(f"⚠️ Routing decision parsing failed: {e}")
+
+        # Check if this is an action task - always route to Taisho
+        if self._is_action_task(task):
+            logger.info("🔧 Action task detected in Karo - routing to Taisho")
+            return TaskDelegation.TAISHO_PRIMARY
 
         # Fallback: Use task complexity
         complexity = getattr(task, 'complexity', None)
