@@ -645,24 +645,26 @@ Execute the action NOW. Do not generate code files.
                 urls = re.findall(url_pattern, task.content)
 
                 if not urls:
-                    # Try to find repository name pattern (e.g., "codium repository")
-                    repo_pattern = r'(\w+(?:/\w+)?)\s*(?:repository|repo|レポジトリ|リポジトリ)'
-                    repo_match = re.search(repo_pattern, task.content, re.IGNORECASE)
-                    if repo_match:
-                        repo_name = repo_match.group(1)
-                        # Search for the repository on GitHub
-                        if "/" not in repo_name:
-                            # Search common patterns
-                            possible_urls = [
-                                f"https://github.com/{repo_name}/{repo_name}",
-                                f"https://github.com/microsoft/{repo_name}",
-                                f"https://github.com/VSCodium/{repo_name}",
-                            ]
-                            result["action"] = f"git_clone_search"
-                            result["output"] = f"Repository name detected: {repo_name}. Possible URLs: {possible_urls}"
-                            # Try VSCodium for 'codium'
-                            if "codium" in repo_name.lower():
-                                urls = ["https://github.com/VSCodium/vscodium.git"]
+                    # Try common repository names/patterns
+                    # Check for specific known repositories
+                    if "codium" in content:
+                        urls = ["https://github.com/VSCodium/vscodium.git"]
+                    elif "vscode" in content or "vs code" in content:
+                        urls = ["https://github.com/microsoft/vscode.git"]
+                    else:
+                        # Try to find repository name after keywords
+                        # Match pattern: "github で <repo>" or "レポジトリ <repo>" or "repo <repo>"
+                        repo_pattern = r'(?:github|repo|repository|レポジトリ|リポジトリ)[\s:で]*([a-zA-Z0-9\-_]+)'
+                        repo_match = re.search(repo_pattern, task.content, re.IGNORECASE)
+                        if repo_match:
+                            repo_name = repo_match.group(1).strip()
+                            if "/" not in repo_name:
+                                # Try common GitHub patterns
+                                possible_urls = [
+                                    f"https://github.com/{repo_name}/{repo_name}.git",
+                                    f"https://github.com/microsoft/{repo_name}.git",
+                                ]
+                                urls = [possible_urls[0]]  # Try first one
 
                 if urls:
                     url = urls[0]
