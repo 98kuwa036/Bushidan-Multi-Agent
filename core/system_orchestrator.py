@@ -366,6 +366,7 @@ class SystemOrchestrator:
 
         # 統計
         self.health_status: Dict[str, bool] = {}
+        self.llm_availability: Dict[str, bool] = {}  # LLM可用性確認結果
 
         # パフォーマンス目標（秒）
         self.performance_targets = {
@@ -388,6 +389,9 @@ class SystemOrchestrator:
 
             # AIクライアント初期化
             await self._initialize_clients()
+
+            # LLM可用性確認（新規）
+            await self._check_llm_availability()
 
             # インテリジェントルーター初期化
             await self._initialize_router()
@@ -962,6 +966,24 @@ class SystemOrchestrator:
             stats["bdi_states"] = {"error": str(e)}
 
         return stats
+
+    async def _check_llm_availability(self) -> None:
+        """各LLM/APIの可用性確認（初期化後）"""
+        try:
+            from core.liveness_checker import LLMAvailabilityChecker
+
+            checker = LLMAvailabilityChecker()
+            statuses = await checker.check_all()
+
+            # 可用性サマリーを保存
+            self.llm_availability = checker.get_available_llms()
+
+            # サマリー出力
+            logger.info(checker.print_summary())
+
+        except Exception as e:
+            logger.warning(f"⚠️ LLM可用性確認失敗: {e}")
+            self.llm_availability = {}
 
     async def shutdown(self) -> None:
         """全コンポーネントのグレースフルシャットダウン"""
