@@ -337,24 +337,36 @@ class BushidanDiscordBot(discord.Client):
         if self._orchestrator.shogun is None:
             return "❌ 将軍（Shogun）が初期化されていません。ログを確認してください。"
 
-        # Task オブジェクトを生成して将軍に委譲
-        from core.shogun import Task, TaskComplexity
-        shogun_task = Task(
-            content=task,
-            complexity=TaskComplexity.MEDIUM,  # 将軍の _assess_complexity が自動評価・上書き
-            context={
-                "source": "discord",
-                "author": str(message.author),
-                "author_id": str(message.author.id),
-                "channel": str(message.channel),
-                "guild": str(message.guild) if message.guild else "DM",
-                "mode": self._current_mode,
-            },
-            priority=1,
-            source="discord",
-        )
+        # コンテキスト作成
+        context = {
+            "source": "discord",
+            "author": str(message.author),
+            "author_id": str(message.author.id),
+            "channel": str(message.channel),
+            "guild": str(message.guild) if message.guild else "DM",
+            "mode": self._current_mode,
+        }
 
-        result = await self._orchestrator.shogun.process_task(shogun_task)
+        # v10.2: LangGraph Router を優先使用
+        if self._orchestrator.langgraph_router:
+            logger.info("🔗 LangGraph Router でタスク処理")
+            result = await self._orchestrator.langgraph_router.process_task(
+                content=task,
+                context=context,
+                priority=1,
+                source="discord",
+            )
+        else:
+            # 従来の将軍ルーティング（フォールバック）
+            from core.shogun import Task, TaskComplexity
+            shogun_task = Task(
+                content=task,
+                complexity=TaskComplexity.MEDIUM,  # 将軍の _assess_complexity が自動評価・上書き
+                context=context,
+                priority=1,
+                source="discord",
+            )
+            result = await self._orchestrator.shogun.process_task(shogun_task)
 
         # エラー処理
         if result.get("status") == "failed" or "error" in result:

@@ -363,6 +363,7 @@ class SystemOrchestrator:
         self._karo = None    # 家老: 戦術層
         self._taisho = None  # 大将: 実装層
         self._kengyo = None  # 検校: ビジュアル検証 (v10.1)
+        self._langgraph_router = None  # LangGraph Router (v10.2)
 
         # 統計
         self.health_status: Dict[str, bool] = {}
@@ -455,6 +456,15 @@ class SystemOrchestrator:
             logger.info("👁️ 検校（ビジュアル・デバッガー）初期化完了")
         except Exception as e:
             logger.warning(f"⚠️ 検校初期化失敗 (ビジュアル検証スキップ): {e}")
+
+        # v10.2: LangGraph Router 初期化
+        try:
+            from core.langgraph_router import LangGraphRouter
+            self._langgraph_router = LangGraphRouter(self)
+            await self._langgraph_router.initialize()
+            logger.info("🔗 LangGraph Router 初期化完了")
+        except Exception as e:
+            logger.warning(f"⚠️ LangGraph Router 初期化失敗 (従来ルーティング使用): {e}")
 
     async def _initialize_mcps(self) -> None:
         """Initialize Model Context Protocol servers"""
@@ -796,6 +806,11 @@ class SystemOrchestrator:
     def kengyo(self):
         """検校（ビジュアル検証）取得"""
         return self._kengyo
+
+    @property
+    def langgraph_router(self):
+        """LangGraph Router (v10.2) 取得"""
+        return self._langgraph_router
 
     # ==================== MCP権限制御 ====================
 

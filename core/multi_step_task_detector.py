@@ -192,7 +192,9 @@ class MultiStepTaskDetector:
 
     def _count_action_keywords(self, content: str) -> int:
         """アクションキーワードの個数を数える"""
-        content_lower = content.lower()
+        # URLを除去してから判定（URL内の単語で誤検出を防ぐ）
+        content_no_urls = re.sub(r'https?://\S+', '', content)
+        content_lower = content_no_urls.lower()
         count = 0
 
         for kw in self.ACTION_KEYWORDS:

@@ -19,6 +19,10 @@ dashscope>=1.0.0             # Alibaba Cloud Qwen3-Coder-Plus (Kagemusha)
 # DSPy integration (recommended)
 dspy>=2.0.0                  # Prompt optimization and translation layer
 
+# LangGraph (v10.2 hybrid routing)
+langgraph>=1.0.0             # StateGraph-based task routing
+langchain-core>=0.3.0        # LangGraph dependency
+
 # Enhanced web search and scraping
 tavily-python>=0.3.0          # Precise URL discovery
 playwright>=1.40.0            # Targeted content extraction
