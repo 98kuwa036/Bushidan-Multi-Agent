@@ -37,6 +37,7 @@ class MultiStepTaskDetector:
         "〜した後",  # 「クローンした後に確認」
         "〜後に",  # 「クローン後に確認」
         "〜で",  # 「クローンで確認して」
+        "の内容を",  # 「codingsレポジトリの内容をまとめて」→ 内容読取+処理
     )
 
     # 複合タスクを示すキーワード（英語）
@@ -128,14 +129,16 @@ class MultiStepTaskDetector:
         confidence = 0.0
         reason = ""
 
-        if has_multi_step_kw or has_multiple_actions >= 2:
+        # Multi-step keywords take priority (highest confidence)
+        if multi_step_kw_count >= 1:  # 複合キーワードが1個以上 = 複合タスク
             is_multi_step = True
-            if multi_step_kw_count >= 2:
-                confidence = min(0.95, 0.5 + multi_step_kw_count * 0.2)
-                reason = f"Multi-step keyword detected ({multi_step_kw_count}x)"
-            elif action_count >= 2:
-                confidence = 0.8
-                reason = f"Multiple action keywords detected ({action_count}x)"
+            confidence = min(0.95, 0.5 + multi_step_kw_count * 0.25)
+            reason = f"Multi-step keyword detected ({multi_step_kw_count}x)"
+        # Multiple action keywords also indicate multi-step
+        elif has_multiple_actions:
+            is_multi_step = True
+            confidence = 0.75
+            reason = f"Multiple action keywords detected ({action_count}x)"
 
         if has_pipeline:
             is_multi_step = True
