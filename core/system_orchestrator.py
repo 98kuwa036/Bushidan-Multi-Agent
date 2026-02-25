@@ -462,9 +462,13 @@ class SystemOrchestrator:
             from core.langgraph_router import LangGraphRouter
             self._langgraph_router = LangGraphRouter(self)
             await self._langgraph_router.initialize()
-            logger.info("🔗 LangGraph Router 初期化完了")
+            logger.info("🔗 LangGraph Router 初期化完了 ✅")
         except Exception as e:
-            logger.warning(f"⚠️ LangGraph Router 初期化失敗 (従来ルーティング使用): {e}")
+            import traceback
+            logger.error(f"❌ LangGraph Router 初期化失敗 (従来ルーティング使用)")
+            logger.error(f"エラー: {e}")
+            logger.error(f"トレースバック:\n{traceback.format_exc()}")
+            self._langgraph_router = None
 
     async def _initialize_mcps(self) -> None:
         """Initialize Model Context Protocol servers"""

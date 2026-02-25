@@ -76,11 +76,22 @@ class LangGraphRouter:
         """Initialize the LangGraph router"""
         logger.info("🔗 LangGraph Router 初期化中...")
 
-        # Build the graph
-        self._graph = self._build_graph()
-        self._compiled = self._graph.compile()
+        try:
+            # Build the graph
+            logger.debug("  📊 StateGraph構築中...")
+            self._graph = self._build_graph()
+            logger.debug(f"  ✅ ノード: {list(self._graph.nodes.keys())}")
 
-        logger.info("✅ LangGraph Router 初期化完了")
+            logger.debug("  🔄 グラフコンパイル中...")
+            self._compiled = self._graph.compile()
+            logger.debug("  ✅ コンパイル完了")
+
+            logger.info("✅ LangGraph Router 初期化完了")
+        except Exception as e:
+            import traceback
+            logger.error(f"❌ LangGraph Router 初期化エラー: {e}")
+            logger.error(traceback.format_exc())
+            raise
 
     def _build_graph(self) -> StateGraph:
         """Build the StateGraph for task routing"""
