@@ -218,13 +218,8 @@ async def quick_task(task_content: str) -> dict:
     orchestrator = SystemOrchestrator(config)
     await orchestrator.initialize()
 
-    shogun = Shogun(orchestrator)
-    await shogun.initialize()
-
-    from core.shogun import Task, TaskComplexity
-    task = Task(content=task_content, complexity=TaskComplexity.MEDIUM)
-
-    result = await shogun.process_task(task)
+    # v10.2: orchestrator.process_task 経由で LangGraph Router を使用
+    result = await orchestrator.process_task(task_content)
 
     await orchestrator.shutdown()
 

@@ -333,11 +333,7 @@ class BushidanDiscordBot(discord.Client):
                 )
             return "⚠️ 武士団システムを初期化中です。しばらくお待ちください。"
 
-        # 将軍が使えない場合
-        if self._orchestrator.shogun is None:
-            return "❌ 将軍（Shogun）が初期化されていません。ログを確認してください。"
-
-        # コンテキスト作成
+        # オーケストレーター経由でタスク処理
         context = {
             "source": "discord",
             "author": str(message.author),
@@ -347,26 +343,11 @@ class BushidanDiscordBot(discord.Client):
             "mode": self._current_mode,
         }
 
-        # v10.2: LangGraph Router を優先使用
-        if self._orchestrator.langgraph_router:
-            logger.info("🔗 LangGraph Router でタスク処理")
-            result = await self._orchestrator.langgraph_router.process_task(
-                content=task,
-                context=context,
-                priority=1,
-                source="discord",
-            )
-        else:
-            # 従来の将軍ルーティング（フォールバック）
-            from core.shogun import Task, TaskComplexity
-            shogun_task = Task(
-                content=task,
-                complexity=TaskComplexity.MEDIUM,  # 将軍の _assess_complexity が自動評価・上書き
-                context=context,
-                priority=1,
-                source="discord",
-            )
-            result = await self._orchestrator.shogun.process_task(shogun_task)
+        try:
+            result = await self._orchestrator.process_task(task, context)
+        except Exception as e:
+            logger.exception(f"❌ タスク処理エラー: {e}")
+            return f"❌ 処理失敗: {e}"
 
         # エラー処理
         if result.get("status") == "failed" or "error" in result:

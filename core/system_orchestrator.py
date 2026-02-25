@@ -917,6 +917,9 @@ class SystemOrchestrator:
         """
         タスク処理のメインエントリポイント
 
+        v10.2: LangGraph Router を優先使用
+        フォールバック: 従来の将軍による処理
+
         Args:
             task_content: タスク内容
             context: オプションコンテキスト
@@ -927,10 +930,21 @@ class SystemOrchestrator:
         if not self.initialized:
             raise RuntimeError("システムが初期化されていません")
 
+        # v10.2: LangGraph Router が利用可能な場合は優先
+        if self._langgraph_router:
+            logger.info("🔗 LangGraph Router でタスク処理")
+            return await self._langgraph_router.process_task(
+                content=task_content,
+                context=context or {},
+                priority=1,
+                source="orchestrator"
+            )
+
+        # フォールバック: 従来の将軍による処理
         if not self._shogun:
             raise RuntimeError("将軍が初期化されていません")
 
-        # 将軍に委譲
+        logger.info("🎌 従来の将軍ルーティング（LangGraph Router 未利用）")
         from core.shogun import Task, TaskComplexity
         task = Task(
             content=task_content,
