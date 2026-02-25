@@ -250,6 +250,11 @@ class Karo:
     def _determine_delegation(self, task, routing_decision) -> TaskDelegation:
         """Determine delegation strategy based on task and routing decision"""
 
+        # FIRST: Check if this is an action task - always route to Taisho (bypass Groq)
+        if self._is_action_task(task):
+            logger.info("🔧 Action task detected in Karo - routing to Taisho")
+            return TaskDelegation.TAISHO_PRIMARY
+
         # Use routing decision target if available
         if routing_decision:
             try:
@@ -268,11 +273,6 @@ class Karo:
 
             except Exception as e:
                 logger.warning(f"⚠️ Routing decision parsing failed: {e}")
-
-        # Check if this is an action task - always route to Taisho
-        if self._is_action_task(task):
-            logger.info("🔧 Action task detected in Karo - routing to Taisho")
-            return TaskDelegation.TAISHO_PRIMARY
 
         # Fallback: Use task complexity
         complexity = getattr(task, 'complexity', None)
