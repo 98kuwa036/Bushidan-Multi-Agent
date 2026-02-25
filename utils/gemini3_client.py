@@ -1,13 +1,14 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Gemini 3.0 Flash Client
+Bushidan Multi-Agent System v9.3.2 - Gemini 3 Flash Client
 
-Upgraded from Gemini 2.0 Flash to Gemini 3.0 Flash for enhanced performance.
+Latest Gemini 3 Flash with Pro-level intelligence at Flash speed.
 
-Key Improvements vs 2.0:
-- 1.3x speed improvement (faster inference)
-- +15% reasoning accuracy (better logic)
+Key Features:
+- Pro-level intelligence with Flash-level speed
+- Thinking level parameter for internal reasoning control
+- 1M+ token context window
 - Enhanced Japanese language support
-- Same cost structure (¥0.04/1000 requests estimated)
+- Cost-effective pricing
 
 Role in v10.1:
 - Final defense line (Tier 4) in 4-tier fallback chain
@@ -30,7 +31,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class Gemini3Stats:
-    """Gemini 3.0 Flash usage statistics"""
+    """Gemini 3 Flash usage statistics"""
     total_requests: int = 0
     successful_requests: int = 0
     failed_requests: int = 0
@@ -43,22 +44,22 @@ class Gemini3Stats:
 
 class Gemini3Client:
     """
-    Gemini 3.0 Flash Client for final defense and tactical coordination
-    
-    Model: gemini-2.0-flash-exp (latest available)
-    - 1M token context window
-    - 1.3x faster than 2.0 Flash
-    - +15% reasoning accuracy
+    Gemini 3 Flash Client for final defense and tactical coordination
+
+    Model: gemini-3-flash (latest)
+    - Pro-level intelligence with Flash speed
+    - 1M+ token context window
+    - Thinking level parameter for reasoning control
     - Excellent Japanese support
-    - Cost: ~¥0.04 per 1000 requests
-    
+    - Cost-effective pricing
+
     Role: Final defense line in fallback chain
     - Activates when Qwen3 (local/cloud) cannot handle task
     - Provides reliable, high-quality fallback
     - Tactical coordination for complex scenarios
     """
-    
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash-exp"):
+
+    def __init__(self, api_key: str, model: str = "gemini-3-flash"):
         self.api_key = api_key
         self.model = model
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
@@ -76,7 +77,7 @@ class Gemini3Client:
         self.cost_per_1k_input_tokens_yen = 0.00002  # Very low
         self.cost_per_1k_output_tokens_yen = 0.00006
         
-        logger.info(f"🏛️ Gemini 3.0 Flash client initialized: {self.model}")
+        logger.info(f"🏛️ Gemini 3 Flash client initialized: {self.model}")
     
     async def generate(
         self,
