@@ -282,6 +282,145 @@ class Gemini3Client:
         
         return "\n\n".join(formatted_parts)
     
+    async def generate_with_tools(
+        self,
+        messages: List[Dict[str, str]],
+        tools: List[Dict[str, Any]],
+        tool_choice: str = "auto",
+        max_output_tokens: int = 2048,
+        temperature: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """
+        Gemini function calling 対応の generate
+
+        Args:
+            messages: 会話メッセージリスト
+            tools: functionDeclarations 形式のツール定義リスト
+            tool_choice: "auto" or "any"
+            max_output_tokens: 最大出力トークン数
+            temperature: 温度パラメータ
+
+        Returns:
+            {
+              "text": str or None,
+              "tool_calls": [{"name": str, "args": dict}]
+            }
+        """
+        if temperature is None:
+            temperature = self.default_temperature
+
+        start_time = asyncio.get_event_loop().time()
+
+        try:
+            import httpx
+
+            url = f"{self.base_url}/models/{self.model}:generateContent"
+            params = {"key": self.api_key}
+            headers = {"Content-Type": "application/json"}
+
+            # メッセージを Gemini contents 形式に変換
+            contents = []
+            for msg in messages:
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+
+                # Gemini は "user" と "model" のみ認識
+                if role == "assistant":
+                    gemini_role = "model"
+                elif role == "tool":
+                    # tool result は user として送る（functionResponse 形式）
+                    gemini_role = "user"
+                    contents.append({
+                        "role": "user",
+                        "parts": [{"functionResponse": {
+                            "name": msg.get("tool_name", "unknown"),
+                            "response": {"result": content}
+                        }}]
+                    })
+                    continue
+                else:
+                    gemini_role = "user"
+
+                contents.append({
+                    "role": gemini_role,
+                    "parts": [{"text": content}]
+                })
+
+            payload = {
+                "contents": contents,
+                "tools": [{"functionDeclarations": tools}],
+                "toolConfig": {
+                    "functionCallingConfig": {
+                        "mode": "AUTO" if tool_choice == "auto" else "ANY"
+                    }
+                },
+                "generationConfig": {
+                    "temperature": temperature,
+                    "topP": self.default_top_p,
+                    "topK": self.default_top_k,
+                    "maxOutputTokens": max_output_tokens
+                },
+                "safetySettings": [
+                    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"}
+                ]
+            }
+
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                response = await client.post(url, params=params, headers=headers, json=payload)
+
+                if response.status_code != 200:
+                    raise Exception(f"Gemini API error {response.status_code}: {response.text}")
+
+                result = response.json()
+
+            if "candidates" not in result or not result["candidates"]:
+                raise Exception(f"No candidates in response: {result}")
+
+            candidate = result["candidates"][0]
+            parts = candidate["content"]["parts"]
+
+            text_content = None
+            tool_calls = []
+
+            for part in parts:
+                if "functionCall" in part:
+                    tool_calls.append({
+                        "name": part["functionCall"]["name"],
+                        "args": part["functionCall"]["args"]
+                    })
+                elif "text" in part:
+                    text_content = (text_content or "") + part["text"]
+
+            # トークン統計更新
+            elapsed_time = asyncio.get_event_loop().time() - start_time
+            usage = result.get("usageMetadata", {})
+            input_tokens = usage.get("promptTokenCount", 0)
+            output_tokens = usage.get("candidatesTokenCount", 0)
+
+            self.stats.total_requests += 1
+            self.stats.successful_requests += 1
+            self.stats.total_tokens_input += input_tokens
+            self.stats.total_tokens_output += output_tokens
+
+            logger.info(
+                f"🔧 Gemini tool call: {len(tool_calls)} tools, "
+                f"{output_tokens} tokens in {elapsed_time:.2f}s"
+            )
+
+            return {
+                "text": text_content,
+                "tool_calls": tool_calls
+            }
+
+        except Exception as e:
+            self.stats.total_requests += 1
+            self.stats.failed_requests += 1
+            logger.error(f"❌ Gemini generate_with_tools failed: {e}")
+            raise
+
     async def health_check(self) -> bool:
         """
         Check if Gemini 3.0 Flash API is available

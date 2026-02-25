@@ -40,6 +40,7 @@ class TaskDelegation(Enum):
     HYBRID_COORDINATION = "hybrid_coordination"  # Taisho + Ashigaru coordination
     GROQ_INSTANT = "groq_instant"          # v9.3.2: Simple tasks to Groq
     GEMINI_DEFENSE = "gemini_defense"      # v9.3.2: Final defense line
+    GEMINI_AUTONOMOUS = "gemini_autonomous"  # v10.1: Multi-step autonomous execution
 
 
 @dataclass
@@ -122,6 +123,7 @@ class Karo:
         self.ashigaru = None
         self.memory_mcp = None
         self.web_search_mcp = None
+        self.gemini_autonomous_executor = None
 
         # BDI Framework components
         self.belief_base = BeliefBase()
@@ -187,6 +189,14 @@ class Karo:
         self.memory_mcp = self.orchestrator.get_mcp("memory")
         self.web_search_mcp = self.orchestrator.get_mcp("web_search")
 
+        # Gemini Flash 自律実行エンジン初期化
+        try:
+            from core.gemini_flash_autonomous_executor import GeminiFlashAutonomousExecutor
+            self.gemini_autonomous_executor = GeminiFlashAutonomousExecutor(self.orchestrator)
+            logger.info("🤖 Gemini Flash 自律実行エンジン初期化完了")
+        except Exception as e:
+            logger.warning(f"⚠️ Gemini Flash 自律実行エンジン初期化失敗: {e}")
+
         # BDIフレームワーク初期化
         self._initialize_bdi()
 
@@ -219,7 +229,10 @@ class Karo:
             logger.info(f"📋 Delegation strategy: {delegation.value}")
 
             # Execute based on delegation
-            if delegation == TaskDelegation.GROQ_INSTANT:
+            if delegation == TaskDelegation.GEMINI_AUTONOMOUS:
+                result = await self._execute_with_gemini_autonomous(task)
+
+            elif delegation == TaskDelegation.GROQ_INSTANT:
                 result = await self._execute_with_groq(task)
 
             elif delegation == TaskDelegation.TAISHO_PRIMARY:
@@ -247,10 +260,26 @@ class Karo:
             logger.exception(f"❌ Karo task execution failed: {e}")
             return {"error": str(e), "traceback": traceback.format_exc(), "status": "failed"}
 
+    def _is_multi_step_task(self, task) -> bool:
+        """Return True if task requires multiple sequential steps (multi-step autonomous)."""
+        try:
+            from core.multi_step_task_detector import MultiStepTaskDetector
+            detector = MultiStepTaskDetector()
+            analysis = detector.analyze(getattr(task, 'content', str(task)))
+            return analysis.is_multi_step and analysis.confidence >= 0.6
+        except Exception as e:
+            logger.warning(f"⚠️ Multi-step detection error in Karo: {e}")
+            return False
+
     def _determine_delegation(self, task, routing_decision) -> TaskDelegation:
         """Determine delegation strategy based on task and routing decision"""
 
-        # FIRST: Check if this is an action task - always route to Taisho (bypass Groq)
+        # FIRST: Check if this is a multi-step task → Gemini Flash autonomous execution
+        if self._is_multi_step_task(task) and self.gemini_autonomous_executor:
+            logger.info("🔀 複合タスク検出 → Gemini Flash 自律実行")
+            return TaskDelegation.GEMINI_AUTONOMOUS
+
+        # SECOND: Check if this is a single action task - route to Taisho (bypass Groq)
         if self._is_action_task(task):
             logger.info("🔧 Action task detected in Karo - routing to Taisho")
             return TaskDelegation.TAISHO_PRIMARY
@@ -289,6 +318,42 @@ class Karo:
 
         # Default: Taisho
         return TaskDelegation.TAISHO_PRIMARY
+
+    async def _execute_with_gemini_autonomous(self, task) -> Dict[str, Any]:
+        """Execute multi-step task with Gemini Flash autonomous executor"""
+
+        if not self.gemini_autonomous_executor:
+            logger.warning("⚠️ Gemini autonomous executor not available, falling back to Taisho")
+            return await self._execute_with_taisho(task, None)
+
+        logger.info("🤖 Executing with Gemini Flash Autonomous Executor")
+
+        try:
+            exec_result = await self.gemini_autonomous_executor.execute_autonomous_task(
+                task_content=getattr(task, 'content', str(task)),
+                max_iterations=5
+            )
+
+            if exec_result.status == "failed":
+                logger.warning(f"⚠️ Gemini autonomous failed: {exec_result.error_message}")
+                logger.info("🔄 Falling back to Taisho")
+                self.execution_stats["fallback_count"] += 1
+                return await self._execute_with_taisho(task, None)
+
+            return {
+                "status": "completed",
+                "result": exec_result.final_result,
+                "handled_by": "gemini_autonomous",
+                "steps_executed": exec_result.steps_executed,
+                "execution_time": exec_result.execution_time_seconds,
+                "autonomous_status": exec_result.status,
+                "step_outputs": exec_result.outputs
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Gemini autonomous execution failed: {e}")
+            self.execution_stats["fallback_count"] += 1
+            return await self._execute_with_taisho(task, None)
 
     async def _execute_with_groq(self, task) -> Dict[str, Any]:
         """Execute simple task with Groq for instant response"""

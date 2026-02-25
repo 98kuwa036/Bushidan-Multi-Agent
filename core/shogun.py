@@ -256,6 +256,11 @@ class Shogun:
             if task.complexity == TaskComplexity.STRATEGIC:
                 logger.info("⚔️ 将軍自ら出陣。戦略的判断を行う。")
                 result = await self._handle_strategic_task(task)
+            elif self._is_multi_step_task(task):
+                # 複合タスク → 家老経由で Gemini Flash 自律実行
+                logger.info("🔀 複合タスク検出 → 家老（Gemini Flash 自律実行）")
+                result = await self.karo.execute_task_with_routing(task, routing_decision)
+                result = await self._adaptive_review(task, result)
             elif task.complexity == TaskComplexity.SIMPLE and self.orchestrator.get_client("groq") and not self._is_action_task(task):
                 # Only use Groq for simple Q&A tasks, NOT for action tasks
                 logger.info("⚡ 簡易任務 → Groq即応")

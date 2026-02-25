@@ -227,27 +227,43 @@ class GeminiFlashAutonomousExecutor:
             logger.error(f"❌ Tool execution failed: {tool_name} - {e}")
             return f"❌ Error: {str(e)}"
 
+    def _to_gemini_tools_format(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        MCP ツール定義を Gemini functionDeclarations 形式に変換
+
+        input_schema → parameters キーに変換
+        """
+        return [
+            {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"]
+            }
+            for t in tools
+        ]
+
     async def execute_autonomous_task(
         self,
         task_content: str,
         max_iterations: int = 5
     ) -> AutonomousExecutionResult:
         """
-        複合タスクを自律実行
+        複合タスクを自律実行（本格版 Gemini Function Calling）
 
         フロー：
-        1. Gemini Flash に MCP tools を提供
+        1. Gemini Flash に MCP tools（functionDeclarations）を提供
         2. ループ（最大 max_iterations）：
-           a. Gemini Flash が次のステップを判断
-           b. tool call があれば実行
-           c. 結果を会話に含める
-           d. 完了判定
+           a. generate_with_tools() で Gemini Flash に問い合わせ
+           b. tool_calls があれば順次実行
+           c. 実行結果を function response として会話に追加
+           d. tool_calls がなければ実行完了（テキスト応答）
         3. 最終結果をまとめる
         4. 失敗時は Haiku でリトライ
         """
         start_time = datetime.now()
         outputs: List[Dict[str, Any]] = []
         messages: List[Dict[str, str]] = []
+        iteration = 0
 
         if not self.gemini3_client:
             return AutonomousExecutionResult(
@@ -262,90 +278,96 @@ class GeminiFlashAutonomousExecutor:
             )
 
         try:
-            # システムプロンプト
-            system_prompt = f"""
-You are an autonomous task executor in Bushidan Multi-Agent System.
-Your task: {task_content}
-
-You have access to the following tools:
-- filesystem_read: Read file contents
-- filesystem_list: List directory contents
-- filesystem_write: Write content to files
-- git_clone: Clone a git repository
-- git_commit: Commit changes
-- git_push: Push changes to remote
-
-Instructions:
-1. Break down the task into steps
-2. Execute each step using the available tools
-3. When a tool is needed, use it
-4. Report progress after each tool execution
-5. When done, provide a summary of what was accomplished
-
-Do NOT generate code files or documentation.
-Focus on EXECUTING the task using the tools.
-"""
+            # MCP ツールを Gemini 形式に変換
+            gemini_tools = self._to_gemini_tools_format(self._get_mcp_tools_definition())
 
             # 初期メッセージ
             messages.append({
                 "role": "user",
-                "content": f"Execute this task: {task_content}"
+                "content": (
+                    f"You are an autonomous task executor in Bushidan Multi-Agent System.\n"
+                    f"Execute this task step by step using the available tools.\n"
+                    f"When all steps are done, provide a final summary.\n\n"
+                    f"Task: {task_content}"
+                )
             })
 
-            iteration = 0
             completed = False
+            final_result = ""
 
             while iteration < max_iterations and not completed:
                 iteration += 1
                 logger.info(f"🔄 Autonomous iteration {iteration}/{max_iterations}")
 
-                # Gemini Flash に問い合わせ
-                try:
-                    response = await self.gemini3_client.generate(
-                        messages=messages,
-                        max_output_tokens=1024,
-                        temperature=0.3  # 低温度で安定した出力
-                    )
+                # Gemini Flash に function calling で問い合わせ
+                response = await self.gemini3_client.generate_with_tools(
+                    messages=messages,
+                    tools=gemini_tools,
+                    tool_choice="auto",
+                    max_output_tokens=1024,
+                    temperature=0.3
+                )
 
-                    messages.append({
-                        "role": "assistant",
-                        "content": response
-                    })
+                tool_calls = response.get("tool_calls", [])
+                text = response.get("text")
 
-                    # TODO: tool call を応答から抽出して実行
-                    # 現在の Gemini3Client は tool_use に対応していないため、
-                    # 応答テキストから tool call を推測する必要があります
-                    # (例：「Let me read file X」という文から tool_name を推測)
+                if tool_calls:
+                    # ツールを実行し、結果を会話に追加
+                    for tool_call in tool_calls:
+                        tool_name = tool_call["name"]
+                        tool_args = tool_call["args"]
 
-                    # 簡易版：応答に "completed" があれば終了
-                    if "completed" in response.lower() or "done" in response.lower():
-                        completed = True
+                        logger.info(f"🔧 Tool call: {tool_name}({tool_args})")
+
+                        tool_result = await self._execute_tool(tool_name, tool_args)
+
+                        logger.info(f"✅ Tool result: {tool_result[:200]}")
+
                         outputs.append({
                             "step": iteration,
-                            "status": "completed",
-                            "output": response
+                            "tool": tool_name,
+                            "args": tool_args,
+                            "result": tool_result
                         })
 
-                except Exception as e:
-                    logger.error(f"❌ Iteration {iteration} failed: {e}")
+                        # assistant の tool call を会話に追加
+                        messages.append({
+                            "role": "assistant",
+                            "content": f"[Calling tool: {tool_name}]"
+                        })
+
+                        # tool result を会話に追加
+                        messages.append({
+                            "role": "tool",
+                            "tool_name": tool_name,
+                            "content": tool_result
+                        })
+
+                else:
+                    # tool_calls がない = 実行完了（最終テキスト応答）
+                    completed = True
+                    final_result = text or ""
                     outputs.append({
                         "step": iteration,
-                        "status": "error",
-                        "error": str(e)
+                        "status": "completed",
+                        "output": final_result
                     })
-                    raise
+
+                    logger.info(f"✅ Autonomous execution completed after {iteration} iterations")
 
             execution_time = (datetime.now() - start_time).total_seconds()
 
-            # 最終結果
-            final_response = messages[-1]["content"] if messages else ""
+            # max_iterations に達した場合は partial
+            if not completed and messages:
+                final_result = f"(Partial: reached max {max_iterations} iterations)"
+                logger.warning(f"⚠️ Autonomous execution partial: max iterations reached")
 
             return AutonomousExecutionResult(
                 status="success" if completed else "partial",
                 steps_executed=iteration,
                 outputs=outputs,
-                final_result=final_response,
-                total_tokens_used=0,  # TODO: token count from Gemini
+                final_result=final_result,
+                total_tokens_used=0,
                 execution_time_seconds=execution_time,
                 fallback_used=False
             )
@@ -353,8 +375,7 @@ Focus on EXECUTING the task using the tools.
         except Exception as e:
             logger.error(f"❌ Autonomous execution failed: {e}")
 
-            # Haiku へのフォールバック（未実装）
-            # fallback_result = await self._fallback_to_haiku(...)
+            execution_time = (datetime.now() - start_time).total_seconds()
 
             return AutonomousExecutionResult(
                 status="failed",
@@ -362,7 +383,7 @@ Focus on EXECUTING the task using the tools.
                 outputs=outputs,
                 final_result="",
                 total_tokens_used=0,
-                execution_time_seconds=(datetime.now() - start_time).total_seconds(),
+                execution_time_seconds=execution_time,
                 fallback_used=False,
                 error_message=str(e)
             )
