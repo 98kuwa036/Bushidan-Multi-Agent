@@ -100,6 +100,25 @@ class Shogun:
         content_lower = task.content.lower()
         return any(kw in content_lower for kw in self._ACTION_KEYWORDS)
 
+    def _is_multi_step_task(self, task) -> bool:
+        """Return True if the task involves multiple steps (e.g., clone + verify + push)."""
+        try:
+            from core.multi_step_task_detector import MultiStepTaskDetector
+
+            detector = MultiStepTaskDetector()
+            analysis = detector.analyze(task.content)
+
+            # 信頼度が 0.6 以上なら複合タスク
+            is_multi_step = analysis.is_multi_step and analysis.confidence >= 0.6
+
+            if is_multi_step:
+                logger.info(f"🔀 複合タスク検出: {analysis.reason}")
+
+            return is_multi_step
+        except Exception as e:
+            logger.warning(f"⚠️ 複合タスク判定エラー: {e}")
+            return False
+
     def __init__(self, orchestrator: "SystemOrchestrator"):
         self.orchestrator = orchestrator
         self.claude_client = None
