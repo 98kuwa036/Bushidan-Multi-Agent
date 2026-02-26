@@ -1,40 +1,57 @@
 ```markdown
 # Codings Directory Analyzer
 
-This tool analyzes the `codings/` directory and generates a summary table of all files and subdirectories.
+This script analyzes the contents of a `codings` directory and generates a formatted table showing all files with their properties.
 
-## Usage
+## Features
 
-Run the analyzer with:
-
-```bash
-python scripts/analyze_codings.py
-```
-
-The script will generate a CSV file named `codings_summary.csv` containing information about each item in the codings directory, including:
-- Name
-- Path
-- Type (File or Directory)
-- Size (in bytes for files)
-- Modification date
+- Recursively scans the specified directory
+- Displays file information including name, type, modification date, and size
+- Provides summary statistics (total files and total size)
+- Exports results to multiple formats:
+  - CSV format for spreadsheet applications
+  - Markdown table for documentation
 
 ## Requirements
 
-This tool uses only Python's standard library modules and requires no external dependencies.
+- Python 3.6+
+- pandas library (`pip install pandas`)
 
-## Output Format
+## Usage
 
-The output is a CSV file with columns:
-- `name`: The name of the file or directory
-- `path`: Full path to the item
-- `type`: Either "File" or "Directory"
-- `size`: Size in bytes (0 for directories)
-- `modified`: Last modification timestamp
+```bash
+# Analyze the default 'codings' directory
+python scripts/analyze_coding_directory.py
+
+# Analyze a specific directory
+python scripts/analyze_coding_directory.py -d /path/to/directory
+
+# Specify output directory for results
+python scripts/analyze_coding_directory.py -o /output/path
+```
+
+## Output
+
+The script will:
+1. Print a formatted table to console showing all files
+2. Save the data in both CSV and Markdown formats to an 'output' directory by default
 
 ## Example Output
 
-| name        | path                 | type     | size  | modified           |
-|-------------|----------------------|----------|-------|--------------------|
-| example.py  | codings/example.py   | File     | 1234  | 2023-05-15 14:30:45 |
-| subfolder   | codings/subfolder    | Directory| 0     | 2023-05-15 14:20:10 |
+```
+=== CODINGS DIRECTORY CONTENTS ===
+Name                Type    Modified           Size
+main.py             .py     2023-10-15 14:30:45  2.10 KB
+README.md           .md     2023-10-14 09:15:22  1.80 KB
+
+Summary:
+Total Files: 2
+Total Size: 3.90 KB
+```
+
+## Notes
+
+- The script handles errors gracefully and will skip inaccessible files
+- File sizes are displayed in human-readable format (B, KB, MB, etc.)
+- The default directory to analyze is 'codings' but can be overridden with the `-d` option
 ```

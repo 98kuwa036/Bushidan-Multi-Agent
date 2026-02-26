@@ -1,15 +1,15 @@
-```gitignore
+```
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-.env
-.venv/
 env/
 venv/
-ENV/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
 
 # IDE
 .vscode/
@@ -19,6 +19,6 @@ ENV/
 .DS_Store
 Thumbs.db
 
-# Output files
-codings_summary.csv
+# Output directory
+output/
 ```
