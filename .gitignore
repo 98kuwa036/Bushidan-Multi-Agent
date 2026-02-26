@@ -1,6 +1,24 @@
-```
-# Generated files from codings analysis
-codings_summary.csv
+```gitignore
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+.env
+.venv/
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Output files
+codings_summary.csv
 ```

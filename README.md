@@ -1,38 +1,40 @@
 ```markdown
 # Codings Directory Analyzer
 
-This script analyzes the contents of the `codings/` directory and generates a summary table.
-
-## Features
-
-- Recursively scans all files in `codings/`
-- Categorizes files by type (Code, Text, Image, Data, Other)
-- Generates both CSV and Markdown formatted tables
-- Includes file size and modification date information
+This tool analyzes the `codings/` directory and generates a summary table of all files and subdirectories.
 
 ## Usage
 
-Run the script with Python 3:
+Run the analyzer with:
 
 ```bash
 python scripts/analyze_codings.py
 ```
 
-This will:
-1. Generate a `codings_summary.csv` file with all file information
-2. Print a markdown table to stdout
-
-## Output Files
-
-- `codings_summary.csv`: CSV formatted summary (for spreadsheet import)
-- Console output: Markdown formatted table for documentation
+The script will generate a CSV file named `codings_summary.csv` containing information about each item in the codings directory, including:
+- Name
+- Path
+- Type (File or Directory)
+- Size (in bytes for files)
+- Modification date
 
 ## Requirements
 
-- Python 3.x
-- No external dependencies required (uses only built-in modules)
+This tool uses only Python's standard library modules and requires no external dependencies.
 
-## Directory Structure Assumed
+## Output Format
 
-The script expects a directory named `codings/` in the current working directory.
+The output is a CSV file with columns:
+- `name`: The name of the file or directory
+- `path`: Full path to the item
+- `type`: Either "File" or "Directory"
+- `size`: Size in bytes (0 for directories)
+- `modified`: Last modification timestamp
+
+## Example Output
+
+| name        | path                 | type     | size  | modified           |
+|-------------|----------------------|----------|-------|--------------------|
+| example.py  | codings/example.py   | File     | 1234  | 2023-05-15 14:30:45 |
+| subfolder   | codings/subfolder    | Directory| 0     | 2023-05-15 14:20:10 |
 ```
