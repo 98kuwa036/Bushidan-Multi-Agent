@@ -1,16 +1,26 @@
 """
-Bushidan Multi-Agent System v10.1 - System Orchestrator (システム統括)
+Bushidan Multi-Agent System v11.4 - System Orchestrator (システム統括)
 
-5層ハイブリッドアーキテクチャの強化システム調整。
-管理対象: 将軍 → 軍師 → 家老 → 大将(+傭兵) → 足軽（インテリジェントルーティング付き）
+9層ハイブリッドアーキテクチャの強化システム調整。
+管理対象: 大元帥 → 将軍 → 軍師 → 参謀A/B → 家老A/B → 検校 → 隠密
 
-v10.1 機能強化:
-- 傭兵 (Kimi K2.5) 追加: 128K context, 並列サブタスク実行, マルチモーダル
-- 軍師 (Gunshi) 層: Qwen3-Coder-Next 80B API (256K context, SWE-Bench 70.6%)
-- 4層フォールバックチェーン: Kimi K2.5 → ローカルQwen3 → 影武者 → Gemini 3 Flash
-- Smithery MCP 管理: npm → Smithery 移行
-- 新MCP: Sequential Thinking, Playwright, Exa, Graph Memory, Prisma
-- インテリジェントルーター統合 (GUNSHI ルート追加)
+v11.4 アーキテクチャ:
+- 大元帥 (Daigensui): Claude Opus 4.5 - 最高難度・戦略設計
+- 将軍 (Shogun): Claude Sonnet 4.6 - 高難度コーディング
+- 軍師 (Gunshi): o3-mini (high) - 推論・設計・PDCA
+- 参謀-A (Sanbo-A): GPT-5 - 汎用コーディング
+- 参謀-B (Sanbo-B): Grok-code-fast-1 - 実装・バグ修正・高速
+- 家老-A (Karo-A): Gemini Flash - 軽量タスク
+- 家老-B (Karo-B): Llama 3.3 70B (Groq) - アルゴリズム特化
+- 検校 (Kengyo): Gemini Flash Vision - マルチモーダル
+- 隠密 (Onmitsu): Nemotron-3-Nano (Local) - 機密・超長文
+
+2台構成: ProDesk 600 (LLM専用, 192.168.11.232) + EliteDesk (メインオーケストレーション)
+
+機能:
+- Smithery MCP 管理
+- MCP: Sequential Thinking, Playwright, Exa, Graph Memory, Prisma
+- インテリジェントルーター統合
 - llama.cpp CPU最適化（HP ProDesk 600対応）
 - 省電力最適化
 - BDIフレームワーク統合
@@ -58,7 +68,7 @@ class MCPPermissionManager:
     """
 
     # 役職優先度順序（上位ほど優先）
-    ROLE_PRIORITY = ["shogun", "gunshi", "karo", "taisho", "kengyo", "ashigaru"]
+    ROLE_PRIORITY = ["daigensui", "shogun", "gunshi", "sanbo_a", "sanbo_b", "karo_a", "karo_b", "kengyo", "onmitsu"]
 
     def __init__(self, config_path: Optional[str] = None):
         self.permissions: Dict[str, Dict[str, Dict]] = {}
@@ -97,14 +107,23 @@ class MCPPermissionManager:
     def _load_default_permissions(self) -> None:
         """デフォルト権限を設定"""
         self.permissions = {
-            "shogun": {
-                "graph_memory": {"level": "primary"},
-                "notion": {"level": "primary"},
-                "sequential_thinking": {"level": "secondary"},
+            "daigensui": {
+                "graph_memory": {"level": "exclusive", "priority": 1},
+                "notion": {"level": "exclusive", "priority": 1},
+                "sequential_thinking": {"level": "primary"},
                 "filesystem": {"level": "readonly"},
                 "git": {"level": "readonly"},
                 "playwright": {"level": "forbidden"},
                 "prisma": {"level": "forbidden"},
+            },
+            "shogun": {
+                "graph_memory": {"level": "primary"},
+                "notion": {"level": "primary"},
+                "sequential_thinking": {"level": "secondary"},
+                "filesystem": {"level": "primary"},
+                "git": {"level": "primary"},
+                "playwright": {"level": "forbidden"},
+                "prisma": {"level": "secondary"},
             },
             "gunshi": {
                 "sequential_thinking": {"level": "exclusive", "priority": 1},
@@ -113,18 +132,31 @@ class MCPPermissionManager:
                 "graph_memory": {"level": "primary"},
                 "playwright": {"level": "forbidden"},
             },
-            "karo": {
-                "sequential_thinking": {"level": "primary", "priority": 2},
+            "sanbo_a": {
+                "filesystem": {"level": "primary"},
+                "git": {"level": "primary"},
+                "prisma": {"level": "primary"},
+                "sequential_thinking": {"level": "secondary", "priority": 2},
+                "playwright": {"level": "forbidden"},
+            },
+            "sanbo_b": {
+                "filesystem": {"level": "primary"},
+                "git": {"level": "primary"},
+                "prisma": {"level": "secondary"},
+                "sequential_thinking": {"level": "secondary", "priority": 3},
+                "playwright": {"level": "forbidden"},
+            },
+            "karo_a": {
+                "sequential_thinking": {"level": "secondary", "priority": 4},
                 "filesystem": {"level": "secondary"},
                 "playwright": {"level": "forbidden"},
                 "prisma": {"level": "forbidden"},
             },
-            "taisho": {
-                "filesystem": {"level": "exclusive", "priority": 1},
-                "git": {"level": "exclusive", "priority": 1},
-                "prisma": {"level": "exclusive"},
-                "sequential_thinking": {"level": "secondary", "priority": 3},
+            "karo_b": {
+                "sequential_thinking": {"level": "secondary", "priority": 5},
+                "filesystem": {"level": "secondary"},
                 "playwright": {"level": "forbidden"},
+                "prisma": {"level": "forbidden"},
             },
             "kengyo": {
                 "playwright": {"level": "exclusive", "priority": 1},
@@ -132,11 +164,11 @@ class MCPPermissionManager:
                 "sequential_thinking": {"level": "forbidden"},
                 "prisma": {"level": "forbidden"},
             },
-            "ashigaru": {
+            "onmitsu": {
                 "filesystem": {"level": "delegated"},
                 "git": {"level": "delegated"},
-                "playwright": {"level": "delegated"},
-                "prisma": {"level": "delegated"},
+                "playwright": {"level": "forbidden"},
+                "prisma": {"level": "forbidden"},
             },
         }
         self._loaded = True

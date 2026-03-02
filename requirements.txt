@@ -1,35 +1,39 @@
-# Bushidan Multi-Agent System v10 - Hybrid Architecture Dependencies
-# PDCA Engine + BDI Framework + llama.cpp CPU Optimized + 3-Tier Fallback
+# Bushidan Multi-Agent System v11.4 - Dependencies
+# 脱中国企業・9層ハイブリッドアーキテクチャ
+# o3-mini PDCA + BDI Framework + Nemotron Local
 
 # Core dependencies (required)
 httpx>=0.24.0
-aiohttp>=3.8.0               # Enhanced async HTTP for web search
+aiohttp>=3.8.0
 python-dotenv>=1.0.0
 pydantic>=2.0.0
 pyyaml>=6.0
-asyncio-throttle>=1.0.2      # Rate limiting for API calls
+asyncio-throttle>=1.0.2
 
-# AI Model APIs (required for 5-tier architecture with intelligent routing)
-anthropic>=0.34.0             # Claude Sonnet 4.5 + Opus 4 (Shogun) - Prompt Caching
-google-generativeai>=0.4.0    # Gemini 3.0 Flash (Final defense)
-groq>=0.4.0                   # Groq Llama 3.3 70B (Simple tasks, 300-500 tok/s)
-litellm>=1.0.0               # OpenAI-compatible API proxy
-dashscope>=1.0.0             # Alibaba Cloud Qwen3-Coder-Plus (Kagemusha)
+# AI Model APIs (v11.4 - 脱中国企業)
+anthropic>=0.40.0             # Claude Opus 4.5 (大元帥) + Sonnet 4.6 (将軍)
+openai>=1.50.0                # o3-mini (軍師) + GPT-5 (参謀-A)
+google-generativeai>=0.8.0    # Gemini Flash (家老-A) + Gemini Flash Vision (検校)
+groq>=0.4.0                   # Llama 3.3 70B (家老-B)
+litellm>=1.0.0                # OpenAI-compatible API proxy
+
+# xAI Grok (参謀-B) - uses OpenAI-compatible API via httpx
+# No separate SDK needed - uses openai library with custom base_url
 
 # DSPy integration (recommended)
-dspy>=2.0.0                  # Prompt optimization and translation layer
+dspy>=2.0.0
 
-# LangGraph (v10.2 hybrid routing)
-langgraph>=1.0.0             # StateGraph-based task routing
-langchain-core>=0.3.0        # LangGraph dependency
+# LangGraph (hybrid routing)
+langgraph>=1.0.0
+langchain-core>=0.3.0
 
 # Enhanced web search and scraping
-tavily-python>=0.3.0          # Precise URL discovery
-playwright>=1.40.0            # Targeted content extraction
+tavily-python>=0.3.0
+playwright>=1.40.0
 
 # Optional integrations
-discord.py>=2.3.0             # Discord Bot interface
-notion-client>=2.0.0          # Long-term memory (Notion)
+discord.py>=2.3.0
+notion-client>=2.0.0
 
 # Development dependencies (dev only)
 pytest>=7.4.0
@@ -42,65 +46,20 @@ mypy>=1.5.0
 pathlib2>=2.3.7
 
 # ============================================================================
-# v10 Installation Guide
+# v11.4 Architecture (脱中国企業)
 # ============================================================================
 #
-# Minimal (Cloud-only, no local inference):
-#   pip install anthropic google-generativeai groq dashscope httpx python-dotenv pydantic
+#   REMOVED (中国企業):
+#     - dashscope (Alibaba Cloud)
+#     - Qwen series (all models)
+#     - Kimi / Moonshot
 #
-# Recommended (Full hybrid with intelligent routing):
-#   pip install -r requirements.txt
-#   playwright install chromium
+#   ADDED (v11.4):
+#     - openai (o3-mini + GPT-5)
+#     - xAI Grok (via OpenAI-compatible API)
+#     - Nemotron-3-Nano (NVIDIA, local llama.cpp)
 #
-# Full development setup:
-#   pip install -r requirements.txt
-#   playwright install chromium
-#   pip install -e .[dev]
-#
-# ============================================================================
-# v10 Local Qwen3-Coder Setup (llama.cpp CPU Optimized)
-# ============================================================================
-#
-# Option 1: Automatic setup (HP ProDesk 600)
-#   chmod +x scripts/setup_llamacpp_prodesck600.sh
-#   ./scripts/setup_llamacpp_prodesck600.sh
-#
-# Option 2: Manual setup
-#   # Build llama.cpp
-#   git clone https://github.com/ggerganov/llama.cpp.git
-#   cd llama.cpp && mkdir build && cd build
-#   cmake .. -DCMAKE_BUILD_TYPE=Release -DLLAMA_NATIVE=ON -DLLAMA_AVX2=ON
-#   make -j$(nproc)
-#
-#   # Download model (~17GB)
-#   mkdir -p models
-#   wget https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct-GGUF/resolve/main/qwen3-coder-30b-a3b-instruct-q4_k_m.gguf
-#
-#   # Start server
-#   ./llama-server -m models/qwen3-coder-30b-a3b-instruct-q4_k_m.gguf \
-#       -c 4096 -t 8 -b 512 --mlock --host 127.0.0.1 --port 8080
-#
-# See: docs/LLAMACPP_SETUP.md for full documentation
-#
-# ============================================================================
-# v10 Architecture
-# ============================================================================
-#
-#   ✅ BDI Framework (Belief-Desire-Intention formal reasoning)
-#   ✅ llama.cpp CPU optimized (HP ProDesk 600 ready)
-#   ✅ Intelligent routing (運用黄金律)
-#   ✅ Groq for simple tasks (free, 300-500 tok/s)
-#   ✅ Local Qwen3 (llama.cpp, 4k context, ¥0)
-#   ✅ Cloud Qwen3-plus (Kagemusha, 32k context)
-#   ✅ Gemini 3.0 Flash (final defense)
-#   ✅ Claude Prompt Caching (90% savings)
-#   ✅ Japanese logging throughout
-#
-# Expected Performance (HP ProDesk 600 i5-8500):
-#   - Simple tasks: 2s (Groq)
-#   - Medium tasks: 18s (Local Qwen3 CPU, 10-18 tok/s)
-#   - 3-tier fallback: 99.5% reliability
-#
-# Storage Requirements:
-#   - 本陣 (CT 100): 10GB (orchestration only)
-#   - Qwen3 (CT 101): 45GB (llama.cpp + 17GB model)
+#   KEPT:
+#     - anthropic (Claude Opus 4.5 + Sonnet 4.6)
+#     - google-generativeai (Gemini Flash + Vision)
+#     - groq (Llama 3.3 70B)

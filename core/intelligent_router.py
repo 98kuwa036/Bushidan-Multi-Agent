@@ -1,16 +1,24 @@
 """
-Bushidan Multi-Agent System v10 - Intelligent Router
+Bushidan Multi-Agent System v11.4 - Intelligent Router
 
-Smart routing orchestrator that implements the 5-tier hybrid architecture:
-- Simple tasks → Groq (instant, free, power-saving)
-- Medium → Local Qwen3 → Cloud Qwen3-plus → Gemini 3 Flash
-- Complex → Gunshi PDCA (Plan→Do→Check→Act cycle)
-- Strategic → Shogun self-handles
+Smart routing orchestrator that implements the 9-tier hybrid architecture:
+- SIMPLE → KARO_B_GROQ (Llama 3.3 70B, instant, free)
+- MEDIUM → SANBO_B_GROK (Grok-code-fast-1, fast implementation)
+- COMPLEX → GUNSHI (o3-mini PDCA cycle)
+- STRATEGIC → DAIGENSUI (Claude Opus 4.5, supreme commander)
+- CODING → SHOGUN (Claude Sonnet 4.6, coding specialist)
+- CONFIDENTIAL → ONMITSU (Nemotron local, air-gapped)
 
-v10 PDCA統合:
-- 軍師 (Gunshi) PDCA cycle: COMPLEX タスクは Plan→Do→Check→Act で完遂
-- Qwen3-Coder-Next 80B-A3B (256K context, SWE-Bench 70.6%)
-- Gunshi 256K で cross-file 整合性検証 → Taisho 4096 制限を補完
+v11.4 9-tier architecture:
+- 大元帥 (Daigensui): Claude Opus 4.5 - strategic supreme commander
+- 将軍 (Shogun): Claude Sonnet 4.6 - coding specialist
+- 軍師 (Gunshi): o3-mini PDCA cycle (Plan→Do→Check→Act)
+- 参謀A (Sanbo_A): GPT-5 - analytical support
+- 参謀B (Sanbo_B): Grok-code-fast-1 - fast implementation
+- 家老A (Karo_A): Gemini Flash - cost-effective fallback
+- 家老B (Karo_B): Groq Llama 3.3 70B - instant free tier
+- 隠密 (Onmitsu): Nemotron local - confidential/air-gapped
+- 兼業 (Kengyo): Gemini Vision - multimodal tasks
 
 This router optimizes for speed, cost, and reliability through intelligent
 task delegation and fallback management.
@@ -31,20 +39,25 @@ logger = get_logger(__name__)
 
 class TaskComplexity(Enum):
     """Task complexity levels for routing decisions"""
-    SIMPLE = "simple"          # 2s - Groq handles instantly
-    MEDIUM = "medium"          # 12s - Local Qwen3 → Cloud fallback
-    COMPLEX = "complex"        # 25-45s - Gunshi PDCA cycle
-    STRATEGIC = "strategic"    # 45s - Shogun handles directly
+    SIMPLE = "simple"          # 2s - Karo_B Groq handles instantly
+    MEDIUM = "medium"          # 8s - Sanbo_B Grok fast implementation
+    COMPLEX = "complex"        # 25-45s - Gunshi o3-mini PDCA cycle
+    STRATEGIC = "strategic"    # 45s - Daigensui handles directly
+    CODING = "coding"          # 15s - Shogun coding specialist
+    CONFIDENTIAL = "confidential"  # 10s - Onmitsu local air-gapped
 
 
 class RouteTarget(Enum):
-    """Routing targets in the hybrid architecture"""
-    GROQ = "groq"                      # Lightning fast (300-500 tok/s)
-    LOCAL_QWEN3 = "local_qwen3"        # Local Qwen3-Coder-30B (4096 context)
-    CLOUD_QWEN3 = "cloud_qwen3"        # Alibaba Cloud Qwen3-plus (32k context)
-    GEMINI3 = "gemini3"                # Gemini 3 Flash (final defense)
-    GUNSHI = "gunshi"                  # v10: Qwen3-Coder-Next 80B API (256K context)
-    SHOGUN = "shogun"                  # Claude Sonnet (strategic only)
+    """Routing targets in the 9-tier architecture"""
+    DAIGENSUI = "daigensui"            # Claude Opus 4.5 (supreme commander)
+    SHOGUN = "shogun"                  # Claude Sonnet 4.6 (coding specialist)
+    GUNSHI = "gunshi"                  # o3-mini (PDCA strategist)
+    SANBO_A_GPT5 = "sanbo_a_gpt5"     # GPT-5 (analytical support)
+    SANBO_B_GROK = "sanbo_b_grok"     # Grok-code-fast-1 (fast implementation)
+    KARO_A_GEMINI = "karo_a_gemini"   # Gemini Flash (cost-effective fallback)
+    KARO_B_GROQ = "karo_b_groq"       # Groq Llama 3.3 70B (instant, free)
+    ONMITSU = "onmitsu"               # Nemotron local (confidential/air-gapped)
+    KENGYO = "kengyo"                  # Gemini Vision (multimodal tasks)
 
 
 @dataclass
