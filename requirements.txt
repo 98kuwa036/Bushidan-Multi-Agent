@@ -34,6 +34,8 @@ playwright>=1.40.0
 # Optional integrations
 discord.py>=2.3.0
 notion-client>=2.0.0
+mattermostdriver>=7.3.2    # Mattermost Bot + MCP サーバー
+mcp>=1.0.0                 # Model Context Protocol SDK (FastMCP)
 
 # Development dependencies (dev only)
 pytest>=7.4.0
