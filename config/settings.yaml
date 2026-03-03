@@ -743,3 +743,105 @@ mcp_permissions:
       - "06_kengyo.md"
       - "07_onmitsu.md"
       - "08_ashigaru.md"
+
+# =============================================================================
+# v11.5 革新的機能 - LangGraph × MCP × Notion 密結合
+# =============================================================================
+v11_5_innovations:
+  description: "LangGraph SDK による MCP ツール認識ルーティング + Notion 積極活用"
+
+  langgraph_mcp_integration:
+    enabled: true
+    description: "LangGraph StateGraph に MCP ツール検出ノードを組み込み、ルーティングを tool-aware に"
+    new_graph_nodes:
+      fetch_context:
+        description: "並列: MCP ツール一覧取得 + Notion 家訓/直近タスク取得"
+        triggers_before: "route_decision"
+      persist_notion:
+        description: "全タスク完了後に Notion へ fire-and-forget 自動保存"
+        triggers_after: "all_execution_nodes"
+    new_routes:
+      gunshi_pdca:
+        description: "COMPLEX/STRATEGIC タスクを軍師 o3-mini PDCA → 参謀A/B に委譲"
+        trigger: "complexity in (complex, strategic)"
+      taisho_mcp:
+        description: "ツール連携アクション (GitHub/tavily/playwright 利用可能時)"
+        trigger: "is_action_task=true AND matching_tool_available=true"
+
+  notion_active_use:
+    enabled: true
+    description: "Notion を受動的記録から能動的知識連携へ昇格"
+    new_methods:
+      get_routing_context:
+        description: "家訓 + 直近タスク要約をルーター判断用テキストで返す"
+        called_by: "LangGraph fetch_context ノード"
+      auto_save_task_result:
+        description: "タスク完了後に自動保存 (エージェント役職・ルート・MCP ツール情報付き)"
+        called_by: "LangGraph persist_notion ノード"
+      get_page_content:
+        description: "ページのブロックコンテンツを全文取得 (メタデータのみ→本文全文)"
+      update_entry:
+        description: "既存ページの内容・ステータスを更新"
+    databases:
+      tasks_db:
+        env_var: "NOTION_TASKS_DB_ID"
+        description: "タスク完了ログ (auto_save_task_result の保存先)"
+      knowledge_db:
+        env_var: "NOTION_DB_ID"
+        description: "知識ベース・家訓 (既存)"
+    auto_save_metadata:
+      - route       # groq_qa / gunshi_pdca / gemini_autonomous / taisho_mcp / karo_default
+      - agent_role  # 大元帥 / 将軍 / 軍師 / 参謀 / 家老 / 検校 / 隠密
+      - handled_by  # 実行クラス名
+      - complexity  # simple / medium / complex / strategic
+      - execution_time
+      - mcp_tools_used
+      - source      # discord / mattermost / api
+
+  mcp_tool_registry:
+    description: "実行中 MCP サーバーのツール名を LangGraph ルーターに提供"
+    implementation: "MCPManager.TOOL_REGISTRY (静的辞書) + list_tools() メソッド"
+    registered_servers:
+      - filesystem   # read_file, write_file, list_directory, ...
+      - github       # create_issue, push_files, create_pull_request, ...
+      - fetch        # fetch
+      - memory       # create_entities, search_nodes, ...
+      - tavily       # search, search_context, search_qna
+      - exa          # search, find_similar, get_contents
+      - playwright   # browser_navigate, browser_screenshot, ...
+      - mattermost   # post_message, submit_task, report_agent_progress, ...
+      - notion       # notion_query_database, notion_create_page, ...
+      - sequential_thinking  # sequentialthinking
+      - git          # git_status, git_commit, git_log, ...
+
+  mattermost_integration:
+    enabled: true
+    description: "Mattermost Bot + MCP サーバー (v11.4 追加)"
+    components:
+      bot:
+        path: "bushidan/mattermost_bot.py"
+        description: "WebSocket Bot - @メンション → SystemOrchestrator 委譲"
+        commands: ["!mode", "!status", "!help"]
+      mcp_server:
+        path: "mcp/mattermost_mcp_server.py"
+        description: "FastMCP サーバー - Mattermost 操作 + 武士団タスク投入ツール"
+        tools:
+          - post_message
+          - search_messages
+          - submit_task
+          - get_bushidan_status
+          - report_agent_progress
+
+  routing_weights_v11_5:
+    description: "v11.5 ルーティング黄金律"
+    rules:
+      - "STRATEGIC / COMPLEX → 軍師 o3-mini PDCA (gunshi_pdca)"
+      - "ACTION + TOOL_AVAILABLE → Taisho MCP chain (taisho_mcp)"
+      - "MULTI_STEP → Gemini Flash autonomous (gemini_autonomous)"
+      - "SIMPLE Q&A → 家老-B Groq instant (groq_qa)"
+      - "DEFAULT → 家老 routing (karo_default)"
+    tool_routing:
+      github_keywords:  ["git", "github", "commit", "push", "pull", "pr", "issue"]
+      search_keywords:  ["search", "検索", "web", "調べ"]
+      browser_keywords: ["browser", "ブラウザ", "screenshot", "スクリーン"]
+      file_keywords:    ["ファイル", "file", "read", "write", "directory"]

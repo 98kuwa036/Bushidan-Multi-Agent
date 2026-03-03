@@ -1,14 +1,22 @@
-"""Notion Integration for Shogun System v7.0
+"""Notion Integration v11.5 - 積極活用モード
 
-Automatic knowledge management and 60-day summary storage.
+v11.5 強化: Notion を「受動的記録」から「能動的知識連携」へ昇格。
 
-Features:
-  - Automatic family precepts (家訓) storage
-  - 60-day summary archival
-  - Knowledge base construction
-  - Search and retrieval capabilities
+新機能:
+  - get_routing_context(): 家訓 + 直近タスク要約をルーター判断用テキストで返す
+  - auto_save_task_result(): 全タスク完了後に自動保存 (エージェント役職・ルート情報付き)
+  - get_page_content(): ページのブロックコンテンツを全文取得
+  - update_entry(): 既存ページの内容・ステータスを更新
 
-Integration with 9th Ashigaru (Groq Recorder) for seamless knowledge flow.
+LangGraph Router v11.5 連携:
+  - fetch_context ノードが get_routing_context() を呼び出してルーター判断に活用
+  - persist_notion ノードが auto_save_task_result() でタスク履歴を自動永続化
+
+既存機能:
+  - save_summary(): 60日要約保存
+  - save_family_precepts(): 家訓保存
+  - save_knowledge_entry(): 汎用知識エントリ保存
+  - search_knowledge(): 知識ベース検索
 """
 
 import logging
@@ -399,6 +407,250 @@ class NotionIntegration:
         
         return precepts
     
+    # =========================================================================
+    # v11.5 新機能: 積極活用メソッド
+    # =========================================================================
+
+    async def get_routing_context(self, max_chars: int = 1200) -> str:
+        """
+        LangGraph Router v11.5 用: 家訓 + 直近タスク要約をテキストで返す。
+
+        fetch_context ノードから呼び出され、route_decision のヒントとして
+        システムプロンプトに注入される。
+
+        Args:
+            max_chars: 返すテキストの最大文字数
+
+        Returns:
+            家訓と直近タスク要約を結合したテキスト (空文字列 = Notion 未接続)
+        """
+        if not self.client:
+            return ""
+
+        parts: list[str] = []
+
+        # 家訓を取得
+        try:
+            precept_entries = await self.search_knowledge("", entry_type="家訓", limit=3)
+            if precept_entries:
+                precept_texts: list[str] = []
+                for entry in precept_entries[:2]:
+                    content = await self.get_page_content(entry["id"])
+                    if content:
+                        precept_texts.append(content[:300])
+                if precept_texts:
+                    parts.append("【家訓】\n" + "\n---\n".join(precept_texts))
+        except Exception as e:
+            logger.debug("家訓取得スキップ: %s", e)
+
+        # 直近の完了タスクを取得
+        try:
+            recent = await self.search_knowledge("", entry_type="タスク完了", limit=3)
+            if recent:
+                recent_texts = [
+                    f"- {e['title']} ({e['date'][:10] if e['date'] else ''})"
+                    for e in recent
+                ]
+                parts.append("【直近タスク】\n" + "\n".join(recent_texts))
+        except Exception as e:
+            logger.debug("直近タスク取得スキップ: %s", e)
+
+        result = "\n\n".join(parts)
+        return result[:max_chars] if result else ""
+
+    async def auto_save_task_result(
+        self,
+        task: str,
+        result: str,
+        metadata: Dict[str, Any] = None,
+    ) -> Optional[str]:
+        """
+        タスク完了後に自動保存。LangGraph Router の persist_notion ノードから呼び出す。
+
+        Args:
+            task:     タスク説明 (タイトル用)
+            result:   タスク実行結果テキスト
+            metadata: ルート・エージェント役職・実行時間など
+
+        Returns:
+            作成された Notion ページ ID (失敗時は None)
+        """
+        if not self.client:
+            return None
+
+        meta = metadata or {}
+        title = f"[{meta.get('agent_role', '?')}] {task[:60]}"
+        agent_name = meta.get("agent_role", meta.get("handled_by", "unknown"))
+        route = meta.get("route", "")
+        exec_time = meta.get("execution_time", 0)
+        tools_used = meta.get("mcp_tools_used", [])
+
+        try:
+            properties: Dict[str, Any] = {
+                "Title": {
+                    "title": [{"type": "text", "text": {"content": title}}]
+                },
+                "Type": {
+                    "select": {"name": "タスク完了"}
+                },
+                "Date": {
+                    "date": {"start": datetime.now().isoformat()}
+                },
+                "Status": {
+                    "select": {"name": "完了"}
+                },
+            }
+            if agent_name:
+                properties["Agent"] = {"select": {"name": agent_name[:100]}}
+            if meta.get("cost"):
+                properties["Cost (¥)"] = {"number": meta["cost"]}
+            if tools_used:
+                properties["Tags"] = {
+                    "multi_select": [{"name": t[:100]} for t in tools_used[:5]]
+                }
+
+            # コンテンツブロック構築
+            children: list[Dict] = [
+                {
+                    "object": "block", "type": "heading_2",
+                    "heading_2": {
+                        "rich_text": [{"type": "text", "text": {"content": "タスク"}}]
+                    },
+                },
+                {
+                    "object": "block", "type": "paragraph",
+                    "paragraph": {
+                        "rich_text": [{"type": "text", "text": {"content": task[:2000]}}]
+                    },
+                },
+                {
+                    "object": "block", "type": "heading_2",
+                    "heading_2": {
+                        "rich_text": [{"type": "text", "text": {"content": "実行結果"}}]
+                    },
+                },
+            ]
+            # 結果を 1900 文字ずつブロックに分割 (Notion 上限対応)
+            for chunk in [result[i:i+1900] for i in range(0, min(len(result), 9500), 1900)]:
+                children.append({
+                    "object": "block", "type": "paragraph",
+                    "paragraph": {
+                        "rich_text": [{"type": "text", "text": {"content": chunk}}]
+                    },
+                })
+
+            # メタデータブロック
+            meta_text = (
+                f"Route: {route} | Agent: {agent_name} | "
+                f"Time: {exec_time:.1f}s | Tools: {', '.join(tools_used) or 'none'}"
+            )
+            children.append({
+                "object": "block", "type": "callout",
+                "callout": {
+                    "rich_text": [{"type": "text", "text": {"content": meta_text}}],
+                    "icon": {"emoji": "🤖"},
+                },
+            })
+
+            page = self.client.pages.create(
+                parent={"database_id": self.database_id},
+                properties=properties,
+                children=children,
+            )
+            self.stats["knowledge_entries"] += 1
+            logger.debug("[Notion] タスク自動保存: %s", page["id"])
+            return page["id"]
+
+        except Exception as e:
+            logger.warning("[Notion] タスク自動保存失敗: %s", e)
+            return None
+
+    async def get_page_content(self, page_id: str, max_chars: int = 3000) -> str:
+        """
+        Notion ページのブロックコンテンツを全文テキストで取得。
+
+        既存の search_knowledge() はタイトルしか返さないが、このメソッドは
+        ページ内のすべてのテキストブロックを結合して返す。
+
+        Args:
+            page_id:   ページ ID
+            max_chars: 取得する最大文字数
+
+        Returns:
+            ページ内テキストの結合文字列
+        """
+        if not self.client:
+            return ""
+
+        try:
+            blocks = self.client.blocks.children.list(block_id=page_id)
+            texts: list[str] = []
+            for block in blocks.get("results", []):
+                block_type = block.get("type", "")
+                block_data = block.get(block_type, {})
+                rich_text = block_data.get("rich_text", [])
+                for rt in rich_text:
+                    text_content = rt.get("text", {}).get("content", "")
+                    if text_content:
+                        texts.append(text_content)
+            combined = "\n".join(texts)
+            return combined[:max_chars]
+        except Exception as e:
+            logger.debug("[Notion] ページコンテンツ取得失敗 (id=%s): %s", page_id, e)
+            return ""
+
+    async def update_entry(
+        self,
+        page_id: str,
+        content: str = "",
+        status: str = "",
+        title: str = "",
+    ) -> bool:
+        """
+        既存 Notion ページを更新。
+
+        Args:
+            page_id: 更新対象ページ ID
+            content: 新しい本文 (空文字列の場合は更新しない)
+            status:  新しいステータス (空文字列の場合は更新しない)
+            title:   新しいタイトル (空文字列の場合は更新しない)
+
+        Returns:
+            更新成否
+        """
+        if not self.client:
+            return False
+
+        try:
+            properties: Dict[str, Any] = {}
+            if title:
+                properties["Title"] = {
+                    "title": [{"type": "text", "text": {"content": title}}]
+                }
+            if status:
+                properties["Status"] = {"select": {"name": status}}
+
+            if properties:
+                self.client.pages.update(page_id=page_id, properties=properties)
+
+            if content:
+                # 既存ブロックの後ろに追記
+                self.client.blocks.children.append(
+                    block_id=page_id,
+                    children=[{
+                        "object": "block", "type": "paragraph",
+                        "paragraph": {
+                            "rich_text": [{"type": "text", "text": {"content": content[:1900]}}]
+                        },
+                    }],
+                )
+
+            logger.debug("[Notion] ページ更新完了: %s", page_id)
+            return True
+        except Exception as e:
+            logger.warning("[Notion] ページ更新失敗 (id=%s): %s", page_id, e)
+            return False
+
     def get_stats(self) -> Dict[str, Any]:
         """Get integration statistics."""
         return {

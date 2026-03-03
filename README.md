@@ -1,30 +1,39 @@
-# 🏯 武士団マルチエージェントシステム v11.4
+# 🏯 武士団マルチエージェントシステム v11.5
 
-[![Version](https://img.shields.io/badge/Version-11.4-green)](https://github.com/98kuwa036/Bushidan-Multi-Agent)
+[![Version](https://img.shields.io/badge/Version-11.5-brightgreen)](https://github.com/98kuwa036/Bushidan-Multi-Agent)
 [![Claude](https://img.shields.io/badge/Claude-Opus%204.5%20%2B%20Sonnet%204.6-purple)](https://www.anthropic.com/claude)
 [![OpenAI](https://img.shields.io/badge/OpenAI-o3--mini%20%2B%20GPT--5-412991)](https://openai.com/)
 [![xAI](https://img.shields.io/badge/xAI-Grok--code--fast--1-1DA1F2)](https://x.ai/)
 [![Gemini](https://img.shields.io/badge/Gemini-2.5%20Flash-blue)](https://ai.google.dev/)
 [![Groq](https://img.shields.io/badge/Groq-Llama%203.3%2070B-red)](https://groq.com/)
 [![NVIDIA](https://img.shields.io/badge/NVIDIA-Nemotron--3--Nano%20Local-76B900)](https://www.nvidia.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-MCP%20Integrated-orange)](https://langchain-ai.github.io/langgraph/)
+[![Notion](https://img.shields.io/badge/Notion-Active%20Knowledge-black)](https://notion.so/)
+[![Mattermost](https://img.shields.io/badge/Mattermost-Bot%20%2B%20MCP-0058CC)](https://mattermost.com/)
 [![BDI](https://img.shields.io/badge/BDI-Framework-yellow)](docs/bdi_framework.md)
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-## v11.4 の革新: 脱中国企業 + 9層ハイブリッドアーキテクチャ
+## v11.5 の革新: LangGraph × MCP × Notion 密結合
 
-**Bushidan v11.4** は **中国企業モデルを完全排除** し、**西側連合**（Anthropic + OpenAI + xAI + Google + NVIDIA + Meta）のみで構成された **9層ハイブリッドアーキテクチャ** を実現しました。
+**Bushidan v11.5** は v11.4 の9層アーキテクチャを土台に、**LangGraph SDK** による **MCP ツール認識ルーティング** と **Notion 積極活用** を実装しました。
 
-### v11.4 ハイライト
+### v11.5 ハイライト
 
-- **🚫 脱中国企業**: Qwen3・Kimi K2.5 を完全排除、西側信頼モデルへ移行
+- **🔗 LangGraph MCP 密結合**: `fetch_context` ノードで MCP ツール一覧を取得し、ルーティング判断に活用
+- **📖 Notion 積極活用**: 家訓・直近タスクをルーター判断に注入、全タスクを自動永続化
+- **🧠 軍師 PDCA ルート**: COMPLEX/STRATEGIC タスクを o3-mini → 参謀A/B に自動委譲
+- **🔧 Taisho MCP チェーン**: GitHub/tavily/playwright ツール存在時に最適な MCP チェーンを実行
+- **💬 Mattermost 統合**: Bot (@メンション応答) + MCP サーバー (エージェントが Mattermost を操作)
+- **🤖 進捗報告**: エージェントが処理中タスクの進捗を Mattermost にリアルタイム投稿
+
+### v11.4 から継承
+
+- **🚫 脱中国企業**: Qwen3・Kimi K2.5 完全排除、西側連合モデルのみ
 - **👑 大元帥 (Claude Opus 4.5)**: SWE-Bench 80.9%、最高難度・戦略設計
 - **🎌 将軍 (Claude Sonnet 4.6)**: SWE-Bench 72.7%、高難度コーディング専任
-- **🧠 軍師 (o3-mini high)**: 推論特化 PDCA エンジン、複雑タスクの頭脳
-- **⚔️ 参謀-A (GPT-5)**: 最新 OpenAI 汎用コーディング
+- **🧠 軍師 (o3-mini high)**: 推論特化 PDCA エンジン
 - **⚡ 参謀-B (Grok-code-fast-1)**: 実装特化・240tok/s 超高速
-- **🏮 家老-A (Gemini Flash)**: 軽量・超低コスト汎用処理
-- **🔧 家老-B (Llama 3.3 70B)**: HumanEval 88.4%、Groq 300-500 tok/s 無料
-- **👁️ 検校 (Gemini Flash Vision)**: マルチモーダル ビジュアルデバッガー
+- **🔧 家老-B (Llama 3.3 70B)**: HumanEval 88.4%、Groq 無料
 - **🥷 隠密 (Nemotron-3-Nano)**: NVIDIA製ローカルLLM、機密処理・オフライン対応
 
 ---
@@ -32,6 +41,9 @@
 ## 📋 目次
 
 - [システム概要](#システム概要)
+- [v11.5 LangGraph MCP 密結合](#v115-langgraph-mcp-密結合)
+- [Notion 積極活用](#notion-積極活用)
+- [Mattermost 統合](#mattermost-統合)
 - [9層アーキテクチャ詳細](#9層アーキテクチャ詳細)
 - [脱中国企業の理由](#脱中国企業の理由)
 - [軍師 PDCA エンジン](#軍師-pdca-エンジン)
@@ -41,6 +53,180 @@
 - [パフォーマンス](#パフォーマンス)
 - [コスト分析](#コスト分析)
 - [更新履歴](#更新履歴)
+
+---
+
+---
+
+## 🔗 v11.5 LangGraph MCP 密結合
+
+### StateGraph v11.5 — ツール認識 + Notion コンテキスト注入
+
+```
+[START]
+  ↓
+[analyze]         タスク複雑度・マルチステップ・アクション種別を検出
+  ↓
+[fetch_context]   並列取得:
+                    ├─ MCPManager.list_tools()  → 実行中ツール一覧
+                    └─ Notion.get_routing_context() → 家訓 + 直近タスク
+  ↓
+[route_decision]  ツール認識 + Notion 知識参照 + 複雑度ベースの5経路分岐
+  ↓
+  ├─ [groq_qa]           Simple Q&A  → 家老-B Groq (即応・無料)
+  ├─ [gunshi_pdca]       Complex     → 軍師 o3-mini PDCA → 参謀A/B
+  ├─ [gemini_autonomous] Multi-step  → Gemini Flash 自律実行
+  ├─ [taisho_mcp]        Tool chain  → Taisho + MCP ツール連携
+  └─ [karo_default]      Default     → 家老 既存ルーティング
+  ↓
+[persist_notion]  fire-and-forget: 全タスク結果を Notion へ自動保存
+  ↓
+[END]
+```
+
+### MCP ツール認識ルーティング
+
+```python
+# fetch_context ノードが取得する情報
+available_tools = ["read_file", "write_file", "github", "search", ...]
+notion_context  = "【家訓】...\n【直近タスク】..."
+
+# route_decision がツール存在を見て経路を決定
+if "github" in tools and "git" in content:
+    → taisho_mcp  (GitHub MCP ツールを活用)
+
+if "tavily" in tools and "search" in content:
+    → taisho_mcp  (Tavily 検索ツールを活用)
+
+if complexity in ("complex", "strategic"):
+    → gunshi_pdca (軍師 o3-mini PDCA へ委譲)
+```
+
+### MCPManager v11.5 — TOOL_REGISTRY
+
+```python
+# 実行中サーバーのツール一覧を返す (LangGraph ルーター用)
+manager.list_tools()
+# → {"github": ["create_issue", "push_files", ...],
+#    "tavily": ["search", "search_context"],
+#    "mattermost": ["post_message", "submit_task", ...]}
+
+manager.get_server_for_tool("search")  # → "tavily"
+manager.is_tool_available("github")   # → True/False
+```
+
+---
+
+## 📖 Notion 積極活用
+
+### v11.5 での役割変化
+
+| v11.4 (受動的) | v11.5 (能動的) |
+|---|---|
+| 手動で `save_knowledge_entry()` を呼ぶ | 全タスク完了後に **自動保存** |
+| タイトルのみ返す search_knowledge() | **本文全文**を取得できる `get_page_content()` |
+| ページ作成のみ | **既存ページの更新**にも対応 |
+| ルーターは Notion を参照しない | **家訓・直近タスクをルーター判断に注入** |
+
+### v11.5 新メソッド
+
+```python
+# LangGraph fetch_context ノードから呼ばれる
+context = await notion.get_routing_context()
+# → "【家訓】コストより品質を優先する...\n【直近タスク】- [軍師] git push..."
+
+# LangGraph persist_notion ノードから呼ばれる (fire-and-forget)
+page_id = await notion.auto_save_task_result(
+    task="Dockerfile を書いて",
+    result="FROM python:3.12...",
+    metadata={"route": "gunshi_pdca", "agent_role": "軍師", "execution_time": 18.3}
+)
+
+# 家訓ページを本文まで取得
+content = await notion.get_page_content(page_id)  # ブロック全文
+
+# 実行中タスクのステータスを更新
+await notion.update_entry(page_id, status="進行中")
+```
+
+### Notion に自動保存される情報
+
+| フィールド | 内容 |
+|---|---|
+| **Title** | `[エージェント役職] タスク先頭60文字` |
+| **Type** | `タスク完了` |
+| **Agent** | `軍師` / `家老-B` / `参謀` など |
+| **Tags** | 使用した MCP ツール名 |
+| **Body** | タスク全文 + 実行結果 + ルート・実行時間 |
+
+---
+
+## 💬 Mattermost 統合
+
+### 2コンポーネント構成
+
+```
+┌─────────────────────────────────────────────┐
+│  bushidan/mattermost_bot.py (Bot)           │
+│  ┌─────────────────────────────────────────┐│
+│  │ WebSocket @メンション受信               ││
+│  │ → SystemOrchestrator → 9層処理         ││
+│  │ → スレッドに返答 (受領通知→結果上書き)  ││
+│  └─────────────────────────────────────────┘│
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│  mcp/mattermost_mcp_server.py (MCP Server) │
+│  Bushidan AI エージェントが呼び出すツール群  │
+│  ┌─────────────────────────────────────────┐│
+│  │ Mattermost 操作 (7ツール)               ││
+│  │   post_message / search_messages        ││
+│  │   add_reaction / create_channel ...     ││
+│  │                                         ││
+│  │ 武士団連携 (3ツール)                    ││
+│  │   submit_task → 9層システムへ委譲       ││
+│  │   get_bushidan_status → 全層状態確認    ││
+│  │   report_agent_progress → 進捗報告      ││
+│  └─────────────────────────────────────────┘│
+└─────────────────────────────────────────────┘
+```
+
+### Bot コマンド
+
+| コマンド | 説明 |
+|---|---|
+| `@Bushidan <タスク>` | 9層システムにタスク投入 |
+| `@Bushidan !mode` | 現在のモード表示 |
+| `@Bushidan !mode battalion` | 大隊モード（全9層）に切替 |
+| `@Bushidan !status` | 全9層のオンライン状態表示 |
+| `@Bushidan !help` | ヘルプ表示 |
+
+### エージェント進捗報告（ASCII プログレスバー）
+
+```
+🧠 [軍師] task_abc123
+[████████████░░░░░░░░] 60%
+Plan フェーズ完了。参謀-A/B への Do フェーズを開始します。
+```
+
+### 環境変数
+
+```bash
+MATTERMOST_URL=chat.example.com
+MATTERMOST_TOKEN=<bot-access-token>
+MATTERMOST_PORT=443         # 省略可
+MATTERMOST_SCHEME=https     # 省略可
+```
+
+### 起動
+
+```bash
+# Bot 起動
+python -m bushidan.mattermost_bot
+
+# MCP サーバー起動 (stdio)
+python -m mcp.mattermost_mcp_server
+```
 
 ---
 
@@ -92,7 +278,7 @@ Simple     Medium      Complex     Strategic  Coding
 │ 👣 足軽（Ashigaru）- Smithery MCP × 10                        │
 │    AI: Sequential Thinking | 検索: Tavily, Exa               │
 │    操作: Playwright, Filesystem, Git | 記憶: Graph Memory     │
-│    DB: Prisma | 連携: Discord, Notion                         │
+│    DB: Prisma | 連携: Mattermost MCP, Notion, Discord        │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -267,8 +453,9 @@ PDCA Check フェーズ:
 | **データ** | Filesystem | ファイル操作 |
 | **データ** | Graph Memory | グラフ型記憶 |
 | **データ** | Prisma | DB操作 |
+| **連携** | Mattermost MCP | チャット連携・エージェント進捗報告 (v11.5) |
 | **連携** | Discord | チーム連携 |
-| **連携** | Notion | ドキュメント管理 |
+| **連携** | Notion | 知識ベース・自動タスク永続化 (v11.5 積極活用) |
 | **連携** | Git | バージョン管理 |
 
 ---
@@ -307,8 +494,9 @@ python main.py
 | `GEMINI_API_KEY` | 家老-A + 検校 (Gemini Flash Vision) | ~¥0.01/req |
 | `GROQ_API_KEY` | 家老-B (Llama 3.3 70B) | **無料** |
 | `TAVILY_API_KEY` | 足軽・Web検索 | 1,000/月 free |
+| `MATTERMOST_URL` + `MATTERMOST_TOKEN` | Mattermost Bot + MCP (v11.5) | 無料 |
 | `DISCORD_TOKEN` | Discord Bot (オプション) | 無料 |
-| `NOTION_TOKEN` | Notion連携 (オプション) | 無料 |
+| `NOTION_TOKEN` + `NOTION_DB_ID` | Notion 知識ベース (v11.5 積極活用) | 無料 |
 
 ### ローカルLLM（隠密・Nemotron-3-Nano）
 
@@ -384,12 +572,12 @@ python main.py
 
 | バージョン | 日付 | 主要変更 |
 |---|---|---|
+| **v11.5** | 2026-03-03 | 🆕 LangGraph × MCP × Notion 密結合・Mattermost Bot + MCP サーバー |
 | **v11.4** | 2026-03-03 | 🆕 脱中国企業 + 9層アーキテクチャ（大元帥・参謀A/B・家老A/B・隠密） |
 | **v10.1** | 2026-02-05 | 傭兵(Kimi K2.5) + Smithery MCP + 4層鉄壁チェーン |
 | **v10.0** | 2026-02-04 | 軍師(Gunshi)層追加・PDCA Engine・5層アーキテクチャ |
 | **v9.4** | 2026-02-01 | BDIフレームワーク全層統合・日本語ログ全面化 |
-| **v9.3.2** | 2025-01-31 | インテリジェント・ルーティング・Groq統合 |
-| **v9.3** | 2025-01-31 | 4段ハイブリッド・DSPy統合 |
+| **v9.3** | 2025-01-31 | インテリジェント・ルーティング・Groq統合 |
 
 ---
 
@@ -401,7 +589,7 @@ python main.py
 
 <div align="center">
 
-**🏯 西側連合 9層ハイブリッド × o3-mini PDCA × BDI形式推論 🏯**
+**🏯 西側連合 9層ハイブリッド × LangGraph MCP × Notion 積極活用 × o3-mini PDCA 🏯**
 
 **Generated with [Claude Code](https://claude.ai/code)**
 
