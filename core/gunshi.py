@@ -1,27 +1,26 @@
 """
-Bushidan Multi-Agent System v10 - 軍師 (Gunshi) PDCA Operation Layer
+Bushidan Multi-Agent System v11.4 - 軍師 (Gunshi) PDCA Operation Layer
 
-5層ハイブリッドアーキテクチャの作戦立案・実行監督層。
+8層ハイブリッドアーキテクチャの作戦立案・実行監督層。
 将軍の戦略的判断を受け、PDCAサイクルで複雑タスクを完遂する。
 
 PDCA Operation Cycle:
-  Plan  (作戦立案): 256Kコンテキストでタスク分析 → サブタスク分解
-  Do    (作戦実行): サブタスクを大将(Taisho)に委譲 → 並列実行
-  Check (戦果検証): 全実装結果を256Kで一括レビュー + 検校ビジュアル検証
+  Plan  (作戦立案): reasoning_effort=highでタスク分析 → サブタスク分解
+  Do    (作戦実行): サブタスクを参謀A/B(GPT-5/Grok)に委譲 → 並列実行
+  Check (戦果検証): 全実装結果を一括レビュー + 検校ビジュアル検証
   Act   (修正指示): 不合格サブタスクに修正指示 → 再実行 (最大1回)
 
-Temperature Strategy (各フェーズで最適化):
-  Plan:   0.3 (創造的だが正確な計画)
-  Do:     Taisho default (実装層に委任)
-  Check:  0.1 (厳密な検証、見逃し防止)
-  Act:    0.2 (精密な修正指示)
+Reasoning Effort Strategy (各フェーズで最適化):
+  Plan:   reasoning_effort="high" (正確かつ多角的な計画)
+  Do:     参謀A/B default (実装層に委任)
+  Check:  reasoning_effort="high" (厳密な検証、見逃し防止)
+  Act:    reasoning_effort="high" (精密な修正指示)
 
-Model: Qwen3-Coder-Next 80B-A3B (API)
-- 256K context: Plan全体とCheck全体で活用 (Taishoの4096制限を補完)
-- SWE-Bench 70.6%: Check精度に直結
-- Non-thinking mode: 低レイテンシ
+Model: o3-mini (reasoning_effort=high)
+- 推論特化モデル: Plan/Check/Actの精度に直結
+- reasoning_effort制御: temperatureではなくreasoning_effortで精度調整
 
-Position: 将軍 → 【軍師】 → 家老 → 大将 → 足軽
+Position: 大元帥 → 将軍 → 【軍師】→ 参謀A/B → 家老A/B → 検校 → 隠密 → 足軽
 """
 
 import asyncio
@@ -118,36 +117,36 @@ class Gunshi:
     軍師 (Gunshi) - PDCA作戦立案・実行監督エンジン
 
     ■ 問題認識:
-    Taisho (Local Qwen3 30B) は 4096 token しか見えない。
     複数ファイルにまたがる COMPLEX タスクでは整合性が保てない。
+    参謀に適切な粒度で委譲し、全体を俯瞰して検証する必要がある。
 
-    ■ 解決策: PDCA で Gunshi の 256K context を最大活用
-    Plan:  Gunshi が全体を俯瞰してサブタスクに分解 (各≤3000tok)
-    Do:    各サブタスクを Taisho に委譲 (4096 window に収まる)
-    Check: 全結果を Gunshi に戻して 256K で一括検証 (cross-file整合性)
+    ■ 解決策: PDCA で Gunshi (o3-mini) の推論能力を最大活用
+    Plan:  Gunshi が全体を俯瞰してサブタスクに分解 (各≤4000tok)
+    Do:    各サブタスクを参謀A(GPT-5)/参謀B(Grok) に委譲 → 並列実行
+    Check: 全結果を Gunshi に戻して一括検証 (cross-file整合性)
            + 検校(Kengyo)がUI関連タスクのビジュアル検証を実施
-    Act:   不合格に具体的修正指示 → Taisho が再実装 (最大1回)
+    Act:   不合格に具体的修正指示 → 参謀が再実装 (最大1回)
 
-    ■ Temperature 戦略:
-    Plan  = 0.3  (正確な分析、でも多角的な計画)
-    Check = 0.1  (見逃し防止、厳密判定)
-    Act   = 0.2  (正確な修正指示)
+    ■ Reasoning Effort 戦略 (o3-miniはtemperatureではなくreasoning_effortを使用):
+    Plan  = "high"  (正確な分析、多角的な計画)
+    Check = "high"  (見逃し防止、厳密判定)
+    Act   = "high"  (正確な修正指示)
 
     ■ 制約 (暴走防止):
     - サブタスク最大5個 (過度な分解は品質低下を招く)
     - 修正ループ最大1回 (無限ループ防止)
-    - サブタスク context ≤ 3000 tokens (Taisho の 4096 に収める)
+    - サブタスク context ≤ 4000 tokens (参謀のコンテキストに収める)
     """
 
-    VERSION = "10.0"
+    VERSION = "11.4"
     MAX_SUBTASKS = 5
     MAX_CORRECTION_LOOPS = 1
-    SUBTASK_TOKEN_LIMIT = 3000
+    SUBTASK_TOKEN_LIMIT = 4000
 
-    # Temperature per phase
-    TEMP_PLAN = 0.3
-    TEMP_CHECK = 0.1
-    TEMP_ACT = 0.2
+    # Reasoning effort per phase (o3-mini uses reasoning_effort instead of temperature)
+    REASONING_EFFORT_PLAN = "high"
+    REASONING_EFFORT_CHECK = "high"
+    REASONING_EFFORT_ACT = "high"
 
     def __init__(self, orchestrator):
         self.orchestrator = orchestrator
@@ -184,10 +183,10 @@ class Gunshi:
 
     async def initialize(self) -> None:
         """軍師の初期化"""
-        self.client = self.orchestrator.get_client("qwen3_coder_next")
+        self.client = self.orchestrator.get_client("o3mini")
 
         if self.client:
-            logger.info("🧠 軍師初期化完了 (Qwen3-Coder-Next API + PDCA Engine)")
+            logger.info("🧠 軍師初期化完了 (o3-mini reasoning_effort=high + PDCA Engine)")
             self.initialized = True
         else:
             logger.warning("⚠️ 軍師クライアント未設定 (複雑タスクは家老に直接委譲)")
@@ -381,8 +380,8 @@ class Gunshi:
         """
         Phase 1: PLAN (作戦立案 + タスク分解)
 
-        Gunshi API (256K context, temp=0.3) を使用。
-        タスクを分析し、Taisho の 4096 token window に収まる
+        Gunshi API (o3-mini, reasoning_effort=high) を使用。
+        タスクを分析し、参謀のコンテキストに収まる
         サブタスクに分解する。
 
         Returns:
@@ -431,7 +430,7 @@ class Gunshi:
         messages = [{"role": "user", "content": plan_prompt}]
         result_text = await self.client.generate(
             messages=messages,
-            temperature=self.TEMP_PLAN,
+            reasoning_effort=self.REASONING_EFFORT_PLAN,
             max_tokens=4096
         )
 
@@ -468,13 +467,11 @@ class Gunshi:
         Phase 2: DO (作戦実行)
 
         サブタスクの実行先:
-        - Kimi K2.5 有効時: implement_subtasks_parallel() で真の並列実行
-          (クラウド API なので asyncio.gather が実際に並列動作)
-        - Kimi 無効 / Taisho のみ: Taisho に委譲
-          (llama.cpp シングルスレッドのため実質直列)
+        - 参謀A (GPT-5) / 参謀B (Grok): クラウドAPIで真の並列実行
+        - フォールバック: GPT-5 → Grok → Gemini Flash
 
         依存関係処理:
-        - 独立タスク → 並列実行
+        - 独立タスク → 参謀A/Bに振り分けて並列実行
         - 依存タスク → 依存解決後に順次実行
         """
         # 依存関係で分類
@@ -483,12 +480,15 @@ class Gunshi:
 
         # 独立タスクの並列実行
         if independent:
-            kimi_client = self._get_kimi_client()
-            if kimi_client and len(independent) > 1:
-                # Kimi K2.5 で真の並列実行
-                await self._execute_parallel_with_kimi(independent, kimi_client)
+            sanbo_a = self.orchestrator.get_client("gpt5")
+            sanbo_b = self.orchestrator.get_client("grok")
+            if (sanbo_a or sanbo_b) and len(independent) > 1:
+                # 参謀A/B で真の並列実行
+                await self._execute_parallel_with_sanbo(
+                    independent, sanbo_a, sanbo_b
+                )
             else:
-                # Taisho 経由 (4層フォールバック)
+                # 単一タスクまたは参謀不在 → 個別実行
                 await asyncio.gather(
                     *[self._execute_single_subtask(st) for st in independent],
                     return_exceptions=True
@@ -512,73 +512,83 @@ class Gunshi:
         self._stats["subtasks_delegated"] += len(subtasks)
         return subtasks
 
-    def _get_kimi_client(self):
-        """Kimi K2.5 クライアント取得 (Taisho 経由)"""
-        taisho = self.orchestrator.taisho
-        if taisho and hasattr(taisho, 'kimi_client') and taisho.kimi_client:
-            return taisho.kimi_client
-        return None
-
-    async def _execute_parallel_with_kimi(
+    async def _execute_parallel_with_sanbo(
         self,
         subtasks: List[SubTask],
-        kimi_client
+        sanbo_a,
+        sanbo_b
     ) -> None:
         """
-        Kimi K2.5 で複数サブタスクを真に並列実行
+        参謀A (GPT-5) / 参謀B (Grok) で複数サブタスクを真に並列実行
 
-        llama.cpp はシングルスレッドで asyncio.gather が実質直列だが、
-        Kimi API は複数リクエストを真に並列処理できる。
+        クラウド API なので asyncio.gather が実際に並列動作する。
+        サブタスクを参謀A/Bに交互に振り分けて負荷分散する。
         """
         logger.info(
-            f"⚔️ Kimi K2.5 並列実行: {len(subtasks)} サブタスク"
+            f"⚔️ 参謀A/B 並列実行: {len(subtasks)} サブタスク"
         )
 
-        # SubTask → Kimi API 入力形式に変換
-        kimi_tasks = []
-        for st in subtasks:
+        start_time = asyncio.get_event_loop().time()
+
+        async def _execute_with_client(st: SubTask, client, client_name: str):
+            """指定クライアントでサブタスクを実行"""
             prompt = st.description
             if st.focused_context:
                 prompt = (
                     f"## コンテキスト\n{st.focused_context}\n\n"
                     f"## タスク\n{st.description}"
                 )
-            kimi_tasks.append({
-                "id": st.id,
-                "description": prompt,
-                "context": st.focused_context or "",
-            })
-
-        start_time = asyncio.get_event_loop().time()
-        results = await kimi_client.implement_subtasks_parallel(
-            kimi_tasks,
-            max_tokens=8192,
-            temperature=0.7,
-            max_concurrency=4,
-        )
-
-        # 結果を SubTask に反映
-        result_map = {r["id"]: r for r in results}
-        for st in subtasks:
-            r = result_map.get(st.id)
-            if r and r["status"] == "completed":
-                st.result = r["result"]
-                st.status = "completed"
-                st.executed_by = "kimi_k2/parallel"
-                st.execution_time = r.get("time", 0.0)
-            elif r:
-                # Kimi 失敗 → Taisho にフォールバック
-                logger.warning(
-                    f"⚠️ Kimi failed for {st.id}, falling back to Taisho"
+            try:
+                st.status = "running"
+                task_start = asyncio.get_event_loop().time()
+                messages = [{
+                    "role": "user",
+                    "content": f"以下のタスクを実装してください。\n\n{prompt}"
+                }]
+                result_text = await client.generate(
+                    messages=messages,
+                    max_tokens=8192
                 )
-                await self._execute_single_subtask(st)
+                st.result = result_text
+                st.status = "completed"
+                st.executed_by = f"sanbo/{client_name}"
+                st.execution_time = (
+                    asyncio.get_event_loop().time() - task_start
+                )
+            except Exception as e:
+                logger.warning(
+                    f"⚠️ 参謀({client_name}) failed for {st.id}: {e}"
+                )
+                st.status = "failed"
+                st.result = str(e)
+                st.executed_by = f"sanbo/{client_name}/failed"
+
+        # サブタスクを参謀A/Bに交互に振り分け
+        tasks = []
+        for i, st in enumerate(subtasks):
+            if i % 2 == 0 and sanbo_a:
+                tasks.append(_execute_with_client(st, sanbo_a, "gpt5"))
+            elif sanbo_b:
+                tasks.append(_execute_with_client(st, sanbo_b, "grok"))
+            elif sanbo_a:
+                tasks.append(_execute_with_client(st, sanbo_a, "gpt5"))
             else:
                 st.status = "failed"
-                st.result = "Kimi result missing"
+                st.result = "参謀クライアント不在"
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 失敗したサブタスクをフォールバック実行
+        for st in subtasks:
+            if st.status == "failed":
+                logger.warning(
+                    f"⚠️ 参謀失敗 → フォールバック実行: {st.id}"
+                )
+                await self._execute_single_subtask(st)
 
         total_time = asyncio.get_event_loop().time() - start_time
         logger.info(
-            f"✅ Kimi 並列実行完了: {total_time:.1f}s "
+            f"✅ 参謀 並列実行完了: {total_time:.1f}s "
             f"({len([s for s in subtasks if s.status == 'completed'])}"
             f"/{len(subtasks)} 成功)"
         )
@@ -587,9 +597,10 @@ class Gunshi:
         """
         単一サブタスクの実行
 
-        実行先:
-        - Taisho 有効時: Taisho に委譲 (内部4層フォールバック: Kimi→Local→Kagemusha→Gemini)
-        - Taisho 未初期化時: Gunshi API で自力実装 (緊急パス)
+        フォールバックチェーン:
+        1. 参謀A (GPT-5)
+        2. 参謀B (Grok)
+        3. Gemini Flash (緊急パス)
         """
         subtask.status = "running"
         start_time = asyncio.get_event_loop().time()
@@ -602,59 +613,60 @@ class Gunshi:
                 f"## タスク\n{subtask.description}"
             )
 
-        taisho = self.orchestrator.taisho
-        if taisho:
-            # Taisho に委譲 (内部で Kimi→Local→Kagemusha→Gemini 4層フォールバック)
+        messages = [{
+            "role": "user",
+            "content": f"以下のタスクを実装してください。\n\n{impl_prompt}"
+        }]
+
+        # フォールバックチェーン: GPT-5 → Grok → Gemini Flash
+        fallback_chain = [
+            ("gpt5", "参謀A/GPT-5"),
+            ("grok", "参謀B/Grok"),
+            ("gemini_flash", "Gemini Flash"),
+        ]
+
+        for client_key, client_label in fallback_chain:
+            client = self.orchestrator.get_client(client_key)
+            if not client:
+                continue
             try:
-                from core.taisho import ImplementationTask, ImplementationMode
-                task = ImplementationTask(
-                    content=impl_prompt,
-                    mode=ImplementationMode.STANDARD,
-                    context={"from_gunshi": True, "subtask_id": subtask.id}
-                )
-                result = await taisho.execute_implementation(task)
-
-                if result.get("status") == "completed":
-                    subtask.result = result.get("result", "")
-                    subtask.status = "completed"
-                    fallback = result.get("fallback_status", "unknown")
-                    subtask.executed_by = f"taisho/{fallback}"
-                    subtask.execution_time = (
-                        asyncio.get_event_loop().time() - start_time
-                    )
-                    return
-
-                # Taisho が completed 以外を返した (4層全滅)
-                subtask.status = "failed"
-                subtask.result = result.get("error", "Taisho 4層フォールバック全滅")
-                subtask.executed_by = "taisho/exhausted"
-
-            except Exception as e:
-                logger.error(f"❌ Taisho委譲失敗 ({subtask.id}): {e}")
-                subtask.status = "failed"
-                subtask.result = str(e)
-                subtask.executed_by = "taisho/exception"
-        else:
-            # Taisho 未初期化 → Gunshi API で自力実装 (緊急パス)
-            logger.warning(f"⚠️ Taisho未初期化 → Gunshi API自力実装 ({subtask.id})")
-            try:
-                messages = [{
-                    "role": "user",
-                    "content": f"以下のタスクを実装してください。\n\n{impl_prompt}"
-                }]
-                result_text = await self.client.generate(
+                result_text = await client.generate(
                     messages=messages,
-                    temperature=0.4,
-                    max_tokens=4096
+                    max_tokens=8192
                 )
                 subtask.result = result_text
                 subtask.status = "completed"
-                subtask.executed_by = "gunshi_api"
+                subtask.executed_by = f"sanbo/{client_key}"
+                subtask.execution_time = (
+                    asyncio.get_event_loop().time() - start_time
+                )
+                return
             except Exception as e:
-                logger.error(f"❌ Gunshi API自力実装も失敗 ({subtask.id}): {e}")
-                subtask.status = "failed"
-                subtask.result = str(e)
-                subtask.executed_by = "gunshi_api/failed"
+                logger.warning(
+                    f"⚠️ {client_label} 実行失敗 ({subtask.id}): {e}"
+                )
+                continue
+
+        # 全参謀失敗 → Gunshi API で自力実装 (緊急パス)
+        logger.warning(
+            f"⚠️ 参謀全滅 → Gunshi API自力実装 ({subtask.id})"
+        )
+        try:
+            result_text = await self.client.generate(
+                messages=messages,
+                reasoning_effort=self.REASONING_EFFORT_ACT,
+                max_tokens=4096
+            )
+            subtask.result = result_text
+            subtask.status = "completed"
+            subtask.executed_by = "gunshi_api"
+        except Exception as e:
+            logger.error(
+                f"❌ Gunshi API自力実装も失敗 ({subtask.id}): {e}"
+            )
+            subtask.status = "failed"
+            subtask.result = str(e)
+            subtask.executed_by = "gunshi_api/failed"
 
         subtask.execution_time = (
             asyncio.get_event_loop().time() - start_time
@@ -671,12 +683,11 @@ class Gunshi:
         """
         Phase 3: CHECK (戦果検証)
 
-        Gunshi API (256K context, temp=0.1) で全結果を一括レビュー。
-        256K window に全サブタスク結果を投入し、
-        cross-file 整合性・品質を検証する。
+        Gunshi API (o3-mini, reasoning_effort=high) で全結果を一括レビュー。
+        全サブタスク結果を投入し、cross-file 整合性・品質を検証する。
 
         これが Gunshi の最大の価値:
-        Taisho は 4096 token しか見えないが、
+        参謀は個別タスクしか見えないが、
         Gunshi は全サブタスクの結果を同時に見て整合性を確認できる。
         """
         # 全結果を統合して検証プロンプトを構築
@@ -725,7 +736,7 @@ class Gunshi:
         messages = [{"role": "user", "content": verify_prompt}]
         result_text = await self.client.generate(
             messages=messages,
-            temperature=self.TEMP_CHECK,
+            reasoning_effort=self.REASONING_EFFORT_CHECK,
             max_tokens=4096
         )
 
@@ -840,7 +851,7 @@ class Gunshi:
         Phase 4: ACT (修正指示 → 再実行)
 
         不合格サブタスクに対して、Gunshi が具体的な修正指示を付けて
-        Taisho に再実装させる。最大1ループ。
+        参謀に再実装させる。最大1ループ。
         """
         corrections = 0
         verdict_map = {v.subtask_id: v for v in verdicts}
