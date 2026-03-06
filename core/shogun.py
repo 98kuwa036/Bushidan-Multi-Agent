@@ -1,15 +1,17 @@
 """
-Bushidan Multi-Agent System v10 - Shogun (将軍: 最高司令官)
+Bushidan Multi-Agent System v11.4 - Shogun (将軍: 最高司令官)
 
-将軍は武士団システムの最高意思決定者として、Claude Sonnet 4.5を使用し、
-BDIフレームワークによる形式的推論とインテリジェントルーティングを統合する。
+将軍は武士団システムの最高意思決定者として、Claude Sonnet 4.6を使用し、
+BDIフレームワークによる形式的推論と9層インテリジェントルーティングを統合する。
 
-v10 機能強化:
-- インテリジェントルーター統合による最適なタスク委譲
+v11.4 機能強化:
+- 9層インテリジェントルーター統合による最適なタスク委譲
 - プロンプトキャッシングによる90%コスト削減
 - ルーティングヒューリスティクスによる複雑度評価
-- 省電力最適化（簡単なタスクでQwenを起動しない）
+- 省電力最適化（簡単なタスクはGroq即応）
 - BDIフレームワーク統合による形式的マルチエージェント推論
+- 参謀（GPT-5/Grok）による高度な戦術委譲
+- 隠密（Nemotron）による機密タスクローカル処理
 """
 
 import asyncio
@@ -33,11 +35,13 @@ logger = get_logger(__name__)
 
 
 class TaskComplexity(Enum):
-    """Task complexity levels for delegation decisions (v9.3.2 timing)"""
-    SIMPLE = "simple"      # 2s - Groq handles instantly
-    MEDIUM = "medium"      # 12s - Local Qwen3 → Cloud fallback
-    COMPLEX = "complex"    # 28s - 4-tier fallback chain
-    STRATEGIC = "strategic" # 45s - Shogun handles directly
+    """Task complexity levels for delegation decisions (v11.4 routing)"""
+    SIMPLE = "simple"          # 2s - Groq handles instantly
+    MEDIUM = "medium"          # 8-12s - Grok (参謀-B)
+    COMPLEX = "complex"        # 20-30s - o3-mini PDCA
+    STRATEGIC = "strategic"    # 45s - Opus 4.5
+    CODING = "coding"          # 15-30s - Sonnet 4.6
+    CONFIDENTIAL = "confidential"  # 15-25s - Nemotron Local
 
 
 class ReviewLevel(Enum):
@@ -59,31 +63,33 @@ class Task:
 
 class Shogun:
     """
-    将軍 (Shogun) - 戦略的意思決定層 v10
+    将軍 (Shogun) - 戦略的意思決定層 v11.4
 
     武士団システムの最高司令官として、以下の責務を担う:
 
     主要責務:
     1. タスク受付とインテリジェント複雑度評価
-    2. IntelligentRouterによるルーティング決定
+    2. IntelligentRouterによる9層ルーティング決定
     3. 戦略的意思決定（高レベル判断）
     4. 家老（Karo）への戦術的委譲
-    5. 最終品質保証と承認
-    6. 倫理・セキュリティ監視
+    5. 参謀（Sanbo）への高度タスク委譲
+    6. 最終品質保証と承認
+    7. 倫理・セキュリティ監視
 
     BDI統合:
     - 信念基盤 (BeliefBase): システム状態とクライアント可用性
     - 願望集合 (DesireSet): 品質維持、コスト最適化、セキュリティ確保
     - 意図スタック (IntentionStack): コミットされたアクション
 
-    v10 機能:
+    v11.4 機能:
     - 軍師 PDCA Engine (COMPLEX→GUNSHI ルート)
-    - 省電力最適化付きインテリジェントルーティング
+    - 省電力最適化付き9層インテリジェントルーティング
     - 90%コスト削減のプロンプトキャッシング
-    - 4層フォールバックチェーン管理（Kimi→Local→Kagemusha→Gemini）
+    - 参謀-A (GPT-5) / 参謀-B (Grok) による戦術委譲
+    - 隠密 (Nemotron) による機密タスクローカル処理
     """
 
-    VERSION = "10.1"
+    VERSION = "11.4"
 
     # Action keywords that require actual execution, not just explanation
     _ACTION_KEYWORDS = (
@@ -213,7 +219,7 @@ class Shogun:
 
     async def process_task(self, task: Task) -> Dict[str, Any]:
         """
-        メインタスク処理パイプライン（v9.3.2 BDI統合）
+        メインタスク処理パイプライン（v11.4 BDI統合）
 
         BDI統合フロー:
         1. 知覚 (Perceive): タスクと環境から信念を更新
@@ -252,7 +258,7 @@ class Shogun:
                     self.intention_stack.adopt_intention(intention)
                     self.intention_stack.update_status(intention.id, "executing")
 
-            # BDI Step 4: 実行 - 複雑度に基づく処理
+            # BDI Step 4: 実行 - 複雑度に基づく9層ルーティング処理
             if task.complexity == TaskComplexity.STRATEGIC:
                 logger.info("⚔️ 将軍自ら出陣。戦略的判断を行う。")
                 result = await self._handle_strategic_task(task)
@@ -265,8 +271,18 @@ class Shogun:
                 # Only use Groq for simple Q&A tasks, NOT for action tasks
                 logger.info("⚡ 簡易任務 → Groq即応")
                 result = await self._handle_simple_task_groq(task)
+            elif task.complexity == TaskComplexity.CODING:
+                # コーディングタスク → 参謀経由で Sonnet 4.6 処理
+                logger.info("💻 コーディング任務 → 参謀（Sonnet 4.6）")
+                result = await self.karo.execute_task_with_routing(task, routing_decision)
+                result = await self._adaptive_review(task, result)
+            elif task.complexity == TaskComplexity.CONFIDENTIAL:
+                # 機密タスク → 隠密（Nemotron）ローカル処理
+                logger.info("🔒 機密任務 → 隠密（Nemotron Local）")
+                result = await self.karo.execute_task_with_routing(task, routing_decision)
+                result = await self._adaptive_review(task, result)
             else:
-                logger.info(f"🚩 家老へ采配。複雑度: {task.complexity.value}")
+                logger.info(f"🚩 参謀へ采配。複雑度: {task.complexity.value}")
                 result = await self.karo.execute_task_with_routing(task, routing_decision)
                 result = await self._adaptive_review(task, result)
 
@@ -293,7 +309,7 @@ class Shogun:
 
     async def _assess_complexity_v932(self, task: Task) -> TaskComplexity:
         """
-        Assess task complexity using v9.3.2 Intelligent Router heuristics
+        Assess task complexity using v11.4 9-tier Intelligent Router heuristics
 
         Priority order:
         1. Use router heuristics (fast, no API call)
@@ -306,13 +322,18 @@ class Shogun:
                 from core.intelligent_router import TaskComplexity as RouterComplexity
                 router_complexity = self.router.judge_complexity(task.content, task.context)
 
-                # Map router complexity to Shogun complexity
+                # Map router complexity to Shogun complexity (9-tier routing)
                 complexity_map = {
                     RouterComplexity.SIMPLE: TaskComplexity.SIMPLE,
                     RouterComplexity.MEDIUM: TaskComplexity.MEDIUM,
                     RouterComplexity.COMPLEX: TaskComplexity.COMPLEX,
-                    RouterComplexity.STRATEGIC: TaskComplexity.STRATEGIC
+                    RouterComplexity.STRATEGIC: TaskComplexity.STRATEGIC,
                 }
+                # Handle extended router complexity levels if available
+                if hasattr(RouterComplexity, 'CODING'):
+                    complexity_map[RouterComplexity.CODING] = TaskComplexity.CODING
+                if hasattr(RouterComplexity, 'CONFIDENTIAL'):
+                    complexity_map[RouterComplexity.CONFIDENTIAL] = TaskComplexity.CONFIDENTIAL
                 result = complexity_map.get(router_complexity, TaskComplexity.MEDIUM)
                 logger.info(f"📊 Router heuristic complexity: {result.value}")
                 return result
@@ -337,11 +358,13 @@ Task: {task.content}
 
 Classify as:
 - SIMPLE: Questions, lookups, simple queries (<50 chars, no code needed)
-- MEDIUM: Standard implementation (code keywords, single file)
+- MEDIUM: Standard implementation (single file, moderate complexity)
 - COMPLEX: Multi-component systems (multiple files, architecture)
 - STRATEGIC: High-level decisions, technology choices
+- CODING: Pure coding tasks (implementation, debugging, refactoring)
+- CONFIDENTIAL: Tasks requiring local-only processing (sensitive data)
 
-Respond with just: SIMPLE, MEDIUM, COMPLEX, or STRATEGIC
+Respond with just: SIMPLE, MEDIUM, COMPLEX, STRATEGIC, CODING, or CONFIDENTIAL
 """
 
         try:
@@ -369,13 +392,18 @@ Respond with just: SIMPLE, MEDIUM, COMPLEX, or STRATEGIC
         try:
             from core.intelligent_router import TaskComplexity as RouterComplexity
 
-            # Map Shogun complexity to Router complexity
+            # Map Shogun complexity to Router complexity (9-tier routing)
             complexity_map = {
                 TaskComplexity.SIMPLE: RouterComplexity.SIMPLE,
                 TaskComplexity.MEDIUM: RouterComplexity.MEDIUM,
                 TaskComplexity.COMPLEX: RouterComplexity.COMPLEX,
-                TaskComplexity.STRATEGIC: RouterComplexity.STRATEGIC
+                TaskComplexity.STRATEGIC: RouterComplexity.STRATEGIC,
             }
+            # Handle extended complexity levels if router supports them
+            if hasattr(RouterComplexity, 'CODING'):
+                complexity_map[TaskComplexity.CODING] = RouterComplexity.CODING
+            if hasattr(RouterComplexity, 'CONFIDENTIAL'):
+                complexity_map[TaskComplexity.CONFIDENTIAL] = RouterComplexity.CONFIDENTIAL
             router_complexity = complexity_map.get(task.complexity, RouterComplexity.MEDIUM)
 
             return self.router.determine_route(router_complexity, task.context)
@@ -391,7 +419,7 @@ Respond with just: SIMPLE, MEDIUM, COMPLEX, or STRATEGIC
         利点:
         - 300-500 tok/s（10-20倍高速）
         - 無料枠（¥0）
-        - 省電力（Qwenを起動しない）
+        - 省電力（軽量タスクを即時処理）
         """
         groq_client = self.orchestrator.get_client("groq")
         if not groq_client:
@@ -532,8 +560,12 @@ Provide a comprehensive strategic response.
             except Exception as e:
                 logger.warning(f"⚠️ Risk level check failed: {e}")
 
-        # Complex tasks get detailed review
-        if task.complexity == TaskComplexity.COMPLEX:
+        # Complex and Coding tasks get detailed review
+        if task.complexity in [TaskComplexity.COMPLEX, TaskComplexity.CODING]:
+            return ReviewLevel.DETAILED
+
+        # Confidential tasks get detailed review (security-sensitive)
+        if task.complexity == TaskComplexity.CONFIDENTIAL:
             return ReviewLevel.DETAILED
 
         # Simple/Medium get basic review
@@ -695,7 +727,7 @@ Respond with "APPROVED" if acceptable, otherwise provide brief feedback.
         if not self.memory_mcp:
             return
 
-        if task.complexity not in [TaskComplexity.COMPLEX, TaskComplexity.STRATEGIC]:
+        if task.complexity not in [TaskComplexity.COMPLEX, TaskComplexity.STRATEGIC, TaskComplexity.CODING, TaskComplexity.CONFIDENTIAL]:
             return
 
         decision_log = {
@@ -964,17 +996,21 @@ Respond with "APPROVED" if acceptable, otherwise provide brief feedback.
 
         # Adjust priorities based on task characteristics
         for desire in feasible:
-            # Security is always top priority for strategic tasks
-            if complexity == "strategic" and desire.id == "ensure_security":
+            # Security is always top priority for strategic and confidential tasks
+            if complexity in ["strategic", "confidential"] and desire.id == "ensure_security":
                 desire.priority = 1.0
 
-            # Quality is critical for complex tasks
-            if complexity in ["complex", "strategic"] and desire.id == "maintain_quality":
+            # Quality is critical for complex and coding tasks
+            if complexity in ["complex", "strategic", "coding"] and desire.id == "maintain_quality":
                 desire.priority = 0.95
 
             # Cost optimization matters more for simple tasks
             if complexity == "simple" and desire.id == "optimize_cost":
                 desire.priority = 0.9
+
+            # Security is paramount for confidential tasks
+            if complexity == "confidential" and desire.id == "ensure_security":
+                desire.priority = 1.0
 
         # Select highest priority feasible desire
         selected = sorted(
@@ -1005,8 +1041,14 @@ Respond with "APPROVED" if acceptable, otherwise provide brief feedback.
                     {"action": "handle_strategic", "agent": "shogun"},
                     {"action": "opus_review", "agent": "opus"}
                 ]
-            elif complexity == "complex":
+            elif complexity in ["complex", "coding"]:
                 plan = [
+                    {"action": "delegate_to_karo", "agent": "karo"},
+                    {"action": "detailed_review", "agent": "shogun"}
+                ]
+            elif complexity == "confidential":
+                plan = [
+                    {"action": "security_assessment", "agent": "shogun"},
                     {"action": "delegate_to_karo", "agent": "karo"},
                     {"action": "detailed_review", "agent": "shogun"}
                 ]

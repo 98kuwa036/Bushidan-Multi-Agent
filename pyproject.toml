@@ -4,8 +4,8 @@ build-backend = "setuptools.backends._legacy:_Backend"
 
 [project]
 name = "bushidan-multi-agent"
-version = "10.1"
-description = "武士団マルチエージェントシステム v10.1: 傭兵(Kimi K2.5) + 軍師(Gunshi) PDCA Engine + Smithery MCP + 5層ハイブリッドアーキテクチャ"
+version = "11.4"
+description = "武士団マルチエージェントシステム v11.4: 脱中国企業・9層ハイブリッドアーキテクチャ + o3-mini PDCA + BDI Framework"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -20,8 +20,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-cloud = ["anthropic>=0.40.0"]
-slack = ["slack-sdk>=3.30.0"]
+cloud = ["anthropic>=0.40.0", "openai>=1.50.0"]
 groq = ["groq>=0.4.1"]
 notion = ["notion-client>=2.2.1"]
 rag = ["qdrant-client>=1.7.0", "sentence-transformers>=2.2.2"]
@@ -30,7 +29,7 @@ gemini = ["google-generativeai>=0.8.0"]
 dev = ["pytest", "pytest-asyncio", "ruff", "black", "mypy"]
 all = [
     "anthropic>=0.40.0",
-    "slack-sdk>=3.30.0",
+    "openai>=1.50.0",
     "groq>=0.4.1",
     "notion-client>=2.2.1",
     "qdrant-client>=1.7.0",

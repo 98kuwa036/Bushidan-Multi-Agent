@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """
-Bushidan Multi-Agent System v10.1 - Main Entry Point
+Bushidan Multi-Agent System v11.4 - Main Entry Point
 
-武士団マルチエージェントシステム v10.1
+武士団マルチエージェントシステム v11.4
+脱中国企業・9層ハイブリッドアーキテクチャ
 Universal Multi-LLM Framework based on Samurai hierarchy.
-5-Tier Hybrid Architecture with Kimi K2.5 + PDCA Engine + Smithery MCP + BDI Framework.
 
-v10.1 Features:
-- 傭兵 (Kimi K2.5): 128K context, 並列サブタスク実行, マルチモーダル
-- 検校 (Kengyo): ビジュアル・デバッガー (Kimi Vision + Playwright MCP)
-- 軍師 (Gunshi) 層: Qwen3-Coder-Next 80B API (256K context, PDCA Engine)
-- 4層フォールバックチェーン: Kimi → Local Qwen3 → Kagemusha → Gemini 3 Flash
-- Smithery MCP 管理: Sequential Thinking, Playwright, Exa, Graph Memory, Prisma
-- BDI Framework integration (Belief-Desire-Intention)
-- Intelligent Router for optimal task delegation
-- Prompt Caching for 90% cost reduction
+v11.4 Features:
+- 脱中国企業: Alibaba/Qwen/Kimi/Moonshot 全排除
+- 大元帥 (Daigensui): Claude Opus 4.5 - 最高難度・戦略設計
+- 将軍 (Shogun): Claude Sonnet 4.6 - 高難度コーディング
+- 軍師 (Gunshi): o3-mini (high) - 推論・設計・PDCA
+- 参謀-A (Sanbo-A): GPT-5 - 汎用コーディング
+- 参謀-B (Sanbo-B): Grok-code-fast-1 - 実装・バグ修正・高速
+- 家老-A (Karo-A): Gemini Flash - 軽量タスク
+- 家老-B (Karo-B): Llama 3.3 70B (Groq) - アルゴリズム特化
+- 検校 (Kengyo): Gemini Flash Vision - マルチモーダル
+- 隠密 (Onmitsu): Nemotron-3-Nano (Local) - 機密・超長文
 """
 
 import asyncio
@@ -29,78 +31,80 @@ from utils.config import load_config
 from utils.logger import setup_logger
 
 
-VERSION = "10.1"
+VERSION = "11.4"
 
 
 def print_banner() -> None:
-    """Print Bushidan v10.1 startup banner"""
+    """Print Bushidan v11.4 startup banner"""
 
     banner = f"""
 ╔══════════════════════════════════════════════════════════════╗
-║     🏯 武士団マルチエージェントシステム v{VERSION}               ║
-║     "Universal Multi-LLM Framework + Kimi + PDCA + BDI"     ║
+║     武士団マルチエージェントシステム v{VERSION}                 ║
+║     "脱中国企業・9層ハイブリッドアーキテクチャ + PDCA + BDI"   ║
 ╠══════════════════════════════════════════════════════════════╣
-║  5層階層 + 傭兵:                                              ║
-║    🎌 将軍 (Shogun)   - Claude Sonnet + Opus + BDI          ║
-║    🧠 軍師 (Gunshi)   - Qwen3-Coder-Next 80B + PDCA        ║
-║    👔 家老 (Karo)     - Groq + Gemini 3.0 + BDI             ║
-║    ⚔️ 大将 (Taisho)   - 4層鉄壁チェーン + BDI               ║
-║    🗡️ 傭兵 (Kimi K2.5) - 128K + 並列実行 + Vision          ║
-║    👁️ 検校 (Kengyo)    - ビジュアル・デバッガー              ║
-║    👣 足軽 (Ashigaru) - Smithery MCP × 10                   ║
+║  9層階層:                                                     ║
+║    大元帥 (Daigensui)  - Claude Opus 4.5    最高難度・戦略   ║
+║    将軍   (Shogun)     - Claude Sonnet 4.6  高難度コーディング║
+║    軍師   (Gunshi)     - o3-mini (high)     推論・設計・PDCA ║
+║    参謀-A (Sanbo-A)    - GPT-5              汎用コーディング ║
+║    参謀-B (Sanbo-B)    - Grok-code-fast-1   実装・高速       ║
+║    家老-A (Karo-A)     - Gemini Flash       軽量タスク       ║
+║    家老-B (Karo-B)     - Llama 3.3 70B      アルゴリズム特化 ║
+║    検校   (Kengyo)     - Gemini Flash Vision マルチモーダル  ║
+║    隠密   (Onmitsu)    - Nemotron-3-Nano    機密・超長文     ║
 ╠══════════════════════════════════════════════════════════════╣
-║  v10.1 新機能:                                                ║
-║    🗡️ Kimi K2.5 傭兵 (128K, 真の並列サブタスク実行)         ║
-║    👁️ 検校 Kengyo (Kimi Vision + Playwright ビジュアル検証)  ║
-║    🧠 PDCA Engine (Plan→Do(Kimi並列)→Check(+検校)→Act)      ║
-║    🔗 4-tier Fallback (Kimi→Qwen3→Kagemusha→Gemini)        ║
-║    📦 Smithery MCP (Playwright, Exa, Graph Memory, Prisma)  ║
+║  v11.4 新機能:                                                ║
+║    脱中国企業: Alibaba/Qwen/Kimi/Moonshot 全排除             ║
+║    大元帥新設: Claude Opus 4.5 (最高権限)                     ║
+║    参謀新設: GPT-5 + Grok-code-fast-1 (実装二刀流)           ║
+║    隠密新設: Nemotron-3-Nano (ローカル機密処理)              ║
+║    2台体制: ProDesk(LLM専用) + EliteDesk(本陣)               ║
 ╚══════════════════════════════════════════════════════════════╝
 """
     print(banner)
 
 
 async def main() -> None:
-    """Main entry point for Bushidan v10."""
+    """Main entry point for Bushidan v11.4."""
 
     # Setup logging
     logger = setup_logger(f"bushidan_v{VERSION}")
     print_banner()
-    logger.info(f"🏯 Bushidan Multi-Agent System v{VERSION} starting...")
+    logger.info(f"Bushidan Multi-Agent System v{VERSION} starting...")
     logging.getLogger().setLevel(logging.DEBUG)
-    
+
     orchestrator = None
     shogun = None
 
     try:
         # Load configuration
-        logger.info("📝 Loading configuration...")
+        logger.info("Loading configuration...")
         config = load_config()
 
         # Initialize System Orchestrator
-        logger.info("🔧 Initializing System Orchestrator...")
+        logger.info("Initializing System Orchestrator...")
         orchestrator = SystemOrchestrator(config)
         await orchestrator.initialize()
 
-        # Initialize Shogun (Strategic Layer)
-        logger.info("🎌 Initializing Shogun (Strategic Layer)...")
+        # Initialize Shogun (High-Difficulty Coding Layer)
+        logger.info("Initializing Shogun (Coding Layer)...")
         shogun = Shogun(orchestrator)
         await shogun.initialize()
 
         # Print component status
         _print_component_status(orchestrator)
 
-        logger.info("✅ All systems initialized successfully")
-        logger.info("🎌 将軍システム v{} 準備完了 - Ready for commands".format(VERSION))
+        logger.info("All systems initialized successfully")
+        logger.info("v{} Ready for commands".format(VERSION))
         logger.info("-" * 60)
 
         # Start main event loop
         await shogun.start_service()
 
     except KeyboardInterrupt:
-        logger.info("📴 Shutting down gracefully...")
+        logger.info("Shutting down gracefully...")
     except Exception as e:
-        logger.error(f"❌ Critical error: {e}")
+        logger.error(f"Critical error: {e}")
         raise
     finally:
         # Print final statistics
@@ -108,13 +112,13 @@ async def main() -> None:
             try:
                 _print_final_statistics(shogun, orchestrator)
             except Exception as e:
-                logger.warning(f"⚠️ Could not print final statistics: {e}")
+                logger.warning(f"Could not print final statistics: {e}")
 
         # Shutdown orchestrator
         if orchestrator:
             await orchestrator.shutdown()
 
-        logger.info(f"🏯 Bushidan v{VERSION} shutdown complete")
+        logger.info(f"Bushidan v{VERSION} shutdown complete")
 
 
 def _print_component_status(orchestrator: SystemOrchestrator) -> None:
@@ -126,43 +130,44 @@ def _print_component_status(orchestrator: SystemOrchestrator) -> None:
 
     # AI Clients
     clients = {
-        "Claude (Cached)": "claude_cached",
-        "Qwen3-Coder-Next (Gunshi)": "qwen3_coder_next",
-        "Kimi K2.5 (Yohei)": "kimi_k2",
-        "Groq": "groq",
-        "Gemini 3.0 Flash": "gemini3",
-        "Local Qwen3": "qwen3",
-        "Kagemusha (Cloud Qwen3)": "alibaba_qwen",
-        "Opus (Premium Review)": "opus"
+        "Claude Opus 4.5 (Daigensui)": "claude_opus",
+        "Claude Sonnet 4.6 (Shogun)": "claude_cached",
+        "o3-mini (Gunshi)": "o3_mini",
+        "GPT-5 (Sanbo-A)": "gpt5",
+        "Grok-code-fast-1 (Sanbo-B)": "grok_code",
+        "Gemini Flash (Karo-A)": "gemini_flash",
+        "Llama 3.3 70B / Groq (Karo-B)": "groq",
+        "Gemini Flash Vision (Kengyo)": "gemini_flash_vision",
+        "Nemotron-3-Nano (Onmitsu)": "nemotron",
     }
 
     print("\nAI Clients:")
     for name, key in clients.items():
-        status = "✅" if orchestrator.get_client(key) else "❌"
-        print(f"  {status} {name}")
+        status = "OK" if orchestrator.get_client(key) else "N/A"
+        print(f"  [{status}] {name}")
 
     # MCP Servers
     mcps = ["memory", "filesystem", "git", "web_search"]
     print("\nMCP Servers:")
     for name in mcps:
-        status = "✅" if orchestrator.get_mcp(name) else "❌"
-        print(f"  {status} {name}")
+        status = "OK" if orchestrator.get_mcp(name) else "N/A"
+        print(f"  [{status}] {name}")
 
     # Kengyo (Visual Debugger)
     kengyo = orchestrator.kengyo
-    kengyo_status = "✅" if kengyo and kengyo.is_available() else "❌"
+    kengyo_status = "OK" if kengyo and kengyo.is_available() else "N/A"
     print(f"\nVisual Debugger:")
-    print(f"  {kengyo_status} 検校 (Kengyo) - Kimi Vision + Playwright")
+    print(f"  [{kengyo_status}] Kengyo - Gemini Flash Vision + Playwright")
 
     # Router
-    router_status = "✅" if orchestrator.get_router() else "❌"
-    print(f"\nIntelligent Router: {router_status}")
+    router_status = "OK" if orchestrator.get_router() else "N/A"
+    print(f"\nIntelligent Router: [{router_status}]")
 
     # Features
-    print("\nv10 Features:")
-    print(f"  {'✅' if orchestrator.config.intelligent_routing_enabled else '❌'} Intelligent Routing")
-    print(f"  {'✅' if orchestrator.config.prompt_caching_enabled else '❌'} Prompt Caching")
-    print(f"  {'✅' if orchestrator.config.power_optimization_enabled else '❌'} Power Optimization")
+    print("\nv11.4 Features:")
+    print(f"  [{'OK' if orchestrator.config.intelligent_routing_enabled else 'N/A'}] Intelligent Routing")
+    print(f"  [{'OK' if orchestrator.config.prompt_caching_enabled else 'N/A'}] Prompt Caching")
+    print(f"  [{'OK' if orchestrator.config.power_optimization_enabled else 'N/A'}] Power Optimization")
 
     print("=" * 60 + "\n")
 
@@ -171,7 +176,7 @@ def _print_final_statistics(shogun: Shogun, orchestrator: SystemOrchestrator) ->
     """Print final statistics on shutdown"""
 
     print("\n" + "=" * 60)
-    print("📊 Final Statistics")
+    print("Final Statistics")
     print("=" * 60)
 
     try:
@@ -218,7 +223,6 @@ async def quick_task(task_content: str) -> dict:
     orchestrator = SystemOrchestrator(config)
     await orchestrator.initialize()
 
-    # v10.2: orchestrator.process_task 経由で LangGraph Router を使用
     result = await orchestrator.process_task(task_content)
 
     await orchestrator.shutdown()

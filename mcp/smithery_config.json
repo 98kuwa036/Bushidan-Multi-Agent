@@ -79,6 +79,20 @@
       },
       "description": "Notion連携: ページ読み書き・データベース操作"
     },
+    "mattermost": {
+      "command": "python",
+      "args": [
+        "-m",
+        "mcp.mattermost_mcp_server"
+      ],
+      "env": {
+        "MATTERMOST_URL": "${MATTERMOST_URL}",
+        "MATTERMOST_TOKEN": "${MATTERMOST_TOKEN}",
+        "MATTERMOST_PORT": "${MATTERMOST_PORT}",
+        "MATTERMOST_SCHEME": "${MATTERMOST_SCHEME}"
+      },
+      "description": "Mattermost連携: チャンネル投稿・DM・検索・武士団タスク投入・エージェント進捗報告"
+    },
     "git": {
       "command": "npx",
       "args": [

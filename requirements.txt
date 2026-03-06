@@ -1,4 +1,71 @@
-```
+# Bushidan Multi-Agent System v11.4 - Dependencies
+# 脱中国企業・9層ハイブリッドアーキテクチャ
+# o3-mini PDCA + BDI Framework + Nemotron Local
+
+# Core dependencies (required)
+httpx>=0.24.0
+aiohttp>=3.8.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pyyaml>=6.0
+asyncio-throttle>=1.0.2
+
+# AI Model APIs (v11.4 - 脱中国企業)
+anthropic>=0.40.0             # Claude Opus 4.5 (大元帥) + Sonnet 4.6 (将軍)
+openai>=1.50.0                # o3-mini (軍師) + GPT-5 (参謀-A)
+google-generativeai>=0.8.0    # Gemini Flash (家老-A) + Gemini Flash Vision (検校)
+groq>=0.4.0                   # Llama 3.3 70B (家老-B)
+litellm>=1.0.0                # OpenAI-compatible API proxy
+
+# xAI Grok (参謀-B) - uses OpenAI-compatible API via httpx
+# No separate SDK needed - uses openai library with custom base_url
+
+# DSPy integration (recommended)
+dspy>=2.0.0
+
+# LangGraph (hybrid routing)
+langgraph>=1.0.0
+langchain-core>=0.3.0
+
+# Enhanced web search and scraping
+tavily-python>=0.3.0
+playwright>=1.40.0
+
+# Optional integrations
+discord.py>=2.3.0
+notion-client>=2.0.0
+mattermostdriver>=7.3.2    # Mattermost Bot + MCP サーバー
+mcp>=1.0.0                 # Model Context Protocol SDK (FastMCP)
+
+# Data analysis (codings directory tools)
 pandas>=1.3.0
 tabulate>=0.8.9
-```
+
+# Development dependencies (dev only)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+ruff>=0.1.0
+mypy>=1.5.0
+
+# System utilities
+pathlib2>=2.3.7
+
+# ============================================================================
+# v11.4 Architecture (脱中国企業)
+# ============================================================================
+#
+#   REMOVED (中国企業):
+#     - dashscope (Alibaba Cloud)
+#     - Qwen series (all models)
+#     - Kimi / Moonshot
+#
+#   ADDED (v11.4):
+#     - openai (o3-mini + GPT-5)
+#     - xAI Grok (via OpenAI-compatible API)
+#     - Nemotron-3-Nano (NVIDIA, local llama.cpp)
+#
+#   KEPT:
+#     - anthropic (Claude Opus 4.5 + Sonnet 4.6)
+#     - google-generativeai (Gemini Flash + Vision)
+#     - groq (Llama 3.3 70B)

@@ -1,17 +1,25 @@
-"""MCP Manager - 足軽 × 8 (MCPサーバー群) 管理
+"""MCP Manager - 足軽 × 8+ (MCPサーバー群) 管理 v11.5
 
 足軽はLLMではなくMCPサーバー (ツール実行層)。
 各足軽は50-150MBの軽量プロセスで、侍大将の指示に従いツールを実行する。
 
+v11.5 追加機能:
+  - TOOL_REGISTRY: 各 MCP サーバーのツール名を静的に管理
+  - list_tools(): 実行中サーバーのツール一覧を LangGraph ルーターに提供
+  - get_available_tool_names(): 平坦化されたツール名リストを返す
+
 足軽一覧:
-  1. filesystem  - ファイル操作
-  2. github      - Git/GitHub操作
-  3. fetch       - Web情報取得
-  4. memory      - 長期記憶
-  5. postgres    - データベース
-  6. puppeteer   - ブラウザ自動化
+  1. filesystem   - ファイル操作
+  2. github       - Git/GitHub操作
+  3. fetch        - Web情報取得
+  4. memory       - 長期記憶
+  5. postgres     - データベース
+  6. puppeteer    - ブラウザ自動化
   7. brave-search - Web検索
-  8. discord     - チーム連携 (discord_bot.py で直接処理)
+  8. tavily       - Web検索 (高精度)
+  9. exa          - セマンティック検索
+  10. mattermost  - チーム連携 (mcp/mattermost_mcp_server.py)
+  11. notion      - Notion 連携
 """
 
 import asyncio
@@ -214,3 +222,102 @@ class MCPManager:
             if srv.env:
                 config["mcpServers"][name]["env"] = srv.env
         return config
+
+    # =========================================================================
+    # v11.5 新機能: ツール認識 (LangGraph Router 連携用)
+    # =========================================================================
+
+    #: 各 MCP サーバーが提供するツール名の静的レジストリ
+    #: LangGraph ルーターが実行中サーバーを把握し、ルーティングに活用する
+    TOOL_REGISTRY: dict[str, list[str]] = {
+        "filesystem": [
+            "read_file", "write_file", "edit_file", "list_directory",
+            "create_directory", "move_file", "search_files", "get_file_info",
+        ],
+        "github": [
+            "create_or_update_file", "search_repositories", "create_repository",
+            "get_file_contents", "push_files", "create_issue", "create_pull_request",
+            "list_commits", "list_branches",
+        ],
+        "fetch": [
+            "fetch",
+        ],
+        "memory": [
+            "create_entities", "create_relations", "add_observations",
+            "delete_entities", "delete_observations", "delete_relations",
+            "read_graph", "search_nodes", "open_nodes",
+        ],
+        "postgres": [
+            "query", "execute",
+        ],
+        "puppeteer": [
+            "puppeteer_navigate", "puppeteer_screenshot", "puppeteer_click",
+            "puppeteer_fill", "puppeteer_evaluate",
+        ],
+        "brave-search": [
+            "brave_web_search", "brave_local_search",
+        ],
+        "tavily": [
+            "search", "search_context", "search_qna",
+        ],
+        "exa": [
+            "search", "find_similar", "get_contents",
+        ],
+        "mattermost": [
+            "post_message", "post_direct_message", "get_channel_messages",
+            "search_messages", "add_reaction", "create_channel",
+            "get_team_channels", "submit_task", "get_bushidan_status",
+            "report_agent_progress",
+        ],
+        "notion": [
+            "notion_get_database", "notion_query_database", "notion_get_page",
+            "notion_create_page", "notion_update_page", "notion_search",
+        ],
+        "sequential_thinking": [
+            "sequentialthinking",
+        ],
+        "git": [
+            "git_status", "git_diff", "git_commit", "git_add", "git_reset",
+            "git_log", "git_create_branch", "git_checkout",
+        ],
+    }
+
+    def list_tools(self) -> dict[str, list[str]]:
+        """
+        実行中 MCP サーバーのツール一覧を返す。
+
+        v11.5 LangGraph Router の fetch_context ノードから呼び出され、
+        ルーティング判断に使用される。
+
+        Returns:
+            {server_name: [tool_name, ...]} 形式の辞書 (running サーバーのみ)
+        """
+        result: dict[str, list[str]] = {}
+        for name, srv in self.servers.items():
+            if srv.status == "running":
+                tools = self.TOOL_REGISTRY.get(name, [])
+                if tools:
+                    result[name] = tools
+        return result
+
+    def get_available_tool_names(self) -> list[str]:
+        """
+        実行中サーバーの全ツール名を平坦化したリストで返す。
+
+        LangGraph ルーターの route_decision で available_tools として使用。
+        """
+        names: list[str] = []
+        for tools in self.list_tools().values():
+            names.extend(tools)
+        return names
+
+    def is_tool_available(self, tool_name: str) -> bool:
+        """指定ツール名が実行中のいずれかのサーバーで提供されているか確認."""
+        return tool_name in self.get_available_tool_names()
+
+    def get_server_for_tool(self, tool_name: str) -> str | None:
+        """ツール名からサーバー名を逆引き (実行中サーバーのみ)."""
+        for server_name, tools in self.list_tools().items():
+            if tool_name in tools:
+                return server_name
+        return None

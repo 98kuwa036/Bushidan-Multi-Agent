@@ -1,16 +1,26 @@
 """
-Bushidan Multi-Agent System v10.1 - System Orchestrator (システム統括)
+Bushidan Multi-Agent System v11.4 - System Orchestrator (システム統括)
 
-5層ハイブリッドアーキテクチャの強化システム調整。
-管理対象: 将軍 → 軍師 → 家老 → 大将(+傭兵) → 足軽（インテリジェントルーティング付き）
+9層ハイブリッドアーキテクチャの強化システム調整。
+管理対象: 大元帥 → 将軍 → 軍師 → 参謀A/B → 家老A/B → 検校 → 隠密
 
-v10.1 機能強化:
-- 傭兵 (Kimi K2.5) 追加: 128K context, 並列サブタスク実行, マルチモーダル
-- 軍師 (Gunshi) 層: Qwen3-Coder-Next 80B API (256K context, SWE-Bench 70.6%)
-- 4層フォールバックチェーン: Kimi K2.5 → ローカルQwen3 → 影武者 → Gemini 3 Flash
-- Smithery MCP 管理: npm → Smithery 移行
-- 新MCP: Sequential Thinking, Playwright, Exa, Graph Memory, Prisma
-- インテリジェントルーター統合 (GUNSHI ルート追加)
+v11.4 アーキテクチャ:
+- 大元帥 (Daigensui): Claude Opus 4.5 - 最高難度・戦略設計
+- 将軍 (Shogun): Claude Sonnet 4.6 - 高難度コーディング
+- 軍師 (Gunshi): o3-mini (high) - 推論・設計・PDCA
+- 参謀-A (Sanbo-A): GPT-5 - 汎用コーディング
+- 参謀-B (Sanbo-B): Grok-code-fast-1 - 実装・バグ修正・高速
+- 家老-A (Karo-A): Gemini Flash - 軽量タスク
+- 家老-B (Karo-B): Llama 3.3 70B (Groq) - アルゴリズム特化
+- 検校 (Kengyo): Gemini Flash Vision - マルチモーダル
+- 隠密 (Onmitsu): Nemotron-3-Nano (Local) - 機密・超長文
+
+2台構成: ProDesk 600 (LLM専用, 192.168.11.232) + EliteDesk (メインオーケストレーション)
+
+機能:
+- Smithery MCP 管理
+- MCP: Sequential Thinking, Playwright, Exa, Graph Memory, Prisma
+- インテリジェントルーター統合
 - llama.cpp CPU最適化（HP ProDesk 600対応）
 - 省電力最適化
 - BDIフレームワーク統合
@@ -58,7 +68,7 @@ class MCPPermissionManager:
     """
 
     # 役職優先度順序（上位ほど優先）
-    ROLE_PRIORITY = ["shogun", "gunshi", "karo", "taisho", "kengyo", "ashigaru"]
+    ROLE_PRIORITY = ["daigensui", "shogun", "gunshi", "sanbo_a", "sanbo_b", "karo_a", "karo_b", "kengyo", "onmitsu"]
 
     def __init__(self, config_path: Optional[str] = None):
         self.permissions: Dict[str, Dict[str, Dict]] = {}
@@ -97,14 +107,23 @@ class MCPPermissionManager:
     def _load_default_permissions(self) -> None:
         """デフォルト権限を設定"""
         self.permissions = {
-            "shogun": {
-                "graph_memory": {"level": "primary"},
-                "notion": {"level": "primary"},
-                "sequential_thinking": {"level": "secondary"},
+            "daigensui": {
+                "graph_memory": {"level": "exclusive", "priority": 1},
+                "notion": {"level": "exclusive", "priority": 1},
+                "sequential_thinking": {"level": "primary"},
                 "filesystem": {"level": "readonly"},
                 "git": {"level": "readonly"},
                 "playwright": {"level": "forbidden"},
                 "prisma": {"level": "forbidden"},
+            },
+            "shogun": {
+                "graph_memory": {"level": "primary"},
+                "notion": {"level": "primary"},
+                "sequential_thinking": {"level": "secondary"},
+                "filesystem": {"level": "primary"},
+                "git": {"level": "primary"},
+                "playwright": {"level": "forbidden"},
+                "prisma": {"level": "secondary"},
             },
             "gunshi": {
                 "sequential_thinking": {"level": "exclusive", "priority": 1},
@@ -113,18 +132,31 @@ class MCPPermissionManager:
                 "graph_memory": {"level": "primary"},
                 "playwright": {"level": "forbidden"},
             },
-            "karo": {
-                "sequential_thinking": {"level": "primary", "priority": 2},
+            "sanbo_a": {
+                "filesystem": {"level": "primary"},
+                "git": {"level": "primary"},
+                "prisma": {"level": "primary"},
+                "sequential_thinking": {"level": "secondary", "priority": 2},
+                "playwright": {"level": "forbidden"},
+            },
+            "sanbo_b": {
+                "filesystem": {"level": "primary"},
+                "git": {"level": "primary"},
+                "prisma": {"level": "secondary"},
+                "sequential_thinking": {"level": "secondary", "priority": 3},
+                "playwright": {"level": "forbidden"},
+            },
+            "karo_a": {
+                "sequential_thinking": {"level": "secondary", "priority": 4},
                 "filesystem": {"level": "secondary"},
                 "playwright": {"level": "forbidden"},
                 "prisma": {"level": "forbidden"},
             },
-            "taisho": {
-                "filesystem": {"level": "exclusive", "priority": 1},
-                "git": {"level": "exclusive", "priority": 1},
-                "prisma": {"level": "exclusive"},
-                "sequential_thinking": {"level": "secondary", "priority": 3},
+            "karo_b": {
+                "sequential_thinking": {"level": "secondary", "priority": 5},
+                "filesystem": {"level": "secondary"},
                 "playwright": {"level": "forbidden"},
+                "prisma": {"level": "forbidden"},
             },
             "kengyo": {
                 "playwright": {"level": "exclusive", "priority": 1},
@@ -132,11 +164,11 @@ class MCPPermissionManager:
                 "sequential_thinking": {"level": "forbidden"},
                 "prisma": {"level": "forbidden"},
             },
-            "ashigaru": {
+            "onmitsu": {
                 "filesystem": {"level": "delegated"},
                 "git": {"level": "delegated"},
-                "playwright": {"level": "delegated"},
-                "prisma": {"level": "delegated"},
+                "playwright": {"level": "forbidden"},
+                "prisma": {"level": "forbidden"},
             },
         }
         self._loaded = True
@@ -147,7 +179,7 @@ class MCPPermissionManager:
         役職がMCPにアクセス可能かチェック
 
         Args:
-            role: 役職名 (shogun, gunshi, karo, taisho, kengyo, ashigaru)
+            role: 役職名 (daigensui, shogun, gunshi, sanbo_a, sanbo_b, karo_a, karo_b, kengyo, onmitsu)
             mcp_name: MCP名
 
         Returns:
@@ -267,50 +299,43 @@ class MCPPermissionManager:
 
 
 class SystemMode(Enum):
-    """v10 System modes"""
-    BATTALION = "battalion"  # Full system: Shogun + Gunshi + Karo + Taisho + Ashigaru + All MCP
-    COMPANY = "company"      # Slack mode: Karo + Taisho + Ashigaru + Memory MCP
-    PLATOON = "platoon"      # HA OS mode: Taisho + Ashigaru + Dynamic MCP
+    """v11.4 System modes - 9-tier architecture"""
+    BATTALION = "battalion"  # Full 9-tier: Daigensui + Shogun + Gunshi + Sanbo + Karo + Kengyo + Onmitsu + All MCP
+    COMPANY = "company"      # Reduced: Karo + Onmitsu + Memory MCP
+    PLATOON = "platoon"      # Minimal: Onmitsu + Dynamic MCP
 
 
 @dataclass
 class SystemConfig:
-    """v10 Configuration structure"""
+    """v11.4 Configuration structure"""
     mode: SystemMode
     claude_api_key: str
     gemini_api_key: str
     tavily_api_key: str
 
-    # v9.4: Additional API keys
+    # v11.4: API keys
     groq_api_key: Optional[str] = None
-    alibaba_api_key: Optional[str] = None
-
-    # v10: Qwen3-Coder-Next (軍師)
-    qwen3_coder_next_api_key: Optional[str] = None
-    qwen3_coder_next_provider: str = "openrouter"  # openrouter, dashscope
-
-    # v10.1: Kimi K2.5 (傭兵)
-    kimi_api_key: Optional[str] = None
-    kimi_provider: str = "moonshot"  # moonshot, openrouter
+    openai_api_key: Optional[str] = None  # o3-mini (Gunshi), GPT-5 (Sanbo-A)
+    xai_api_key: Optional[str] = None     # Grok-code-fast-1 (Sanbo-B)
 
     # Optional tokens
     discord_token: Optional[str] = None
     notion_token: Optional[str] = None
 
     # Service endpoints
-    ollama_endpoint: str = "http://localhost:11434"  # Legacy (unused in v10)
+    ollama_endpoint: str = "http://localhost:11434"  # Legacy (unused in v11.4)
     litellm_endpoint: str = "http://localhost:8000"
 
-    # v9.4: llama.cpp configuration (HP ProDesk 600 CPU optimized)
+    # v11.4: llama.cpp configuration (HP ProDesk 600 CPU optimized) - Nemotron-3-Nano (隠密)
     llamacpp_endpoint: str = "http://127.0.0.1:8080"
-    llamacpp_model_path: str = "models/qwen3/Qwen3-Coder-30B-Q4_K_M.gguf"
+    llamacpp_model_path: str = "models/nemotron/Nemotron-3-Nano-Q4_K_M.gguf"
     llamacpp_threads: int = 6  # HP ProDesk 600: i5-8500 (6C/6T)
     llamacpp_context_size: int = 4096  # Optimized for CPU speed
     llamacpp_batch_size: int = 512  # CPU optimal
     llamacpp_mlock: bool = True  # Lock memory to prevent swapping
 
-    # v10: Configuration settings
-    version: str = "10.0"
+    # v11.4: Configuration settings
+    version: str = "11.4"
     intelligent_routing_enabled: bool = True
     prompt_caching_enabled: bool = True
     power_optimization_enabled: bool = True
@@ -323,28 +348,28 @@ class SystemConfig:
 
 class SystemOrchestrator:
     """
-    v10 システムオーケストレーター - 強化調整層
+    v11.4 システムオーケストレーター - 強化調整層
 
-    5層ハイブリッドアーキテクチャを管理:
-    1. 将軍 (Shogun) - 戦略層: Claude Sonnet + Opus
-    2. 軍師 (Gunshi) - 作戦立案層: Qwen3-Coder-Next 80B API
-    3. 家老 (Karo) - 戦術層: 調整 + Groq/Gemini3
-    4. 大将 (Taisho) - 実装層: Qwen3 + 影武者
-    5. 足軽 (Ashigaru) - 実行層: MCPサーバー
+    9層ハイブリッドアーキテクチャを管理:
+    1. 大元帥 (Daigensui) - 最高戦略層: Claude Opus 4.5
+    2. 将軍 (Shogun) - 高難度コーディング: Claude Sonnet 4.6
+    3. 軍師 (Gunshi) - 推論・設計・PDCA: o3-mini (reasoning_effort=high)
+    4. 参謀-A (Sanbo-A) - 汎用コーディング: GPT-5
+    5. 参謀-B (Sanbo-B) - 実装・バグ修正・高速: Grok-code-fast-1
+    6. 家老-A (Karo-A) - 軽量タスク: Gemini Flash
+    7. 家老-B (Karo-B) - アルゴリズム特化: Llama 3.3 70B (Groq)
+    8. 検校 (Kengyo) - マルチモーダル: Gemini Flash Vision
+    9. 隠密 (Onmitsu) - 機密・超長文: Nemotron-3-Nano (Local llama.cpp)
 
-    補助役:
-    - 検校 (Kengyo) - ビジュアル検証: Kimi K2.5 Vision + Playwright MCP
-
-    新機能:
-    - 軍師 (Gunshi) 層: 複雑タスクの作戦立案・コード監査
-    - タスク委譲のインテリジェントルーター (GUNSHIルート)
-    - 4層フォールバックチェーン管理（Kimi→Local→Kagemusha→Gemini）
+    機能:
+    - インテリジェントルーター統合
     - 省電力最適化
     - コスト削減のプロンプトキャッシング
     - BDIフレームワーク統合
+    - MCP権限マトリクス: 役職別アクセス制御
     """
 
-    VERSION = "10.1"
+    VERSION = "11.4"
 
     def __init__(self, config: SystemConfig):
         self.config = config
@@ -357,13 +382,13 @@ class SystemOrchestrator:
         # MCP権限マネージャー
         self.permission_manager = MCPPermissionManager()
 
-        # 5層階層コンポーネント
-        self._shogun = None  # 将軍: 戦略層
-        self._gunshi = None  # 軍師: 作戦立案層 (v10)
-        self._karo = None    # 家老: 戦術層
-        self._taisho = None  # 大将: 実装層
-        self._kengyo = None  # 検校: ビジュアル検証 (v10.1)
-        self._langgraph_router = None  # LangGraph Router (v10.2)
+        # 9層階層コンポーネント (v11.4)
+        self._shogun = None  # 将軍: 高難度コーディング (Claude Sonnet 4.6)
+        self._gunshi = None  # 軍師: 推論・設計・PDCA (o3-mini)
+        self._karo = None    # 家老: 軽量タスク (Gemini Flash / Groq)
+        self._taisho = None  # 大将: (deprecated, maps to sanbo layer for backward compat)
+        self._kengyo = None  # 検校: マルチモーダル (Gemini Flash Vision)
+        self._langgraph_router = None  # LangGraph Router
 
         # 統計
         self.health_status: Dict[str, bool] = {}
@@ -378,7 +403,7 @@ class SystemOrchestrator:
         }
 
     async def initialize(self) -> None:
-        """全v10システムコンポーネントを初期化"""
+        """全v11.4システムコンポーネントを初期化"""
         logger.info(f"🔧 武士団 v{self.VERSION} コンポーネント初期化開始...")
 
         try:
@@ -400,7 +425,7 @@ class SystemOrchestrator:
             # 外部依存関係の検証
             await self._verify_dependencies()
 
-            # 5層階層コンポーネント初期化
+            # 9層階層コンポーネント初期化
             await self._initialize_tiers()
 
             self.initialized = True
@@ -412,52 +437,47 @@ class SystemOrchestrator:
             raise
 
     async def _initialize_tiers(self) -> None:
-        """5層階層コンポーネントの初期化"""
-        logger.info("🏯 5層階層コンポーネント初期化...")
+        """9層階層コンポーネントの初期化"""
+        logger.info("🏯 9層階層コンポーネント初期化...")
 
-        # 将軍（戦略層）初期化
+        # 将軍（高難度コーディング - Claude Sonnet 4.6）初期化
         try:
             from core.shogun import Shogun
             self._shogun = Shogun(self)
             await self._shogun.initialize()
-            logger.info("🎌 将軍（戦略層）初期化完了")
+            logger.info("🎌 将軍（高難度コーディング）初期化完了")
         except Exception as e:
             logger.error(f"❌ 将軍初期化失敗: {e}")
             raise
 
-        # v10: 軍師（作戦立案層）初期化
+        # 軍師（推論・設計・PDCA - o3-mini）初期化
         try:
             from core.gunshi import Gunshi
             self._gunshi = Gunshi(self)
             await self._gunshi.initialize()
-            logger.info("🧠 軍師（作戦立案層）初期化完了")
+            logger.info("🧠 軍師（推論・設計・PDCA）初期化完了")
         except Exception as e:
             logger.warning(f"⚠️ 軍師初期化失敗 (複雑タスクは家老に直接委譲): {e}")
 
         # 家老は将軍の初期化時に作成される
         if self._shogun and hasattr(self._shogun, 'karo'):
             self._karo = self._shogun.karo
-            logger.info("👔 家老（戦術層）参照取得完了")
+            logger.info("👔 家老（軽量タスク層）参照取得完了")
 
-        # 大将は家老の初期化時に作成される
-        if self._karo and hasattr(self._karo, 'taisho'):
-            self._taisho = self._karo.taisho
-            logger.info("⚔️ 大将（実装層）参照取得完了")
-
-        # v10.1: 検校（ビジュアル・デバッガー）初期化
+        # v11.4: 検校（マルチモーダル - Gemini Flash Vision）初期化
         try:
             from core.kengyo import Kengyo
-            kimi_client = self.clients.get("kimi_k2")
+            gemini_client = self.clients.get("gemini3")
             self._kengyo = Kengyo(
-                kimi_client=kimi_client,
+                gemini_client=gemini_client,
                 smithery_mcp=getattr(self, 'smithery_mcp', None),
             )
             await self._kengyo.initialize()
-            logger.info("👁️ 検校（ビジュアル・デバッガー）初期化完了")
+            logger.info("👁️ 検校（マルチモーダル）初期化完了")
         except Exception as e:
-            logger.warning(f"⚠️ 検校初期化失敗 (ビジュアル検証スキップ): {e}")
+            logger.warning(f"⚠️ 検校初期化失敗 (マルチモーダル検証スキップ): {e}")
 
-        # v10.2: LangGraph Router 初期化
+        # LangGraph Router 初期化
         try:
             from core.langgraph_router import LangGraphRouter
             self._langgraph_router = LangGraphRouter(self)
@@ -511,15 +531,15 @@ class SystemOrchestrator:
             logger.warning(f"⚠️ Smithery MCP Manager not available: {e}")
 
     async def _initialize_clients(self) -> None:
-        """Initialize all v10 AI clients"""
+        """Initialize all v11.4 AI clients"""
 
-        # Claude Client with Prompt Caching (Shogun)
+        # Claude Client with Prompt Caching (Shogun - Claude Sonnet 4.6)
         try:
             from utils.claude_client_cached import ClaudeClientCached
             self.clients["claude_cached"] = ClaudeClientCached(
                 api_key=self.config.claude_api_key
             )
-            logger.info("✅ Claude Client (Cached) initialized")
+            logger.info("✅ Claude Client (Cached) initialized - Shogun")
         except Exception as e:
             logger.warning(f"⚠️ Claude Cached client failed: {e}")
             # Fallback to standard client
@@ -532,26 +552,58 @@ class SystemOrchestrator:
             except Exception as e2:
                 logger.warning(f"⚠️ Claude fallback also failed: {e2}")
 
-        # Groq Client (Simple tasks)
-        if self.config.groq_api_key:
-            try:
-                from utils.groq_client import GroqClient
-                self.clients["groq"] = GroqClient(
-                    api_key=self.config.groq_api_key
-                )
-                logger.info("✅ Groq Client initialized")
-            except Exception as e:
-                logger.warning(f"⚠️ Groq client failed: {e}")
+        # Opus Client (Daigensui - Claude Opus 4.5)
+        try:
+            from utils.opus_client import OpusClient
+            self.clients["opus"] = OpusClient(
+                api_key=self.config.claude_api_key
+            )
+            logger.info("✅ Opus Client (大元帥) initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Opus client failed: {e}")
 
-        # Gemini 3.0 Flash Client (Final defense)
+        # v11.4: o3-mini Client (Gunshi - reasoning_effort=high)
+        if self.config.openai_api_key:
+            try:
+                from utils.o3mini_client import O3MiniClient
+                self.clients["o3_mini"] = O3MiniClient(
+                    api_key=self.config.openai_api_key
+                )
+                logger.info("✅ o3-mini Client (軍師) initialized - reasoning_effort=high")
+            except Exception as e:
+                logger.warning(f"⚠️ o3-mini client failed: {e}")
+
+        # v11.4: GPT-5 Client (Sanbo-A - 汎用コーディング)
+        if self.config.openai_api_key:
+            try:
+                from utils.gpt5_client import GPT5Client
+                self.clients["gpt5"] = GPT5Client(
+                    api_key=self.config.openai_api_key
+                )
+                logger.info("✅ GPT-5 Client (参謀-A) initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ GPT-5 client failed: {e}")
+
+        # v11.4: Grok Client (Sanbo-B - 実装・バグ修正・高速) via xAI
+        if self.config.xai_api_key:
+            try:
+                from utils.grok_client import GrokClient
+                self.clients["grok"] = GrokClient(
+                    api_key=self.config.xai_api_key
+                )
+                logger.info("✅ Grok Client (参謀-B) initialized - grok-code-fast-1")
+            except Exception as e:
+                logger.warning(f"⚠️ Grok client failed: {e}")
+
+        # Gemini Flash Client (Karo-A - 軽量タスク / Kengyo - マルチモーダル)
         try:
             from utils.gemini3_client import Gemini3Client
             self.clients["gemini3"] = Gemini3Client(
                 api_key=self.config.gemini_api_key
             )
-            logger.info("✅ Gemini 3.0 Flash Client initialized")
+            logger.info("✅ Gemini Flash Client initialized - Karo-A / Kengyo")
         except Exception as e:
-            logger.warning(f"⚠️ Gemini 3 client failed: {e}")
+            logger.warning(f"⚠️ Gemini Flash client failed: {e}")
             # Fallback to standard Gemini
             try:
                 from utils.gemini_client import GeminiClient
@@ -562,11 +614,21 @@ class SystemOrchestrator:
             except Exception as e2:
                 logger.warning(f"⚠️ Gemini fallback also failed: {e2}")
 
-        # Local Qwen3 Client (Primary implementation)
-        # v9.4: Use llama.cpp instead of Ollama for CPU-optimized inference
+        # Groq Client (Karo-B - Llama 3.3 70B アルゴリズム特化)
+        if self.config.groq_api_key:
+            try:
+                from utils.groq_client import GroqClient
+                self.clients["groq"] = GroqClient(
+                    api_key=self.config.groq_api_key
+                )
+                logger.info("✅ Groq Client initialized - Karo-B (Llama 3.3 70B)")
+            except Exception as e:
+                logger.warning(f"⚠️ Groq client failed: {e}")
+
+        # v11.4: Nemotron-3-Nano Client (Onmitsu - 機密・超長文, local llama.cpp)
         try:
             if self.config.use_llamacpp:
-                from utils.qwen3_llamacpp_client import Qwen3LlamaCppClient, LlamaCppConfig
+                from utils.nemotron_llamacpp_client import NemotronLlamaCppClient, LlamaCppConfig
                 llamacpp_config = LlamaCppConfig(
                     model_path=self.config.llamacpp_model_path,
                     host=self.config.llamacpp_endpoint.split("://")[1].split(":")[0],
@@ -576,69 +638,20 @@ class SystemOrchestrator:
                     batch_size=self.config.llamacpp_batch_size,
                     mlock=self.config.llamacpp_mlock
                 )
-                self.clients["qwen3"] = Qwen3LlamaCppClient(config=llamacpp_config)
-                logger.info("✅ Qwen3 llama.cpp Client initialized (CPU optimized)")
+                self.clients["nemotron"] = NemotronLlamaCppClient(config=llamacpp_config)
+                logger.info("✅ Nemotron-3-Nano llama.cpp Client initialized (隠密, CPU optimized)")
             else:
                 # Fallback to Ollama (legacy)
-                from utils.qwen3_client import Qwen3Client
-                self.clients["qwen3"] = Qwen3Client(
+                from utils.nemotron_client import NemotronClient
+                self.clients["nemotron"] = NemotronClient(
                     api_base=self.config.ollama_endpoint
                 )
-                logger.info("✅ Local Qwen3 Client initialized (Ollama)")
+                logger.info("✅ Nemotron Client initialized (Ollama)")
         except Exception as e:
-            logger.warning(f"⚠️ Qwen3 client failed: {e}")
-
-        # Kagemusha Client (影武者 - qwen3-coder-plus via OpenRouter)
-        if self.config.alibaba_api_key:
-            try:
-                from utils.alibaba_qwen_client import AlibabaQwenClient
-                self.clients["alibaba_qwen"] = AlibabaQwenClient(
-                    api_key=self.config.alibaba_api_key,
-                    provider="openrouter",
-                )
-                logger.info("✅ Kagemusha Client (影武者) initialized via OpenRouter")
-            except Exception as e:
-                logger.warning(f"⚠️ Alibaba Qwen client failed: {e}")
-
-        # v10.1: Kimi K2.5 Client (傭兵 - Yohei)
-        if self.config.kimi_api_key:
-            try:
-                from utils.kimi_k2_client import KimiK2Client, KimiConfig
-                kimi_config = KimiConfig(
-                    api_key=self.config.kimi_api_key,
-                    provider=self.config.kimi_provider
-                )
-                client = KimiK2Client(config=kimi_config)
-                await client.initialize()
-                self.clients["kimi_k2"] = client
-                logger.info("✅ Kimi K2.5 Client (傭兵) initialized - 128K context")
-            except Exception as e:
-                logger.warning(f"⚠️ Kimi K2.5 client failed: {e}")
-
-        # v10: Qwen3-Coder-Next Client (軍師 - Gunshi)
-        if self.config.qwen3_coder_next_api_key:
-            try:
-                from utils.qwen3_coder_next_client import Qwen3CoderNextClient
-                self.clients["qwen3_coder_next"] = Qwen3CoderNextClient(
-                    api_key=self.config.qwen3_coder_next_api_key,
-                    provider=self.config.qwen3_coder_next_provider
-                )
-                logger.info("✅ Qwen3-Coder-Next Client (軍師) initialized")
-            except Exception as e:
-                logger.warning(f"⚠️ Qwen3-Coder-Next client failed: {e}")
-
-        # Opus Client (Premium review)
-        try:
-            from utils.opus_client import OpusClient
-            self.clients["opus"] = OpusClient(
-                api_key=self.config.claude_api_key
-            )
-            logger.info("✅ Opus Client (Premium Review) initialized")
-        except Exception as e:
-            logger.warning(f"⚠️ Opus client failed: {e}")
+            logger.warning(f"⚠️ Nemotron client failed: {e}")
 
     async def _initialize_router(self) -> None:
-        """Initialize Intelligent Router for v10"""
+        """Initialize Intelligent Router for v11.4"""
 
         if not self.config.intelligent_routing_enabled:
             logger.info("ℹ️ Intelligent routing disabled in config")
@@ -664,14 +677,14 @@ class SystemOrchestrator:
 
         import httpx
 
-        # v9.4: Check llama.cpp server availability (for Qwen3)
+        # v11.4: Check llama.cpp server availability (for Nemotron-3-Nano / 隠密)
         if self.config.use_llamacpp:
             try:
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     response = await client.get(f"{self.config.llamacpp_endpoint}/health")
                     self.health_status["llamacpp"] = response.status_code == 200
                     if self.health_status["llamacpp"]:
-                        logger.info("✅ llama.cpp server available")
+                        logger.info("✅ llama.cpp server available (Nemotron-3-Nano)")
                     else:
                         logger.warning("⚠️ llama.cpp server not responding")
             except Exception as e:
@@ -716,13 +729,17 @@ class SystemOrchestrator:
         logger.info(f"省電力最適化: {'✅' if self.config.power_optimization_enabled else '❌'}")
         logger.info("-" * 60)
 
-        # 5層階層コンポーネント
-        logger.info("【5層階層コンポーネント】")
-        logger.info(f"  🎌 将軍（戦略層）: {'✅' if self._shogun else '❌'}")
-        logger.info(f"  🧠 軍師（作戦立案層）: {'✅' if self._gunshi else '❌'}")
-        logger.info(f"  👔 家老（戦術層）: {'✅' if self._karo else '❌'}")
-        logger.info(f"  ⚔️ 大将（実装層）: {'✅' if self._taisho else '❌'}")
-        logger.info(f"  👁️ 検校（ビジュアル検証）: {'✅' if self._kengyo and self._kengyo.is_available() else '❌'}")
+        # 9層階層コンポーネント
+        logger.info("【9層階層コンポーネント】")
+        logger.info(f"  👑 大元帥（最高戦略）: {'✅' if 'opus' in self.clients else '❌'}")
+        logger.info(f"  🎌 将軍（高難度コーディング）: {'✅' if self._shogun else '❌'}")
+        logger.info(f"  🧠 軍師（推論・設計・PDCA）: {'✅' if self._gunshi else '❌'}")
+        logger.info(f"  📋 参謀-A（汎用コーディング）: {'✅' if 'gpt5' in self.clients else '❌'}")
+        logger.info(f"  ⚡ 参謀-B（実装・高速）: {'✅' if 'grok' in self.clients else '❌'}")
+        logger.info(f"  👔 家老-A（軽量タスク）: {'✅' if self._karo else '❌'}")
+        logger.info(f"  🔧 家老-B（アルゴリズム特化）: {'✅' if 'groq' in self.clients else '❌'}")
+        logger.info(f"  👁️ 検校（マルチモーダル）: {'✅' if self._kengyo and self._kengyo.is_available() else '❌'}")
+        logger.info(f"  🥷 隠密（機密・超長文）: {'✅' if 'nemotron' in self.clients else '❌'}")
 
         # BDI状態
         if self._shogun and hasattr(self._shogun, 'bdi_enabled'):
@@ -731,22 +748,22 @@ class SystemOrchestrator:
         logger.info("-" * 60)
         logger.info("【AIクライアント】")
         client_names = {
-            "claude_cached": "Claude（キャッシュ）",
-            "groq": "Groq（即応）",
-            "gemini3": "Gemini 3.0 Flash",
-            "qwen3": f"Qwen3（{'llama.cpp CPU' if self.config.use_llamacpp else 'Ollama'}）",
-            "kimi_k2": "Kimi K2.5（傭兵, 128K）",
-            "qwen3_coder_next": "Qwen3-Coder-Next（軍師）",
-            "alibaba_qwen": "Alibaba Qwen（影武者）",
-            "opus": "Opus（プレミアム）"
+            "opus": "Claude Opus 4.5（大元帥）",
+            "claude_cached": "Claude Sonnet 4.6（将軍, キャッシュ）",
+            "o3_mini": "o3-mini（軍師, reasoning_effort=high）",
+            "gpt5": "GPT-5（参謀-A）",
+            "grok": "Grok-code-fast-1（参謀-B）",
+            "gemini3": "Gemini Flash（家老-A / 検校）",
+            "groq": "Llama 3.3 70B via Groq（家老-B）",
+            "nemotron": f"Nemotron-3-Nano（隠密, {'llama.cpp CPU' if self.config.use_llamacpp else 'Ollama'}）",
         }
         for key, name in client_names.items():
             status = "✅" if key in self.clients else "❌"
             logger.info(f"  {name}: {status}")
 
-        # v9.4: llama.cpp configuration info
+        # llama.cpp configuration info (Nemotron)
         if self.config.use_llamacpp:
-            logger.info("【llama.cpp設定】")
+            logger.info("【llama.cpp設定 (Nemotron-3-Nano)】")
             logger.info(f"  エンドポイント: {self.config.llamacpp_endpoint}")
             logger.info(f"  スレッド数: {self.config.llamacpp_threads}")
             logger.info(f"  コンテキスト: {self.config.llamacpp_context_size}")
@@ -784,36 +801,36 @@ class SystemOrchestrator:
         """インテリジェントルーター取得"""
         return self.router
 
-    # ==================== 5層階層コンポーネントアクセサ ====================
+    # ==================== 9層階層コンポーネントアクセサ ====================
 
     @property
     def shogun(self):
-        """将軍（戦略層）取得"""
+        """将軍（高難度コーディング - Claude Sonnet 4.6）取得"""
         return self._shogun
 
     @property
     def gunshi(self):
-        """軍師（作戦立案層）取得"""
+        """軍師（推論・設計・PDCA - o3-mini）取得"""
         return self._gunshi
 
     @property
     def karo(self):
-        """家老（戦術層）取得"""
+        """家老（軽量タスク - Gemini Flash / Groq）取得"""
         return self._karo
 
     @property
     def taisho(self):
-        """大将（実装層）取得"""
+        """大将（deprecated） - 後方互換性のため維持。v11.4では参謀(sanbo)層にマッピング。"""
         return self._taisho
 
     @property
     def kengyo(self):
-        """検校（ビジュアル検証）取得"""
+        """検校（マルチモーダル - Gemini Flash Vision）取得"""
         return self._kengyo
 
     @property
     def langgraph_router(self):
-        """LangGraph Router (v10.2) 取得"""
+        """LangGraph Router 取得"""
         return self._langgraph_router
 
     # ==================== MCP権限制御 ====================

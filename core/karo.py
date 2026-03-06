@@ -1,15 +1,14 @@
 """
-Bushidan Multi-Agent System v10 - Karo (家老: 戦術調整層)
+Bushidan Multi-Agent System v11.4 - Karo (家老: 戦術調整層)
 
-家老は5層アーキテクチャの戦術調整層として、大将と足軽間の調整を担当。
+家老は9層ハイブリッドアーキテクチャの戦術調整層として、参謀と足軽間の調整を担当。
 インテリジェントルーティングにより最適な実行パスを選択する。
 
-v10 機能強化:
-- Gemini 3.0 Flash統合（最終防衛線）
-- Groq統合（簡易タスク高速化）
-- 将軍からのルーティング決定実行
-- タスク複雑度に基づく動的クライアント選択
-- フォールバックチェーン付き大将調整
+v11.4 アーキテクチャ:
+- 家老-A (Karo-A): Gemini Flash - 軽量タスク・最終防衛線
+- 家老-B (Karo-B): Llama 3.3 70B (Groq) - アルゴリズム特化・瞬速応答
+- 参謀-A (Sanbo-A): GPT-5 - 汎用コーディング（委譲先）
+- 参謀-B (Sanbo-B): Grok-code-fast-1 - 実装・バグ修正・高速（委譲先）
 - BDIフレームワーク統合（形式的戦術推論）
 """
 
@@ -34,22 +33,25 @@ logger = get_logger(__name__)
 
 
 class TaskDelegation(Enum):
-    """Task delegation strategies in 5-tier architecture"""
-    TAISHO_PRIMARY = "taisho_primary"      # Heavy implementation to Taisho
+    """Task delegation strategies in 9-tier architecture"""
+    SANBO_PRIMARY = "sanbo_primary"        # Implementation to Sanbo (GPT-5/Grok)
     ASHIGARU_PARALLEL = "ashigaru_parallel"  # Light tasks to Ashigaru
-    HYBRID_COORDINATION = "hybrid_coordination"  # Taisho + Ashigaru coordination
-    GROQ_INSTANT = "groq_instant"          # v9.3.2: Simple tasks to Groq
-    GEMINI_DEFENSE = "gemini_defense"      # v9.3.2: Final defense line
-    GEMINI_AUTONOMOUS = "gemini_autonomous"  # v10.1: Multi-step autonomous execution
+    HYBRID_COORDINATION = "hybrid_coordination"  # Sanbo + Ashigaru coordination
+    GROQ_INSTANT = "groq_instant"          # Simple tasks to Groq (家老-B)
+    GEMINI_DEFENSE = "gemini_defense"      # Final defense line (家老-A)
+    GEMINI_AUTONOMOUS = "gemini_autonomous"  # Multi-step autonomous execution
+
+    # Backward compatibility aliases
+    TAISHO_PRIMARY = "sanbo_primary"
 
 
 @dataclass
 class EnhancedSubtask:
-    """Enhanced subtask for 5-tier coordination"""
+    """Enhanced subtask for 9-tier coordination"""
     id: str
     content: str
     dependencies: List[str]
-    delegation_target: str  # "taisho", "ashigaru", "groq", "gemini"
+    delegation_target: str  # "sanbo", "ashigaru", "groq", "gemini"
     complexity: str  # "simple", "medium", "complex"
     priority: int = 1
     estimated_time: int = 30
@@ -68,15 +70,15 @@ class Subtask:
 
 class Karo:
     """
-    家老 (Karo) - 戦術調整層 v10
+    家老 (Karo) - 戦術調整層 v11.4
 
     武士団システムの戦術調整官として、以下の責務を担う:
 
     主要責務:
     1. 将軍からのルーティング決定を実行
-    2. 動的クライアント選択（Groq高速化、Gemini3防衛）
-    3. 重量実装のための大将調整
-    4. 4層フォールバックチェーン管理（Kimi→Local→Kagemusha→Gemini）
+    2. 動的クライアント選択（Groq高速化、Gemini Flash防衛）
+    3. 実装のための参謀 (Sanbo) 調整
+    4. 3層フォールバックチェーン管理（GPT-5→Grok→Gemini Flash）
     5. 並列サポートのための足軽調整
     6. DSPy最適化タスク分解
 
@@ -85,13 +87,13 @@ class Karo:
     - 願望集合: 効率的分解、並列最大化、品質維持
     - 意図スタック: 調整計画の実行
 
-    v9.3.2 機能:
+    v11.4 機能:
     - インテリジェントルーティング実行
-    - Gemini 3.0 Flash最終防衛
-    - Groq簡易タスク即時応答
+    - Gemini Flash 最終防衛（家老-A）
+    - Groq 簡易タスク即時応答（家老-B）
     """
 
-    VERSION = "10.1"
+    VERSION = "11.4"
 
     # Action keywords that require actual execution (not explanation)
     _ACTION_KEYWORDS = (
@@ -119,7 +121,7 @@ class Karo:
 
         # Components
         self.dspy_client = None
-        self.taisho = None
+        self.sanbo = None  # 参謀 (implementation layer)
         self.ashigaru = None
         self.memory_mcp = None
         self.web_search_mcp = None
@@ -167,14 +169,14 @@ class Karo:
         except Exception as e:
             logger.warning(f"⚠️ DSPyクライアント利用不可: {e}")
 
-        # 大将（実装層）初期化
+        # 参謀（実装層）初期化
         try:
             from core.taisho import Taisho
-            self.taisho = Taisho(self.orchestrator)
-            await self.taisho.initialize()
-            logger.info("⚔️ 大将（実装層）初期化完了")
+            self.sanbo = Taisho(self.orchestrator)
+            await self.sanbo.initialize()
+            logger.info("⚔️ 参謀（実装層）初期化完了")
         except Exception as e:
-            logger.warning(f"⚠️ 大将初期化失敗: {e}")
+            logger.warning(f"⚠️ 参謀初期化失敗: {e}")
 
         # 足軽（実行層）初期化
         try:
@@ -215,9 +217,9 @@ class Karo:
         将軍からのルーティング決定に基づくタスク実行
 
         v9.3.2 ルーティングロジック:
-        - 簡易 → Groq（即時、省電力）
-        - 中程度 → 大将（ローカルQwen3）
-        - 複雑 → 大将＋フォールバックチェーン
+        - 簡易 → Groq 家老-B（即時、省電力）
+        - 中程度 → 参謀-B Grok（高速実装）
+        - 複雑 → 軍師 o3-mini PDCA（ここには来ない）
         - 戦略的 → 将軍が処理（ここには来ない）
         """
         start_time = time.time()
@@ -235,8 +237,8 @@ class Karo:
             elif delegation == TaskDelegation.GROQ_INSTANT:
                 result = await self._execute_with_groq(task)
 
-            elif delegation == TaskDelegation.TAISHO_PRIMARY:
-                result = await self._execute_with_taisho(task, routing_decision)
+            elif delegation == TaskDelegation.SANBO_PRIMARY:
+                result = await self._execute_with_sanbo(task, routing_decision)
 
             elif delegation == TaskDelegation.GEMINI_DEFENSE:
                 result = await self._execute_with_gemini(task, as_final_defense=True)
@@ -279,10 +281,10 @@ class Karo:
             logger.info("🔀 複合タスク検出 → Gemini Flash 自律実行")
             return TaskDelegation.GEMINI_AUTONOMOUS
 
-        # SECOND: Check if this is a single action task - route to Taisho (bypass Groq)
+        # SECOND: Check if this is a single action task - route to Sanbo (bypass Groq)
         if self._is_action_task(task):
-            logger.info("🔧 Action task detected in Karo - routing to Taisho")
-            return TaskDelegation.TAISHO_PRIMARY
+            logger.info("🔧 Action task detected in Karo - routing to Sanbo")
+            return TaskDelegation.SANBO_PRIMARY
 
         # Use routing decision target if available
         if routing_decision:
@@ -290,15 +292,15 @@ class Karo:
                 from core.intelligent_router import RouteTarget
 
                 target_map = {
-                    RouteTarget.GROQ: TaskDelegation.GROQ_INSTANT,
-                    RouteTarget.LOCAL_QWEN3: TaskDelegation.TAISHO_PRIMARY,
-                    RouteTarget.CLOUD_QWEN3: TaskDelegation.TAISHO_PRIMARY,
-                    RouteTarget.GEMINI3: TaskDelegation.GEMINI_DEFENSE,
-                    RouteTarget.SHOGUN: TaskDelegation.TAISHO_PRIMARY  # Shouldn't happen
+                    RouteTarget.KARO_B_GROQ: TaskDelegation.GROQ_INSTANT,
+                    RouteTarget.SANBO_A: TaskDelegation.SANBO_PRIMARY,
+                    RouteTarget.SANBO_B: TaskDelegation.SANBO_PRIMARY,
+                    RouteTarget.KARO_A_GEMINI: TaskDelegation.GEMINI_DEFENSE,
+                    RouteTarget.SHOGUN: TaskDelegation.SANBO_PRIMARY  # Shouldn't happen
                 }
 
                 if hasattr(routing_decision, 'target'):
-                    return target_map.get(routing_decision.target, TaskDelegation.TAISHO_PRIMARY)
+                    return target_map.get(routing_decision.target, TaskDelegation.SANBO_PRIMARY)
 
             except Exception as e:
                 logger.warning(f"⚠️ Routing decision parsing failed: {e}")
@@ -314,17 +316,17 @@ class Karo:
                 return TaskDelegation.ASHIGARU_PARALLEL
 
             elif complexity_value in ["medium", "complex"]:
-                return TaskDelegation.TAISHO_PRIMARY
+                return TaskDelegation.SANBO_PRIMARY
 
-        # Default: Taisho
-        return TaskDelegation.TAISHO_PRIMARY
+        # Default: Sanbo
+        return TaskDelegation.SANBO_PRIMARY
 
     async def _execute_with_gemini_autonomous(self, task) -> Dict[str, Any]:
         """Execute multi-step task with Gemini Flash autonomous executor"""
 
         if not self.gemini_autonomous_executor:
-            logger.warning("⚠️ Gemini autonomous executor not available, falling back to Taisho")
-            return await self._execute_with_taisho(task, None)
+            logger.warning("⚠️ Gemini autonomous executor not available, falling back to Sanbo")
+            return await self._execute_with_sanbo(task, None)
 
         logger.info("🤖 Executing with Gemini Flash Autonomous Executor")
 
@@ -336,9 +338,9 @@ class Karo:
 
             if exec_result.status == "failed":
                 logger.warning(f"⚠️ Gemini autonomous failed: {exec_result.error_message}")
-                logger.info("🔄 Falling back to Taisho")
+                logger.info("🔄 Falling back to Sanbo")
                 self.execution_stats["fallback_count"] += 1
-                return await self._execute_with_taisho(task, None)
+                return await self._execute_with_sanbo(task, None)
 
             return {
                 "status": "completed",
@@ -353,7 +355,7 @@ class Karo:
         except Exception as e:
             logger.error(f"❌ Gemini autonomous execution failed: {e}")
             self.execution_stats["fallback_count"] += 1
-            return await self._execute_with_taisho(task, None)
+            return await self._execute_with_sanbo(task, None)
 
     async def _execute_with_groq(self, task) -> Dict[str, Any]:
         """Execute simple task with Groq for instant response"""
@@ -382,17 +384,17 @@ class Karo:
             self.execution_stats["fallback_count"] += 1
             return await self._execute_with_gemini(task, as_final_defense=True)
 
-    async def _execute_with_taisho(self, task, routing_decision) -> Dict[str, Any]:
-        """Execute implementation task with Taisho and fallback chain"""
+    async def _execute_with_sanbo(self, task, routing_decision) -> Dict[str, Any]:
+        """Execute implementation task with Sanbo (参謀) and fallback chain"""
 
-        if not self.taisho:
-            logger.warning("⚠️ Taisho not available, using Gemini defense")
+        if not self.sanbo:
+            logger.warning("⚠️ Sanbo not available, using Gemini defense")
             return await self._execute_with_gemini(task, as_final_defense=True)
 
-        logger.info("🏯 Executing with Taisho (Implementation Layer)")
+        logger.info("⚔️ Executing with Sanbo (参謀 Implementation Layer)")
 
         try:
-            # Convert task to Taisho format
+            # Convert task to Sanbo format
             from core.taisho import ImplementationTask, ImplementationMode
 
             complexity = getattr(task, 'complexity', None)
@@ -413,17 +415,17 @@ class Karo:
                 context=getattr(task, 'context', None)
             )
 
-            result = await self.taisho.execute_implementation(impl_task)
+            result = await self.sanbo.execute_implementation(impl_task)
 
-            result["handled_by"] = "taisho"
+            result["handled_by"] = "sanbo"
             return result
 
         except Exception as e:
-            logger.warning(f"⚠️ Taisho execution failed: {e}")
+            logger.warning(f"⚠️ Sanbo execution failed: {e}")
             self.execution_stats["fallback_count"] += 1
 
             # Fallback to Gemini as final defense
-            logger.info("🔄 Activating Gemini final defense")
+            logger.info("🔄 Activating Gemini final defense (家老-A)")
             return await self._execute_with_gemini(task, as_final_defense=True)
 
     async def _execute_with_gemini(self, task, as_final_defense: bool = False) -> Dict[str, Any]:
@@ -483,7 +485,7 @@ class Karo:
             return await self._execute_with_gemini(task)
 
     async def _execute_hybrid(self, task, routing_decision) -> Dict[str, Any]:
-        """Execute task with hybrid Taisho + Ashigaru coordination"""
+        """Execute task with hybrid Sanbo + Ashigaru coordination"""
 
         logger.info("🔄 Executing with hybrid coordination")
 
@@ -500,7 +502,7 @@ class Karo:
             return await self._integrate_results(task, results)
         else:
             # Direct execution
-            return await self._execute_with_taisho(task, routing_decision)
+            return await self._execute_with_sanbo(task, routing_decision)
 
     async def _consult_memory(self, task) -> Optional[Dict[str, Any]]:
         """Consult Memory MCP for relevant context"""
@@ -675,7 +677,7 @@ Provide a synthesized, coherent final result.
                 "gemini3": self.gemini3_client is not None,
                 "gemini": self.gemini_client is not None,
                 "groq": self.groq_client is not None,
-                "taisho": self.taisho is not None,
+                "sanbo": self.sanbo is not None,
                 "ashigaru": self.ashigaru is not None
             }
         }
@@ -704,7 +706,7 @@ Provide a synthesized, coherent final result.
         self.belief_base.add_belief(Belief(
             id="has_taisho",
             type=BeliefType.OPERATIONAL,
-            content={"capability": "implementation", "available": self.taisho is not None},
+            content={"capability": "implementation", "available": self.sanbo is not None},
             confidence=1.0,
             source="system_init"
         ))
@@ -713,6 +715,14 @@ Provide a synthesized, coherent final result.
             id="has_ashigaru",
             type=BeliefType.OPERATIONAL,
             content={"capability": "parallel_execution", "available": self.ashigaru is not None},
+            confidence=1.0,
+            source="system_init"
+        ))
+
+        self.belief_base.add_belief(Belief(
+            id="has_sanbo",
+            type=BeliefType.OPERATIONAL,
+            content={"capability": "implementation", "available": self.sanbo is not None},
             confidence=1.0,
             source="system_init"
         ))
@@ -921,13 +931,13 @@ Provide a synthesized, coherent final result.
 
         elif desire.id == "maintain_coordination_quality":
             plan = [
-                {"action": "delegate_to_taisho", "agent": "taisho"},
+                {"action": "delegate_to_sanbo", "agent": "sanbo"},
                 {"action": "validate_result", "agent": "karo"}
             ]
 
         else:
             plan = [
-                {"action": "direct_execution", "agent": "taisho"}
+                {"action": "direct_execution", "agent": "sanbo"}
             ]
 
         intention = Intention(
@@ -964,20 +974,20 @@ Provide a synthesized, coherent final result.
                     if subtasks:
                         subtask_results = await self._execute_subtasks(subtasks)
                     else:
-                        taisho_result = await self._execute_with_taisho(task, routing_decision)
-                        subtask_results = [taisho_result]
+                        sanbo_result = await self._execute_with_sanbo(task, routing_decision)
+                        subtask_results = [sanbo_result]
 
                 elif action == "integrate_results":
                     if subtask_results:
                         integrated = await self._integrate_results(task, subtask_results)
                         result.update(integrated)
 
-                elif action == "delegate_to_taisho":
-                    taisho_result = await self._execute_with_taisho(task, routing_decision)
-                    result.update(taisho_result)
+                elif action == "delegate_to_sanbo":
+                    sanbo_result = await self._execute_with_sanbo(task, routing_decision)
+                    result.update(sanbo_result)
 
                 elif action == "direct_execution":
-                    direct_result = await self._execute_with_taisho(task, routing_decision)
+                    direct_result = await self._execute_with_sanbo(task, routing_decision)
                     result.update(direct_result)
 
                 elif action == "validate_result":

@@ -1,2 +1,2 @@
-# 武士団マルチエージェントシステム v10.1
+# 武士団マルチエージェントシステム v11.4
 """Bushidan Multi-Agent System - Main Package."""

@@ -1,21 +1,21 @@
 # =============================================================
-# 武士団マルチエージェントシステム v10 - Configuration
+# 武士団マルチエージェントシステム v11.4 - Configuration
 # =============================================================
-# "5層ハイブリッドアーキテクチャ + 軍師(Gunshi) + BDI Framework"
+# "脱中国企業・9層ハイブリッドアーキテクチャ + PDCA + BDI"
 # =============================================================
 
 system:
   name: "Bushidan Multi-Agent System"
-  version: "10.0"
+  version: "11.4"
   language: "ja"
-  philosophy: "シンプル・イズ・ベスト + 実用性第一 + 汎用性の追求"
-  subtitle: "5-Tier Hybrid Architecture with Gunshi + BDI Framework + llama.cpp"
+  philosophy: "脱中国企業・シンプル・イズ・ベスト + 実用性第一 + 汎用性の追求"
+  subtitle: "9-Tier Hybrid Architecture with o3-mini PDCA + BDI Framework + Nemotron Local"
 
-# --- BDI Framework Configuration (v9.4) ---
+# --- BDI Framework Configuration ---
 bdi_framework:
   enabled: true
   description: "Belief-Desire-Intention framework for formal multi-agent theory"
-  default_mode: true  # v9.4: BDI enabled by default
+  default_mode: true
 
   features:
     - "Formal semantics: Perceive → Deliberate → Plan → Execute → Reconsider"
@@ -25,26 +25,42 @@ bdi_framework:
     - "Japanese logging throughout"
     - "Backward compatible with existing agents"
 
-  shogun_bdi:
+  daigensui_bdi:
     enabled: true
     strategic_desires:
       maintain_quality:
         type: "maintenance"
-        priority: 0.9
-        description: "Maintain high quality standards (95+ points)"
+        priority: 0.95
+        description: "Maintain highest quality standards (97+ points)"
       optimize_cost:
         type: "optimization"
         priority: 0.7
         description: "Optimize cost while maintaining quality"
       ensure_security:
         type: "constraint"
-        priority: 0.95
-        description: "Ensure security for sensitive operations"
+        priority: 0.98
+        description: "Ensure security for all operations"
       learn_and_improve:
         type: "exploration"
         priority: 0.6
         description: "Learn from past decisions"
         requires: ["memory_mcp"]
+
+  shogun_bdi:
+    enabled: true
+    coding_desires:
+      high_quality_code:
+        type: "achievement"
+        priority: 0.95
+        description: "Generate high-quality, production-ready code"
+      efficient_implementation:
+        type: "optimization"
+        priority: 0.85
+        description: "Implement efficiently with minimal overhead"
+      code_security:
+        type: "constraint"
+        priority: 0.9
+        description: "Ensure code security best practices"
 
   gunshi_bdi:
     enabled: true
@@ -82,7 +98,7 @@ bdi_framework:
         priority: 0.85
         description: "High quality result integration"
 
-  taisho_bdi:
+  sanbo_bdi:
     enabled: true
     implementation_desires:
       correct_implementation:
@@ -102,93 +118,116 @@ bdi_framework:
         priority: 0.8
         description: "Automatically fix errors"
 
-# --- v10 革新的機能 ---
-v10_innovations:
+# --- v11.4 革新的機能 ---
+v11_4_innovations:
+  de_china:
+    enabled: true
+    description: "脱中国企業 - 中国企業のサービスを全て排除"
+    removed_services:
+      - "Alibaba Cloud / DashScope"
+      - "Moonshot / Kimi K2.5"
+      - "Qwen series (all)"
+    replaced_with:
+      - "OpenAI (o3-mini, GPT-5)"
+      - "xAI (Grok-code-fast-1)"
+      - "NVIDIA (Nemotron-3-Nano local)"
+      - "Google (Gemini Flash)"
+      - "Anthropic (Claude Opus 4.5, Sonnet 4.6)"
+      - "Meta (Llama 3.3 70B via Groq)"
+
   gunshi_pdca:
     enabled: true
-    description: "軍師 PDCA Engine - Plan→Do→Check→Act cycle"
-    model: "qwen3-coder-next"
+    description: "軍師 PDCA Engine - o3-mini (high) による Plan→Do→Check→Act"
+    model: "o3-mini"
+    reasoning_effort: "high"
     engine: "PDCA"
 
     pdca_cycle:
       plan:
-        description: "256Kコンテキストでタスク分析 → サブタスク分解"
-        temperature: 0.3
+        description: "o3-mini高推論力でタスク分析 → サブタスク分解"
+        reasoning_effort: "high"
         max_subtasks: 5
-        subtask_token_limit: 3000  # Taisho の 4096 に収める
+        subtask_token_limit: 4000
 
       do:
-        description: "サブタスクを Kimi K2.5 / Taisho に委譲 (真の並列実行)"
-        execution_strategy: "independent=Kimi並列, dependent=sequential"
-        primary_executor: "Kimi K2.5 (128K, 並列API) → Taisho (4層フォールバック)"
-        fallback_executor: "Gunshi API (Taisho未初期化時のみ)"
+        description: "サブタスクを参謀A/B (GPT-5 / Grok) に委譲"
+        execution_strategy: "independent=参謀B並列, dependent=sequential"
+        primary_executor: "GPT-5 (参謀-A) → Grok-code-fast-1 (参謀-B)"
+        fallback_executor: "家老-A (Gemini Flash)"
 
       check:
-        description: "全結果を 256K window で一括検証 + 検校ビジュアル検証"
-        temperature: 0.1  # 厳密判定
-        key_value: "テキスト検証(Gunshi 256K) + ビジュアル検証(検校) = 完全品質保証"
+        description: "o3-mini で全結果を一括検証 + 検校ビジュアル検証"
+        reasoning_effort: "high"
+        key_value: "テキスト検証(軍師 o3-mini) + ビジュアル検証(検校 Gemini Vision) = 完全品質保証"
         verification_criteria:
           - "元タスクの要件充足"
           - "サブタスク間整合性 (import, 型, インターフェース)"
           - "コード品質 (バグ, セキュリティ)"
           - "実装の完全性"
-          - "UI/ビジュアル検証 (検校: Kimi Vision + Playwright)"
+          - "UI/ビジュアル検証 (検校: Gemini Flash Vision + Playwright)"
 
       act:
         description: "不合格サブタスクに修正指示 → 再実装"
-        temperature: 0.2  # 精密な修正
-        max_correction_loops: 1  # 無限ループ防止
+        reasoning_effort: "high"
+        max_correction_loops: 1
 
     capabilities:
-      - "256K context (cross-file verification)"
-      - "SWE-Bench 70.6% (Check精度)"
-      - "Non-thinking mode (低レイテンシ)"
-      - "80B/3B active (コスト効率)"
+      - "o3-mini (high): 推論特化・SWE-Bench高精度"
+      - "Non-China API: 信頼性の高い西側プロバイダー"
+      - "GPT-5 + Grok 並列実装: 高速・高品質"
 
     api_providers:
-      - "DashScope (Alibaba Cloud)"
-      - "OpenRouter"
+      - "OpenAI (o3-mini, GPT-5)"
+      - "xAI (Grok)"
 
-  llamacpp_cpu:
+  nemotron_local:
     enabled: true
-    description: "llama.cpp CPU最適化（HP ProDesk 600対応、Ollama不要）"
+    description: "Nemotron-3-Nano ローカル推論（HP ProDesk 600専用化）"
     benefits:
-      - "AVX2, FMA, F16C CPU命令活用"
-      - "メモリロック（mlock）でスワップ防止"
-      - "ネイティブC++（Goオーバーヘッド無し）"
-      - "HP ProDesk 600完全対応"
-    expected_speed: "10-18 tok/s (i5-8500 CPU)"
+      - "NVIDIA製・脱中国: 信頼性の高いローカルLLM"
+      - "小型高効率: 8GB RAMで動作可能"
+      - "機密情報処理: API送信不要"
+      - "超長文対応: ローカルでコンテキスト制限なし"
+      - "llama.cpp CPU最適化"
+    expected_speed: "15-25 tok/s (CPU)"
 
   intelligent_routing:
     enabled: true
-    description: "運用黄金律 v10 に基づくインテリジェント・ルーティング"
+    description: "運用黄金律 v11.4 に基づくインテリジェント・ルーティング"
     golden_rules:
-      - "Simple → Groq (instant, free, DON'T wake Qwen)"
-      - "Medium → Local Qwen3 llama.cpp (local volume, ¥0)"
-      - "Complex → Gunshi (Qwen3-Coder-Next API, 作戦立案)"
-      - "Strategic → Shogun (final authority)"
+      - "Simple → 家老-B Groq Llama3.3 (instant, free)"
+      - "Medium → 参謀-B Grok (fast implementation)"
+      - "Complex → 軍師 o3-mini PDCA (reasoning + 参謀で実装)"
+      - "Strategic → 大元帥 Claude Opus 4.5 (最高権限)"
+      - "Coding → 将軍 Claude Sonnet 4.6 (高難度コーディング)"
+      - "Confidential → 隠密 Nemotron-3-Nano (ローカル処理)"
+      - "Visual → 検校 Gemini Flash Vision (マルチモーダル)"
     complexity_judgment:
-      simple: "Questions, lookups (<50 chars, no code) → Groq"
-      medium: "Standard implementation (code keywords) → Local Qwen3"
-      complex: "Multi-component (multiple files) → Gunshi → Local → Cloud → Gemini"
-      strategic: "Design decisions (strategic keywords) → Shogun"
+      simple: "Questions, lookups (<50 chars, no code) → 家老-B Groq"
+      medium: "Standard implementation → 参謀-B Grok or 参謀-A GPT-5"
+      complex: "Multi-component → 軍師 o3-mini PDCA"
+      strategic: "Design decisions → 大元帥 Opus 4.5"
+      coding: "High difficulty coding → 将軍 Sonnet 4.6"
+      confidential: "Sensitive data → 隠密 Nemotron Local"
 
   fallback_chains:
     enabled: true
     description: "多段フォールバック・チェーン（99.5%信頼性）"
     chains:
       simple:
-        primary: "Groq (300-500 tok/s, free)"
-        fallback: "Gemini 3 Flash"
+        primary: "家老-B Groq Llama 3.3 70B (free, 300-500 tok/s)"
+        fallback: "家老-A Gemini Flash"
       medium:
-        primary: "Local Qwen3 llama.cpp (4096 context, ¥0)"
-        shadow: "Cloud Qwen3-plus (32k context, ¥3)"
-        final_defense: "Gemini 3 Flash (¥0.04)"
+        primary: "参謀-B Grok-code-fast-1 (高速実装)"
+        secondary: "参謀-A GPT-5 (汎用)"
+        final_defense: "家老-A Gemini Flash"
       complex:
-        primary: "Gunshi PDCA: Plan(256K) → Do(Kimi並列+Taisho) → Check(256K) → Act"
-        do_chain: "Kimi K2.5 (128K, 並列) → Local Qwen3 → Kagemusha → Gemini 3"
-        do_parallel: "Kimi K2.5 の asyncio.gather で真の並列サブタスク実行"
-        gunshi_unavailable: "Kimi → Local Qwen3 → Cloud Qwen3 → Gemini 3 (4層)"
+        primary: "軍師 o3-mini PDCA: Plan→Do(参謀並列)→Check→Act"
+        do_chain: "参謀-A GPT-5 → 参謀-B Grok → 家老-A Gemini Flash"
+        gunshi_unavailable: "参謀-A GPT-5 → 参謀-B Grok → 家老-A Gemini Flash"
+      strategic:
+        primary: "大元帥 Claude Opus 4.5"
+        fallback: "将軍 Claude Sonnet 4.6"
 
   prompt_caching:
     enabled: true
@@ -197,21 +236,39 @@ v10_innovations:
 
   power_optimization:
     enabled: true
-    description: "電力最適化（Qwen起動制御）"
-    strategy: "Simple タスクは Groq で処理し Qwen を起こさない"
+    description: "電力最適化"
+    strategy: "Simple タスクは Groq で処理しローカルLLMを起こさない"
 
 # --- リポジトリ同期 ---
 repo:
   local_base: "/home/claude"
-  github_remote: ""  # git remote から自動取得
+  github_remote: ""
   sync_interval_min: 5
 
-# --- 将軍 (Shogun) - Strategic Layer ---
+# --- 大元帥 (Daigensui) - Supreme Strategic Layer ---
+daigensui:
+  codename: "Daigensui"
+  role: "大元帥 - 最高難度・戦略設計・最終品質保証"
+  model: "claude-opus-4-5-20250514"
+
+  prompt_caching:
+    enabled: true
+    cache_ttl_minutes: 5
+    system_prompt_caching: true
+
+  activation_triggers:
+    - "task_complexity == STRATEGIC"
+    - "risk_level in [HIGH, CRITICAL]"
+    - "security_vulnerabilities detected"
+    - "security keywords: auth, payment, database"
+    - "user_request == true"
+    - "architecture_decision"
+
+# --- 将軍 (Shogun) - High-Difficulty Coding Layer ---
 shogun:
   codename: "Shogun"
-  role: "将軍 - 大局的設計図・難解エラー最終判断・品質保証"
-  model: "claude-sonnet-4-5-20250929"
-  opus_model: "claude-opus-4-20250514"
+  role: "将軍 - 高難度コーディング・設計実装"
+  model: "claude-sonnet-4-6"
 
   prompt_caching:
     enabled: true
@@ -236,45 +293,33 @@ shogun:
         cost_yen: "0-5"
       premium:
         target: ["strategic"]
-        model: "opus-4"
+        model: "opus-4.5"
         cost_yen: 10
 
-  opus_triggers:
-    - "task_complexity == STRATEGIC"
-    - "risk_level in [HIGH, CRITICAL]"
-    - "security_vulnerabilities detected"
-    - "security keywords: auth, payment, database"
-    - "user_request == true"
-
-# --- 軍師 (Gunshi) - Strategy Planning Layer (v10) ---
+# --- 軍師 (Gunshi) - Reasoning & PDCA Layer ---
 gunshi:
   codename: "Gunshi"
-  role: "軍師 - 作戦立案・コードアーキテクチャ監査・複雑タスク分解"
-  model: "qwen3-coder-next"
-  total_params: "80B"
-  active_params: "3B"
-  context_window: 262144  # 256K
-  swe_bench: "70.6%"
+  role: "軍師 - 推論・設計・PDCA作戦立案"
+  model: "o3-mini"
+  reasoning_effort: "high"
+  provider: "openai"
 
   api:
-    primary_provider: "openrouter"
+    primary_provider: "openai"
     providers:
-      openrouter:
-        base_url: "https://openrouter.ai/api/v1"
-        model_name: "qwen/qwen3-coder-next"
-      dashscope:
-        base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
-        model_name: "qwen3-coder-next"
-    temperature: 0.3  # 低め = 正確な戦略立案
-    max_tokens: 8192  # 長めの分析を許容
+      openai:
+        base_url: "https://api.openai.com/v1"
+        model_name: "o3-mini"
+    reasoning_effort: "high"
+    max_tokens: 8192
 
   pdca_engine:
     max_subtasks: 5
     max_correction_loops: 1
-    subtask_token_limit: 3000
-    temperature_plan: 0.3
-    temperature_check: 0.1
-    temperature_act: 0.2
+    subtask_token_limit: 4000
+    reasoning_effort_plan: "high"
+    reasoning_effort_check: "high"
+    reasoning_effort_act: "high"
 
   activation_triggers:
     - "task_complexity == COMPLEX"
@@ -282,51 +327,91 @@ gunshi:
     - "multi_file_changes"
     - "architecture_related"
 
-# --- 傭兵 (Yohei) - Kimi K2.5 Mercenary (v10.1) ---
-yohei:
-  codename: "Kimi K2.5"
-  role: "傭兵 - 並列サブタスク実行・大規模コンテキスト処理・ビジュアル検証"
-  model: "kimi-k2-0711"
-  context_window: 131072  # 128K
-  multimodal: true
+# --- 参謀-A (Sanbo-A) - General Coding ---
+sanbo_a:
+  codename: "Sanbo-A"
+  role: "参謀-A - 汎用コーディング"
+  model: "gpt-5"
+  provider: "openai"
 
   api:
-    primary_provider: "moonshot"
+    primary_provider: "openai"
     providers:
-      moonshot:
-        base_url: "https://api.moonshot.cn/v1"
-        model_name: "kimi-k2-0711"
-      openrouter:
-        base_url: "https://openrouter.ai/api/v1"
-        model_name: "moonshot/kimi-k2.5"
-    default_max_tokens: 8192
-    timeout_seconds: 120
+      openai:
+        base_url: "https://api.openai.com/v1"
+        model_name: "gpt-5"
+    temperature: 0.3
+    max_tokens: 8192
 
   strengths:
-    - "128K context: 軍師(256K)と大将(4K)のギャップを埋める"
-    - "クラウドAPI: asyncio.gather で真の並列サブタスク実行"
-    - "マルチモーダル: 検校(Kengyo)と連携したUI視覚検証"
-    - "高速推論: ローカル llama.cpp より低レイテンシ"
+    - "最新世代GPT: 高品質コード生成"
+    - "汎用性: あらゆるプログラミング言語対応"
+    - "大規模コンテキスト: 長いコード解析"
 
-  role_in_pdca:
-    do_phase: "独立サブタスクを implement_subtasks_parallel() で並列実行"
-    check_phase: "検校(Kengyo): Playwright スクリーンショット + Kimi Vision 検証"
-    confidential: "秘匿タスクはスキップ → Local Qwen3 が直接処理"
+# --- 参謀-B (Sanbo-B) - Fast Implementation ---
+sanbo_b:
+  codename: "Sanbo-B"
+  role: "参謀-B - 実装・バグ修正・高速"
+  model: "grok-code-fast-1"
+  provider: "xai"
 
-  cost:
-    input_per_1k_tokens_yen: 0.002
-    output_per_1k_tokens_yen: 0.008
-    estimated_monthly_yen: 30  # ~100 Complex tasks/month
+  api:
+    primary_provider: "xai"
+    providers:
+      xai:
+        base_url: "https://api.x.ai/v1"
+        model_name: "grok-code-fast-1"
+    temperature: 0.2
+    max_tokens: 8192
 
-# --- 検校 (Kengyo) - Visual Debugger (v10.1) ---
+  strengths:
+    - "高速推論: コーディング特化"
+    - "バグ修正: 迅速な問題解決"
+    - "実装速度: Grok系最速"
+
+# --- 家老-A (Karo-A) - Lightweight Tasks ---
+karo_a:
+  codename: "Karo-A"
+  role: "家老-A - 軽量タスク・最終防衛線"
+  model: "gemini-2.5-flash"
+  provider: "google"
+
+  api:
+    primary_provider: "google"
+    providers:
+      google:
+        model_name: "gemini-2.5-flash"
+    temperature: 0.3
+    max_tokens: 2000
+
+# --- 家老-B (Karo-B) - Algorithm Specialist ---
+karo_b:
+  codename: "Karo-B"
+  role: "家老-B - アルゴリズム特化・瞬速応答"
+  model: "llama-3.3-70b-versatile"
+  provider: "groq"
+
+  api:
+    primary_provider: "groq"
+    providers:
+      groq:
+        base_url: "https://api.groq.com/openai/v1"
+        model_name: "llama-3.3-70b-versatile"
+    temperature: 0.2
+    max_tokens: 2000
+    speed: "300-500 tok/s"
+    cost_yen: 0
+
+# --- 検校 (Kengyo) - Multimodal Visual Debugger ---
 kengyo:
   codename: "Kengyo"
-  role: "検校 - ビジュアル・デバッガー (Kimi K2.5 Vision + Playwright MCP)"
-  description: "PDCA Check フェーズのビジュアル検証拡張"
+  role: "検校 - マルチモーダル・ビジュアルデバッガー"
+  model: "gemini-2.5-flash"
+  description: "Gemini Flash Vision でビジュアル検証"
 
   capabilities:
     - "スクリーンショット取得: Playwright MCP (Desktop + Mobile)"
-    - "ビジュアル解析: Kimi K2.5 Vision (レイアウト・表示・アクセシビリティ)"
+    - "ビジュアル解析: Gemini Flash Vision (レイアウト・表示・アクセシビリティ)"
     - "リグレッション検出: Before/After 比較"
     - "マルチビューポート: Desktop (1280px) / Tablet (768px) / Mobile (375px)"
 
@@ -340,103 +425,63 @@ kengyo:
 
   integration:
     pdca_phase: "Check (Phase 3)"
-    text_weight: 0.8   # テキスト検証 80%
-    visual_weight: 0.2  # ビジュアル検証 20%
+    text_weight: 0.8
+    visual_weight: 0.2
     activation: "タスクコンテキストに URL or UI キーワードが含まれる場合のみ"
-    graceful_degradation: "Kimi/Playwright 未設定時はスキップ (テキスト検証のみ)"
+    graceful_degradation: "Playwright 未設定時はスキップ (テキスト検証のみ)"
 
   dependencies:
-    required: "Kimi K2.5 (Vision)"
+    required: "Gemini Flash Vision"
     optional: "Playwright MCP (Smithery)"
 
-# --- 家老 (Karo) - Tactical Layer ---
-karo:
-  codename: "Karo"
-  role: "家老 - タスク分解・最終防御線"
+# --- 隠密 (Onmitsu) - Local Confidential Processing ---
+onmitsu:
+  codename: "Onmitsu"
+  role: "隠密 - 機密・超長文・ローカル処理"
+  model: "nemotron-3-nano"
+  provider: "local_llamacpp"
 
-  dynamic_selection:
-    enabled: true
-    groq:
-      model: "llama-3.3-70b-versatile"
-      use_case: "Simple tasks (instant speed)"
-      speed: "300-500 tok/s"
-      cost_yen: 0
-
-    gemini3:
-      model: "gemini-3.0-flash"
-      use_case: "Final defense line (fallback)"
-      cost_yen: 0.04
-
-# --- 大将 (Taisho) - Implementation Layer ---
-taisho:
-  codename: "Taisho"
-  role: "大将 - 実務実装・MCP駆使"
-
-  # v9.4: llama.cpp (replaces Ollama)
   local:
     backend: "llama.cpp"
-    model: "Qwen3-Coder-30B-Q4_K_M.gguf"
-    endpoint: "http://127.0.0.1:8080"
-    context_length: 4096
+    model: "Nemotron-3-Nano.gguf"
+    endpoint: "http://192.168.11.232:8080"
+    context_length: 8192
     quantization: "Q4_K_M"
-    threads: 6  # HP ProDesk 600: i5-8500 6 cores
+    threads: 6
     batch_size: 512
     mlock: true
     expected_speed: "15-25 tok/s (CPU)"
     cost_yen: 0
-    power_cost_yen: 3  # CPU is more efficient
-    optimizations:
-      - "llama.cpp CPU native (AVX2, FMA)"
-      - "Memory lock (mlock) prevents swap"
-      - "No Ollama overhead"
-      - "HP ProDesk 600 optimized"
+    power_cost_yen: 3
 
-  # Shadow: Cloud Qwen3-plus (Kagemusha) via OpenRouter
-  kagemusha:
-    enabled: true
-    model: "qwen/qwen3-coder-plus"
-    provider: "openrouter"
-    base_url: "https://openrouter.ai/api/v1"
-    context_length: 32000
-    activation_triggers:
-      - "Local Qwen3 fails"
-      - "Context > 4096 tokens"
-      - "Complex task requiring more capacity"
-    cost_yen: 3
-    description: "影武者（Shadow backup）for seamless continuation"
+  strengths:
+    - "NVIDIA製: 脱中国・信頼性の高いモデル"
+    - "ローカル完結: API送信不要・機密情報安全"
+    - "超長文対応: コンテキスト制限緩和"
+    - "CPU最適化: llama.cpp + AVX2, FMA"
+    - "¥0運用: 電気代のみ"
 
-  # Final fallback: Gemini 3 Flash
-  final_defense:
-    model: "gemini-3.0-flash"
-    activation: "When Kimi, Local Qwen3, and Cloud Qwen3 all fail"
-    cost_yen: 0.04
-
-  # v10.1: 4層フォールバックチェーン
-  fallback_chain_v10_1:
-    tier_1: "Kimi K2.5 傭兵 (128K ctx, 並列実行) - 非秘匿タスク"
-    tier_2: "ローカルQwen3 (4K ctx, ¥0) - 秘匿処理・統合・オフライン"
-    tier_3: "クラウドQwen3+ 影武者 (32K ctx, ¥3) - 容量拡張"
-    tier_4: "Gemini 3 Flash (防衛, ¥0.04) - 最終防衛"
+  activation_triggers:
+    - "confidential_data"
+    - "sensitive_code"
+    - "offline_required"
+    - "long_context_local"
 
 # --- 足軽 (Ashigaru) - Execution Layer ---
 ashigaru:
   codename: "Ashigaru"
   role: "足軽 - MCP実行・並列処理"
 
-  # v10.1: Smithery MCP 経由
   mcp_manager: "smithery"
   members:
-    # AI
     - name: "sequential_thinking"
       type: "MCP (Smithery)"
       role: "動的思考チェーン: 分岐・修正可能な推論"
 
-    # Browser
     - name: "playwright"
       type: "MCP (Smithery)"
-      role: "ブラウザ操作・スクリーンショット・検校(Kengyo)ビジュアル検証"
+      role: "ブラウザ操作・スクリーンショット・検校ビジュアル検証"
 
-    # Search
     - name: "tavily"
       type: "MCP (Smithery)"
       role: "Web検索 (1,000/月 free)"
@@ -446,7 +491,6 @@ ashigaru:
       role: "セマンティック検索"
       optional: true
 
-    # Data
     - name: "filesystem"
       type: "MCP (Smithery)"
       role: "ファイル読み書き"
@@ -461,7 +505,6 @@ ashigaru:
       role: "DB操作 (Prisma経由)"
       optional: true
 
-    # Integration
     - name: "discord"
       type: "API (discord.py)"
       role: "Discord連携"
@@ -476,7 +519,6 @@ ashigaru:
       type: "MCP (Smithery)"
       role: "Git操作"
 
-    # API (non-MCP)
     - name: "groq"
       type: "API"
       role: "瞬速実行（Simple tasks）"
@@ -485,40 +527,47 @@ ashigaru:
 # --- インフラ設定 ---
 infrastructure:
   mode: "hybrid"
-  description: "クラウドの知能・速度 + ローカルの物量・コスト0"
+  description: "脱中国・クラウドの知能＋ローカルの機密処理"
 
-  local:
-    hardware: "HP ProDesk 600"
-    cpu: "Intel Core i5-8500 (6C/6T)"
-    ram: "16-32GB DDR4"
-    gpu: "なし（CPU推論）"
-    os: "Ubuntu 22.04/24.04 LTS"
+  machines:
+    proDesk_600:
+      role: "ローカルLLM専用機"
+      hardware: "HP ProDesk 600"
+      cpu: "Intel Core i5-8500 (6C/6T)"
+      ram: "24GB DDR4 (16GB + 8GB増強)"
+      gpu: "なし（CPU推論）"
+      os: "Ubuntu 22.04/24.04 LTS"
+      dedicated_to: "Nemotron-3-Nano (隠密)"
 
-  # v9.4: llama.cpp (replaces Ollama)
+    eliteDesk:
+      role: "メインオーケストレーション"
+      hardware: "HP EliteDesk"
+      cpu: "Intel Core i5-8500 (6C/6T)"
+      ram: "16GB DDR4"
+      gpu: "なし"
+      os: "Ubuntu 22.04/24.04 LTS"
+      dedicated_to: "システム統括 (本陣)"
+
   llamacpp:
-    endpoint: "http://127.0.0.1:8080"
-    model_path: "models/qwen3/Qwen3-Coder-30B-Q4_K_M.gguf"
-    threads: 6  # i5-8500: 6 cores
-    context_size: 4096
+    endpoint: "http://192.168.11.232:8080"
+    model_path: "models/nemotron/Nemotron-3-Nano.gguf"
+    threads: 6
+    context_size: 8192
     batch_size: 512
     mlock: true
     mmap: true
 
-  # Legacy (unused in v9.4)
-  # ollama:
-  #   endpoint: "http://localhost:11434"
-
   litellm:
     endpoint: "http://localhost:8000"
     features:
-      - "Context compression (<4k)"
+      - "Context compression"
       - "Multi-API integration"
 
 # --- Proxmox コンテナ設定 ---
 proxmox:
   containers:
     ct_100:
-      name: "本陣"
+      name: "本陣 (EliteDesk)"
       role: "System orchestration"
       disk: "10GB"
       ram: "2GB"
@@ -526,88 +575,84 @@ proxmox:
       description: "調整専用、モデル無し"
 
     ct_101:
-      name: "Qwen3"
+      name: "隠密 (ProDesk 600)"
       role: "Local LLM inference"
-      disk: "45GB"
-      ram: "24GB"
-      cpu: 8
-      description: "llama.cpp + Qwen3-Coder-30B (~17GB model)"
-      storage_breakdown:
-        model: "17GB"
-        llamacpp: "3GB"
-        dependencies: "5GB"
-        os_overhead: "10GB"
-        free_space: "10GB"
+      disk: "20GB"
+      ram: "20GB"
+      cpu: 6
+      description: "llama.cpp + Nemotron-3-Nano"
 
-# --- パフォーマンス目標 (PDCA実測ベース) ---
+# --- パフォーマンス目標 ---
 performance_targets:
-  v10_pdca:
+  v11_4:
     simple:
       time_seconds: 2
-      route: "Groq"
+      route: "家老-B Groq Llama 3.3 70B"
       cost_yen: 0
 
     medium:
-      time_seconds: "12-15"  # CPU推論 (HP ProDesk 600)
-      route: "Local Qwen3 llama.cpp"
-      cost_yen: 0
+      time_seconds: "8-12"
+      route: "参謀-B Grok-code-fast-1"
+      cost_yen: "0.01-0.05"
 
     complex:
-      time_seconds_no_correction: "21-30"  # Plan(3-5) + Do(15-20) + Check(3-5)
-      time_seconds_with_correction: "36-55"  # + Act(15-20) + ReCheck(3-5)
-      route: "Gunshi PDCA: Plan→Do(Kimi並列+Taisho)→Check→Act"
-      cost_yen: "0.04-0.10"  # Gunshi API (Plan+Check+maybe Act)
+      time_seconds_no_correction: "20-30"
+      time_seconds_with_correction: "35-50"
+      route: "軍師 o3-mini PDCA: Plan→Do(参謀並列)→Check→Act"
+      cost_yen: "0.10-0.30"
 
     strategic:
       time_seconds: 45
-      route: "Shogun"
+      route: "大元帥 Claude Opus 4.5"
+      cost_yen: "0-10"
+
+    coding:
+      time_seconds: "15-30"
+      route: "将軍 Claude Sonnet 4.6"
       cost_yen: "0-5"
+
+    confidential:
+      time_seconds: "15-25"
+      route: "隠密 Nemotron-3-Nano (Local)"
+      cost_yen: 0
 
 # --- コスト目標 ---
 cost_targets:
-  v10_1:
-    monthly_yen: 3540
+  v11_4:
+    monthly_yen: 3800
     breakdown:
       claude_pro: 3000
       claude_api: 140
-      opus_premium: 100
-      gemini_3_flash: 120
-      openrouter_qwen: 70  # Gunshi (qwen3-coder-next) + Kagemusha (qwen3-coder-plus) via OpenRouter
-      qwen3_coder_next: 10  # Gunshi PDCA (3B active, ~¥0.05/request × 200/month)
-      kimi_k2: 30  # 傭兵 (¥0.01/request × ~100 Complex tasks × 3 subtasks)
+      opus_premium: 200
+      openai_o3mini_gpt5: 200
+      xai_grok: 50
+      gemini_flash: 80
       groq: 0
       electricity: 80
 
-# --- 品質目標 (厳密ベンチマーク基準) ---
+# --- 品質目標 ---
 quality_targets:
-  v10_pdca:
-    note: "v9.4比較: COMPLEX のみ改善 (+7-8pt), 他は不変"
-    simple: "85-90"       # Groq (変化なし)
-    medium: "88-92"       # Local Qwen3 (変化なし)
-    complex_no_correction: "82-90"   # PDCA Plan+Do+Check (v9.4: 78-85)
-    complex_with_correction: "87-93" # PDCA full cycle (Act修正後)
-    strategic: "95-98"    # Opus Premium (変化なし)
-    overall: "88-92"      # 加重平均
-
-    pdca_improvement_analysis:
-      plan_value: "Taisho 4096制限を Gunshi 256K で補完 → 焦点を絞った実装指示"
-      check_value: "cross-file 整合性検証 → Taisho が見えないバグを検出"
-      act_value: "具体的修正指示 → 盲目的リトライより高い修正成功率"
-      kimi_value: "128K context + 並列実行 → Taisho 4096制限のボトルネック解消"
-      remaining_bottleneck: "Kimi API レート制限 (max_concurrency=4)"
+  v11_4:
+    simple: "85-90"
+    medium: "88-92"
+    complex_no_correction: "85-92"
+    complex_with_correction: "90-95"
+    strategic: "95-99"
+    coding: "92-96"
+    overall: "90-94"
 
 # --- 開発環境 ---
 development:
-  primary_interface: "Slack"
+  primary_interface: "Discord"
   modes:
-    battalion: "Full system (Shogun + Gunshi + Karo + Taisho + Ashigaru)"
-    company: "Slack mode (Karo + Taisho + Ashigaru)"
-    platoon: "HA OS mode (Taisho + Dynamic Ashigaru)"
+    battalion: "Full system (大元帥 + 将軍 + 軍師 + 参謀 + 家老 + 検校 + 隠密 + 足軽)"
+    company: "Discord mode (参謀 + 家老 + 足軽)"
+    platoon: "HA OS mode (隠密 + 足軽)"
 
   logging:
     level: "INFO"
     format: "structured"
-    language: "ja"  # v9.4: Japanese logging
+    language: "ja"
 
 # --- セキュリティ ---
 security:
@@ -621,11 +666,12 @@ security:
     - "credential"
 
   opus_review_on_security: true
+  confidential_to_onmitsu: true
 
 # --- 記憶システム (3層) ---
 memory_system:
   short_term:
-    location: "Slack Thread"
+    location: "Discord Thread"
     duration: "数日"
 
   medium_term:
@@ -636,7 +682,7 @@ memory_system:
     location: "Notion Database"
     duration: "永続"
 
-# --- MCP権限マトリクス (v10.1) ---
+# --- MCP権限マトリクス (v11.4) ---
 mcp_permissions:
   config_file: "config/mcp_permissions.yaml"
   description: "役職別MCP使用権限・優先度設定"
@@ -651,28 +697,35 @@ mcp_permissions:
     forbidden: "禁止 - 使用不可"
 
   role_specializations:
-    shogun:
+    daigensui:
       primary_mcps: ["graph_memory", "notion"]
-      purpose: "戦略的意思決定・チーム統率・品質保証"
+      purpose: "最高戦略・全体品質保証"
+
+    shogun:
+      primary_mcps: ["filesystem", "git"]
+      purpose: "高難度コーディング・コード実装"
 
     gunshi:
       exclusive_mcps: ["sequential_thinking"]
       primary_mcps: ["filesystem", "git", "graph_memory"]
-      purpose: "PDCA作戦立案・コード監査"
+      purpose: "PDCA作戦立案・推論・設計"
+
+    sanbo:
+      primary_mcps: ["filesystem", "git"]
+      purpose: "コード実装・バグ修正"
 
     karo:
       primary_mcps: ["sequential_thinking"]
       purpose: "タスク分解・調整・進捗報告"
-      note: "sequential_thinking は軍師が使用中は待機"
-
-    taisho:
-      exclusive_mcps: ["filesystem", "git", "prisma"]
-      purpose: "コード実装・バージョン管理・DB操作"
 
     kengyo:
       exclusive_mcps: ["playwright"]
       primary_mcps: ["filesystem"]
       purpose: "ビジュアル検証・スクリーンショット"
+
+    onmitsu:
+      exclusive_mcps: ["filesystem"]
+      purpose: "機密情報処理・ローカル完結"
 
     ashigaru:
       delegated_mcps: ["filesystem", "git", "playwright", "prisma"]
@@ -682,9 +735,113 @@ mcp_permissions:
     directory: "docs/agent_instructions"
     files:
       - "00_overview.md"
-      - "01_shogun.md"
-      - "02_gunshi.md"
-      - "03_karo.md"
-      - "04_taisho.md"
-      - "05_kengyo.md"
-      - "06_ashigaru.md"
+      - "01_daigensui.md"
+      - "02_shogun.md"
+      - "03_gunshi.md"
+      - "04_sanbo.md"
+      - "05_karo.md"
+      - "06_kengyo.md"
+      - "07_onmitsu.md"
+      - "08_ashigaru.md"
+
+# =============================================================================
+# v11.5 革新的機能 - LangGraph × MCP × Notion 密結合
+# =============================================================================
+v11_5_innovations:
+  description: "LangGraph SDK による MCP ツール認識ルーティング + Notion 積極活用"
+
+  langgraph_mcp_integration:
+    enabled: true
+    description: "LangGraph StateGraph に MCP ツール検出ノードを組み込み、ルーティングを tool-aware に"
+    new_graph_nodes:
+      fetch_context:
+        description: "並列: MCP ツール一覧取得 + Notion 家訓/直近タスク取得"
+        triggers_before: "route_decision"
+      persist_notion:
+        description: "全タスク完了後に Notion へ fire-and-forget 自動保存"
+        triggers_after: "all_execution_nodes"
+    new_routes:
+      gunshi_pdca:
+        description: "COMPLEX/STRATEGIC タスクを軍師 o3-mini PDCA → 参謀A/B に委譲"
+        trigger: "complexity in (complex, strategic)"
+      taisho_mcp:
+        description: "ツール連携アクション (GitHub/tavily/playwright 利用可能時)"
+        trigger: "is_action_task=true AND matching_tool_available=true"
+
+  notion_active_use:
+    enabled: true
+    description: "Notion を受動的記録から能動的知識連携へ昇格"
+    new_methods:
+      get_routing_context:
+        description: "家訓 + 直近タスク要約をルーター判断用テキストで返す"
+        called_by: "LangGraph fetch_context ノード"
+      auto_save_task_result:
+        description: "タスク完了後に自動保存 (エージェント役職・ルート・MCP ツール情報付き)"
+        called_by: "LangGraph persist_notion ノード"
+      get_page_content:
+        description: "ページのブロックコンテンツを全文取得 (メタデータのみ→本文全文)"
+      update_entry:
+        description: "既存ページの内容・ステータスを更新"
+    databases:
+      tasks_db:
+        env_var: "NOTION_TASKS_DB_ID"
+        description: "タスク完了ログ (auto_save_task_result の保存先)"
+      knowledge_db:
+        env_var: "NOTION_DB_ID"
+        description: "知識ベース・家訓 (既存)"
+    auto_save_metadata:
+      - route       # groq_qa / gunshi_pdca / gemini_autonomous / taisho_mcp / karo_default
+      - agent_role  # 大元帥 / 将軍 / 軍師 / 参謀 / 家老 / 検校 / 隠密
+      - handled_by  # 実行クラス名
+      - complexity  # simple / medium / complex / strategic
+      - execution_time
+      - mcp_tools_used
+      - source      # discord / mattermost / api
+
+  mcp_tool_registry:
+    description: "実行中 MCP サーバーのツール名を LangGraph ルーターに提供"
+    implementation: "MCPManager.TOOL_REGISTRY (静的辞書) + list_tools() メソッド"
+    registered_servers:
+      - filesystem   # read_file, write_file, list_directory, ...
+      - github       # create_issue, push_files, create_pull_request, ...
+      - fetch        # fetch
+      - memory       # create_entities, search_nodes, ...
+      - tavily       # search, search_context, search_qna
+      - exa          # search, find_similar, get_contents
+      - playwright   # browser_navigate, browser_screenshot, ...
+      - mattermost   # post_message, submit_task, report_agent_progress, ...
+      - notion       # notion_query_database, notion_create_page, ...
+      - sequential_thinking  # sequentialthinking
+      - git          # git_status, git_commit, git_log, ...
+
+  mattermost_integration:
+    enabled: true
+    description: "Mattermost Bot + MCP サーバー (v11.4 追加)"
+    components:
+      bot:
+        path: "bushidan/mattermost_bot.py"
+        description: "WebSocket Bot - @メンション → SystemOrchestrator 委譲"
+        commands: ["!mode", "!status", "!help"]
+      mcp_server:
+        path: "mcp/mattermost_mcp_server.py"
+        description: "FastMCP サーバー - Mattermost 操作 + 武士団タスク投入ツール"
+        tools:
+          - post_message
+          - search_messages
+          - submit_task
+          - get_bushidan_status
+          - report_agent_progress
+
+  routing_weights_v11_5:
+    description: "v11.5 ルーティング黄金律"
+    rules:
+      - "STRATEGIC / COMPLEX → 軍師 o3-mini PDCA (gunshi_pdca)"
+      - "ACTION + TOOL_AVAILABLE → Taisho MCP chain (taisho_mcp)"
+      - "MULTI_STEP → Gemini Flash autonomous (gemini_autonomous)"
+      - "SIMPLE Q&A → 家老-B Groq instant (groq_qa)"
+      - "DEFAULT → 家老 routing (karo_default)"
+    tool_routing:
+      github_keywords:  ["git", "github", "commit", "push", "pull", "pr", "issue"]
+      search_keywords:  ["search", "検索", "web", "調べ"]
+      browser_keywords: ["browser", "ブラウザ", "screenshot", "スクリーン"]
+      file_keywords:    ["ファイル", "file", "read", "write", "directory"]
