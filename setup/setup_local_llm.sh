@@ -467,7 +467,7 @@ create_systemd_services() {
 
     # Nemotron (常駐)
     if [ $RUN_NEMOTRON -eq 1 ] || [ $AUTO_MODE -eq 1 ]; then
-        _write_service "bushidan-nemotron" "[Unit]
+        if _write_service "bushidan-nemotron" "[Unit]
 Description=Bushidan v11.5 - Onmitsu Nemotron-3-Nano (port ${NEMOTRON_PORT})
 After=network.target
 
@@ -484,13 +484,16 @@ NoNewPrivileges=true
 PrivateTmp=true
 
 [Install]
-WantedBy=multi-user.target"
-        mark_success "svc_nemotron"
+WantedBy=multi-user.target"; then
+            mark_success "svc_nemotron"
+        else
+            mark_skipped "svc_nemotron"
+        fi
     fi
 
     # ELYZA Llama-3 (オンデマンド: 自動起動はしない)
     if [ $RUN_ELYZA3 -eq 1 ] || [ $AUTO_MODE -eq 1 ]; then
-        _write_service "bushidan-elyza-llama3" "[Unit]
+        if _write_service "bushidan-elyza-llama3" "[Unit]
 Description=Bushidan v11.5 - ELYZA Llama-3-JP-8B (port ${ELYZA3_PORT}, on-demand)
 After=network.target
 
@@ -498,7 +501,7 @@ After=network.target
 Type=simple
 User=${USER}
 WorkingDirectory=${HOME}
-ExecStart=${server_path} -m ${ELYZA3_DIR}/${ELYZA3_FILE} -c 4096 -t ${CPU_THREADS} -b 256 --parallel 1 --host ${HOST} --port ${ELYZA3_PORT} --chat-template llama3 --mlock --mmap
+ExecStart=${server_path} -m ${ELYZA3_DIR}/${ELYZA3_FILE} -c 4096 -t ${CPU_THREADS} -b 256 --parallel 1 --host ${HOST} --port ${ELYZA3_PORT} --mlock --mmap
 Restart=on-failure
 RestartSec=10
 MemoryMax=6G
@@ -507,13 +510,16 @@ NoNewPrivileges=true
 PrivateTmp=true
 
 [Install]
-WantedBy=multi-user.target"
-        mark_success "svc_elyza3"
+WantedBy=multi-user.target"; then
+            mark_success "svc_elyza3"
+        else
+            mark_skipped "svc_elyza3"
+        fi
     fi
 
     # ELYZA Llama-2 (フォールバック: 自動起動はしない)
     if [ $RUN_ELYZA2 -eq 1 ]; then
-        _write_service "bushidan-elyza-llama2" "[Unit]
+        if _write_service "bushidan-elyza-llama2" "[Unit]
 Description=Bushidan v11.5 - ELYZA Llama-2-7b (port ${ELYZA2_PORT}, fallback)
 After=network.target
 
@@ -530,8 +536,11 @@ NoNewPrivileges=true
 PrivateTmp=true
 
 [Install]
-WantedBy=multi-user.target"
-        mark_success "svc_elyza2"
+WantedBy=multi-user.target"; then
+            mark_success "svc_elyza2"
+        else
+            mark_skipped "svc_elyza2"
+        fi
     fi
 }
 
