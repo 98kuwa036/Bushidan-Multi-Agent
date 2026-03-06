@@ -218,6 +218,16 @@ class Gunshi:
         operation_start = asyncio.get_event_loop().time()
         phase_times: Dict[str, float] = {}
 
+        # Report to Discord if reporter available
+        reporter = self.orchestrator.get_reporter()
+        task_id = self.orchestrator.get_task_id()
+        if reporter and task_id:
+            await reporter.report_start(
+                task_id,
+                "gunshi",
+                "軍師がPDCA作戦サイクルを開始します"
+            )
+
         # Gunshi不在 → 家老にフォールバック
         if not self.initialized or not self.client:
             logger.info("🧠 軍師不在 → 家老に直接委譲")
@@ -236,6 +246,12 @@ class Gunshi:
         try:
             # ===== Phase 1: PLAN (作戦立案) =====
             logger.info("📋 Phase 1/4: PLAN (作戦立案)...")
+            if reporter and task_id:
+                await reporter.report_progress(
+                    task_id,
+                    "📋 Phase 1/4: PLAN - 作戦立案中...",
+                    0.0
+                )
             t0 = asyncio.get_event_loop().time()
 
             plan_summary, subtasks = await self._phase_plan(task_content, context)
@@ -249,6 +265,19 @@ class Gunshi:
 
             # ===== Phase 2: DO (作戦実行) =====
             logger.info(f"⚔️ Phase 2/4: DO (作戦実行 - {len(subtasks)}タスク)...")
+            if reporter and task_id:
+                await reporter.report_progress(
+                    task_id,
+                    f"⚔️ Phase 2/4: DO - {len(subtasks)}個のサブタスクを実行中...",
+                    0.25
+                )
+                # Report delegation to Taisho
+                await reporter.report_delegation(
+                    task_id,
+                    "gunshi",
+                    "taisho",
+                    f"{len(subtasks)}個のサブタスクを大将に委譲"
+                )
             t0 = asyncio.get_event_loop().time()
 
             subtasks = await self._phase_do(subtasks)
@@ -264,6 +293,12 @@ class Gunshi:
 
             # ===== Phase 3: CHECK (戦果検証 + ビジュアル検証) =====
             logger.info("🔍 Phase 3/4: CHECK (戦果検証)...")
+            if reporter and task_id:
+                await reporter.report_progress(
+                    task_id,
+                    "🔍 Phase 3/4: CHECK - 戦果検証中...",
+                    0.50
+                )
             t0 = asyncio.get_event_loop().time()
 
             passed, quality_score, verdicts = await self._phase_check(
@@ -295,6 +330,12 @@ class Gunshi:
                     logger.info(
                         f"🔧 Phase 4/4: ACT ({len(failed_verdicts)}件修正)..."
                     )
+                    if reporter and task_id:
+                        await reporter.report_progress(
+                            task_id,
+                            f"🔧 Phase 4/4: ACT - {len(failed_verdicts)}件の修正指示を発行中...",
+                            0.75
+                        )
                     t0 = asyncio.get_event_loop().time()
 
                     subtasks, corrections_applied = await self._phase_act(
@@ -341,6 +382,13 @@ class Gunshi:
                 f"🏯 PDCA作戦完了: 品質={quality_score:.0%} / "
                 f"修正={corrections_applied}回 / 合計={total_elapsed:.1f}s"
             )
+
+            # Report completion to Discord
+            if reporter and task_id:
+                await reporter.report_complete(
+                    task_id,
+                    f"PDCA作戦完了 (品質スコア: {quality_score:.0%}, 修正: {corrections_applied}回, 所要時間: {total_elapsed:.1f}秒)"
+                )
 
             return OperationResult(
                 task_content=task_content,

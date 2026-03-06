@@ -232,6 +232,16 @@ class Shogun:
         execution_id = f"task_{int(start_time)}"
         logger.info(f"🎌 将軍、任務受領: {task.content[:50]}...")
 
+        # Report to Discord if reporter available
+        reporter = self.orchestrator.get_reporter()
+        task_id = self.orchestrator.get_task_id()
+        if reporter and task_id:
+            await reporter.report_start(
+                task_id,
+                "shogun",
+                f"将軍が任務を受領し、複雑度を分析中..."
+            )
+
         try:
             # BDI Step 1: 知覚 - タスク複雑度評価と信念更新
             if self.bdi_enabled:
@@ -261,15 +271,58 @@ class Shogun:
             # BDI Step 4: 実行 - 複雑度に基づく9層ルーティング処理
             if task.complexity == TaskComplexity.STRATEGIC:
                 logger.info("⚔️ 将軍自ら出陣。戦略的判断を行う。")
+                if reporter and task_id:
+                    await reporter.report_progress(
+                        task_id,
+                        f"⚔️ 戦略的任務につき将軍自ら出陣 (複雑度: {task.complexity.value})"
+                    )
                 result = await self._handle_strategic_task(task)
             elif self._is_multi_step_task(task):
                 # 複合タスク → 家老経由で Gemini Flash 自律実行
                 logger.info("🔀 複合タスク検出 → 家老（Gemini Flash 自律実行）")
-                result = await self.karo.execute_task_with_routing(task, routing_decision)
+                if reporter and task_id:
+                    from bushidan.approval_manager import ApprovalStatus
+
+                    approval = await reporter.request_approval(
+                        task_id,
+                        action_type="delegation",
+                        action_details={
+                            "from_agent": "shogun",
+                            "to_agent": "karo",
+                            "task_content": task.content[:100],
+                            "reason": "複合タスクにつき家老の采配に委譲（Gemini Flash 自律実行）",
+                            "complexity": task.complexity.value
+                        }
+                    )
+
+                    if approval.status == ApprovalStatus.REJECTED:
+                        logger.info(f"❌ User rejected delegation to Karo")
+                        # Fall back to direct Gemini handling
+                        result = await self._execute_with_gemini_direct(task)
+                        result = await self._adaptive_review(task, result)
+                    else:
+                        await reporter.report_delegation(
+                            task_id,
+                            "shogun",
+                            "karo",
+                            "複合タスクにつき家老の采配に委譲（Gemini Flash 自律実行）"
+                        )
+                        result = await self.karo.execute_task_with_routing(task, routing_decision)
+                        result = await self._adaptive_review(task, result)
+                else:
+                    result = await self.karo.execute_task_with_routing(task, routing_decision)
+                    result = await self._adaptive_review(task, result)
                 result = await self._adaptive_review(task, result)
             elif task.complexity == TaskComplexity.SIMPLE and self.orchestrator.get_client("groq") and not self._is_action_task(task):
                 # Only use Groq for simple Q&A tasks, NOT for action tasks
                 logger.info("⚡ 簡易任務 → Groq即応")
+                if reporter and task_id:
+                    await reporter.report_delegation(
+                        task_id,
+                        "shogun",
+                        "karo",
+                        "簡易Q&A任務につきGroq即応で処理"
+                    )
                 result = await self._handle_simple_task_groq(task)
             elif task.complexity == TaskComplexity.CODING:
                 # コーディングタスク → 参謀経由で Sonnet 4.6 処理

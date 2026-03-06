@@ -142,14 +142,16 @@ class Kengyo:
         "色使いの一貫性とアクセシビリティ",
     ]
 
-    def __init__(self, kimi_client=None, smithery_mcp=None):
+    def __init__(self, kimi_client=None, smithery_mcp=None, orchestrator=None):
         """
         Args:
             kimi_client: Kimi K2.5 クライアント (マルチモーダル対応)
             smithery_mcp: Smithery MCP マネージャー (Playwright MCP 含む)
+            orchestrator: SystemOrchestrator (Discord reporter access用)
         """
         self.kimi_client = kimi_client
         self.smithery_mcp = smithery_mcp
+        self.orchestrator = orchestrator
         self.initialized = False
 
         # 統計
@@ -604,6 +606,17 @@ class Kengyo:
                 total_time=0.0,
             )
 
+        # Report to Discord if reporter available
+        reporter = self.orchestrator.get_reporter() if self.orchestrator else None
+        task_id = self.orchestrator.get_task_id() if self.orchestrator else None
+
+        if reporter and task_id:
+            await reporter.report_start(
+                task_id,
+                "kengyo",
+                f"検校がビジュアル検証を開始します (URL: {url})"
+            )
+
         start_time = time.monotonic()
         self._stats["total_audits"] += 1
 
@@ -611,9 +624,21 @@ class Kengyo:
             viewports = [ViewportSize.DESKTOP, ViewportSize.MOBILE]
 
         # Step 1: 複数ビューポートでスクリーンショット取得
+        if reporter and task_id:
+            await reporter.report_progress(
+                task_id,
+                f"📸 {len(viewports)}個のビューポートでスクリーンショット取得中...",
+                0.3
+            )
         screenshots = await self.capture_multi_viewport(url, viewports)
 
         # Step 2: 各スクリーンショットを解析
+        if reporter and task_id:
+            await reporter.report_progress(
+                task_id,
+                f"👁️ {len(screenshots)}個のスクリーンショットを分析中...",
+                0.6
+            )
         checks: List[VisualCheckResult] = []
         for screenshot in screenshots:
             if not screenshot.success:
@@ -672,6 +697,20 @@ class Kengyo:
             f"(スコア {overall_score:.0%}, "
             f"{len(all_issues)}件, {total_time:.1f}s)"
         )
+
+        # Report completion to Discord
+        if reporter and task_id:
+            if overall_passed:
+                await reporter.report_complete(
+                    task_id,
+                    f"ビジュアル検証合格 (スコア: {overall_score:.0%}, {total_time:.1f}秒)"
+                )
+            else:
+                issues_summary = f"{critical_count}件の重大な問題、計{len(all_issues)}件検出"
+                await reporter.report_error(
+                    task_id,
+                    f"ビジュアル検証で問題検出: {issues_summary}"
+                )
 
         return VisualAuditReport(
             url=url,

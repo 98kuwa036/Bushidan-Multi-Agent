@@ -207,7 +207,7 @@ class LLMAvailabilityChecker:
             import google.generativeai as genai
 
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-2.0-flash")
+            model = genai.GenerativeModel("gemini-3-flash-preview")
 
             response = model.generate_content(
                 "test",
@@ -220,7 +220,7 @@ class LLMAvailabilityChecker:
             return LLMStatus(
                 name,
                 True,
-                f"Model: gemini-2.0-flash",
+                f"Model: gemini-3-flash-preview",
                 response_time_ms=elapsed,
             )
 
@@ -252,7 +252,7 @@ class LLMAvailabilityChecker:
             client = Groq(api_key=api_key)
 
             response = client.chat.completions.create(
-                model="mixtral-8x7b-32768",
+                model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": "test"}],
                 max_tokens=1,
             )

@@ -225,10 +225,38 @@ class Karo:
         start_time = time.time()
         logger.info(f"👔 家老、任務実行: {task.content[:50]}...")
 
+        # Report to Discord if reporter available
+        reporter = self.orchestrator.get_reporter()
+        task_id = self.orchestrator.get_task_id()
+        if reporter and task_id:
+            await reporter.report_start(
+                task_id,
+                "karo",
+                "家老が戦術調整を開始します"
+            )
+
         try:
             # Determine delegation strategy
             delegation = self._determine_delegation(task, routing_decision)
             logger.info(f"📋 Delegation strategy: {delegation.value}")
+
+            # Report delegation
+            if reporter and task_id:
+                delegation_map = {
+                    TaskDelegation.GEMINI_AUTONOMOUS: ("gemini", "Gemini Flash 自律実行"),
+                    TaskDelegation.GROQ_INSTANT: ("groq", "Groq 即応"),
+                    TaskDelegation.TAISHO_PRIMARY: ("taisho", "大将による実装"),
+                }
+                target_agent, reason = delegation_map.get(
+                    delegation,
+                    ("taisho", f"委譲戦略: {delegation.value}")
+                )
+                await reporter.report_delegation(
+                    task_id,
+                    "karo",
+                    target_agent,
+                    reason
+                )
 
             # Execute based on delegation
             if delegation == TaskDelegation.GEMINI_AUTONOMOUS:

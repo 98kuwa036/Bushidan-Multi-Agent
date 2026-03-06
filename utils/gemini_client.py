@@ -45,7 +45,7 @@ class GeminiClient:
             import google.generativeai as genai
             
             genai.configure(api_key=self.api_key)
-            model = genai.GenerativeModel('gemini-2.0-flash-exp')
+            model = genai.GenerativeModel('gemini-3-flash-preview')
             
             response = await model.generate_content_async(
                 prompt,
@@ -71,5 +71,5 @@ class GeminiClient:
         return {
             "calls_made": self.calls_made,
             "estimated_cost": self.calls_made * 0.054,  # Rough estimate in JPY
-            "model": "gemini-2.0-flash"
+            "model": "gemini-3-flash-preview"
         }

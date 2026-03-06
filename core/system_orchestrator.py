@@ -471,6 +471,7 @@ class SystemOrchestrator:
             self._kengyo = Kengyo(
                 gemini_client=gemini_client,
                 smithery_mcp=getattr(self, 'smithery_mcp', None),
+                orchestrator=self,  # For Discord reporter access
             )
             await self._kengyo.initialize()
             logger.info("👁️ 検校（マルチモーダル）初期化完了")
@@ -489,6 +490,15 @@ class SystemOrchestrator:
             logger.error(f"エラー: {e}")
             logger.error(f"トレースバック:\n{traceback.format_exc()}")
             self._langgraph_router = None
+
+        # v10.2: MCP-LangGraph Bridge 初期化
+        try:
+            from core.langgraph_mcp_bridge import LangGraphMCPBridge
+            self._mcp_bridge = LangGraphMCPBridge(self)
+            logger.info("🔗 MCP-LangGraph Bridge 初期化完了 ✅")
+        except Exception as e:
+            logger.warning(f"⚠️ MCP Bridge 初期化失敗 (MCP統合スキップ): {e}")
+            self._mcp_bridge = None
 
     async def _initialize_mcps(self) -> None:
         """Initialize Model Context Protocol servers"""
@@ -833,6 +843,11 @@ class SystemOrchestrator:
         """LangGraph Router 取得"""
         return self._langgraph_router
 
+    @property
+    def mcp_bridge(self):
+        """MCP-LangGraph Bridge (v10.2) 取得"""
+        return self._mcp_bridge
+
     # ==================== MCP権限制御 ====================
 
     def check_mcp_permission(self, role: str, mcp_name: str) -> MCPPermissionLevel:
@@ -951,29 +966,58 @@ class SystemOrchestrator:
         if not self.initialized:
             raise RuntimeError("システムが初期化されていません")
 
-        # v10.2: LangGraph Router が利用可能な場合は優先
-        if self._langgraph_router:
-            logger.info("🔗 LangGraph Router でタスク処理")
-            return await self._langgraph_router.process_task(
-                content=task_content,
-                context=context or {},
-                priority=1,
-                source="orchestrator"
+        # Extract Discord reporter from context (for multi-agent presence)
+        discord_reporter = context.get("discord_reporter") if context else None
+        task_id = context.get("task_id") if context else None
+
+        # Store reporter for agent access during task processing
+        if discord_reporter and task_id:
+            self._current_task_reporter = discord_reporter
+            self._current_task_id = task_id
+
+            # Report battle start
+            await discord_reporter.report_battle_start(
+                task_id,
+                task_content,
+                strategy="LangGraph Router による最適ルーティング、5層階層による段階的処理"
             )
 
-        # フォールバック: 従来の将軍による処理
-        if not self._shogun:
-            raise RuntimeError("将軍が初期化されていません")
+        try:
+            # v10.2: LangGraph Router が利用可能な場合は優先
+            if self._langgraph_router:
+                logger.info("🔗 LangGraph Router でタスク処理")
+                return await self._langgraph_router.process_task(
+                    content=task_content,
+                    context=context or {},
+                    priority=1,
+                    source="orchestrator"
+                )
 
-        logger.info("🎌 従来の将軍ルーティング（LangGraph Router 未利用）")
-        from core.shogun import Task, TaskComplexity
-        task = Task(
-            content=task_content,
-            complexity=TaskComplexity.MEDIUM,  # 将軍が再評価
-            context=context
-        )
+            # フォールバック: 従来の将軍による処理
+            if not self._shogun:
+                raise RuntimeError("将軍が初期化されていません")
 
-        return await self._shogun.process_task(task)
+            logger.info("🎌 従来の将軍ルーティング（LangGraph Router 未利用）")
+            from core.shogun import Task, TaskComplexity
+            task = Task(
+                content=task_content,
+                complexity=TaskComplexity.MEDIUM,  # 将軍が再評価
+                context=context
+            )
+
+            return await self._shogun.process_task(task)
+        finally:
+            # Clean up after task processing
+            self._current_task_reporter = None
+            self._current_task_id = None
+
+    def get_reporter(self):
+        """Get current Discord reporter for active task (multi-agent presence)"""
+        return getattr(self, '_current_task_reporter', None)
+
+    def get_task_id(self) -> Optional[str]:
+        """Get current task ID for active task (multi-agent presence)"""
+        return getattr(self, '_current_task_id', None)
 
     def get_all_statistics(self) -> Dict[str, Any]:
         """全コンポーネントから包括的統計を取得"""

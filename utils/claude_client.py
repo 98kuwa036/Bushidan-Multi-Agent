@@ -84,7 +84,7 @@ class ClaudeClient:
             client = anthropic.AsyncAnthropic(api_key=self.api_key)
             
             response = await client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model="claude-sonnet-4-6",
                 messages=messages,
                 max_tokens=max_tokens,
                 temperature=temperature

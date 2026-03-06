@@ -227,12 +227,39 @@ class Taisho:
         start_time = time.time()
         logger.info(f"⚔️ 大将、実装開始: {task.content[:50]}...")
 
+        # Report to Discord if reporter available
+        reporter = self.orchestrator.get_reporter()
+        task_id = self.orchestrator.get_task_id()
+        if reporter and task_id:
+            await reporter.report_detailed_progress(
+                task_id,
+                "実装準備",
+                (
+                    f"🎯 **タスク:** {task.content[:100]}\n"
+                    f"📊 **モード:** {task.mode.value}\n"
+                    f"🔧 **フォールバックチェーン:** Kimi K2.5 → Qwen3 → Qwen3+ → Gemini 3"
+                ),
+                0.05
+            )
+
         try:
             # Check for action tasks (clone, install, etc.) - execute directly via MCP
             if self._is_git_action_task(task):
                 logger.info("🔧 Action task detected - executing directly")
+                if reporter and task_id:
+                    await reporter.report_progress(
+                        task_id,
+                        "🔧 アクションタスクを直接実行中..."
+                    )
                 result = await self._execute_action_task(task)
                 elapsed_time = time.time() - start_time
+
+                if reporter and task_id:
+                    await reporter.report_complete(
+                        task_id,
+                        f"アクションタスク完了 ({elapsed_time:.1f}秒)"
+                    )
+
                 return {
                     "status": "completed",
                     "result": result,
@@ -244,6 +271,12 @@ class Taisho:
                 }
 
             # Gather context
+            if reporter and task_id:
+                await reporter.report_progress(
+                    task_id,
+                    "📋 コンテキスト収集中...",
+                    0.1
+                )
             context = await self._gather_context(task)
 
             # Estimate context size
@@ -251,9 +284,21 @@ class Taisho:
             logger.info(f"📏 Estimated context size: {context_size} tokens")
 
             # Plan implementation
+            if reporter and task_id:
+                await reporter.report_progress(
+                    task_id,
+                    "🎯 実装計画策定中...",
+                    0.3
+                )
             plan = await self._plan_implementation(task, context)
 
             # Execute with 4-tier fallback chain
+            if reporter and task_id:
+                await reporter.report_progress(
+                    task_id,
+                    "⚔️ 4層フォールバックチェーンで実装中...",
+                    0.5
+                )
             result, fallback_status = await self._execute_with_fallback(
                 task, plan, context, context_size
             )
@@ -263,6 +308,12 @@ class Taisho:
                 validation = {"valid": True, "skipped": "diagnostic_task"}
             else:
                 # Validate results
+                if reporter and task_id:
+                    await reporter.report_progress(
+                        task_id,
+                        "🔍 実装結果を検証中...",
+                        0.8
+                    )
                 validation = await self._validate_implementation(result)
 
                 # Git operations if successful
@@ -274,6 +325,19 @@ class Taisho:
             self._update_stats(fallback_status, elapsed_time)
 
             logger.info(f"✅ Taisho implementation complete ({fallback_status.value}) in {elapsed_time:.1f}s")
+
+            # Report completion to Discord
+            if reporter and task_id:
+                if validation.get("valid"):
+                    await reporter.report_complete(
+                        task_id,
+                        f"実装完了 ({fallback_status.value}, {elapsed_time:.1f}秒)"
+                    )
+                else:
+                    await reporter.report_error(
+                        task_id,
+                        f"検証失敗: {validation.get('issues', '不明なエラー')}"
+                    )
 
             return {
                 "status": "completed",
@@ -874,9 +938,47 @@ Create a brief implementation plan with:
                 content = "\n".join(content_lines).strip()
 
                 if content:
+                    # Request approval before file creation
+                    reporter = self.orchestrator.get_reporter()
+                    task_id = self.orchestrator.get_task_id()
+
+                    if reporter and task_id:
+                        from bushidan.approval_manager import ApprovalStatus
+
+                        approval = await reporter.request_approval(
+                            task_id,
+                            action_type="file_create",
+                            action_details={
+                                "filename": filename,
+                                "size": len(content),
+                                "preview": content[:200] + ("..." if len(content) > 200 else "")
+                            }
+                        )
+
+                        if approval.status == ApprovalStatus.REJECTED:
+                            logger.info(f"❌ User rejected file creation: {filename}")
+                            continue  # Skip this file
+
+                        if approval.status == ApprovalStatus.MODIFIED:
+                            # User may have modified the filename
+                            if approval.user_instruction and "filename" in approval.user_instruction:
+                                new_filename = approval.user_instruction["filename"]
+                                logger.info(f"✏️ User modified filename: {filename} → {new_filename}")
+                                filename = new_filename
+
+                    # Execute file creation
                     await self.filesystem_mcp.write_file(filename, content)
                     files_created.append(filename)
                     logger.info(f"📄 Created file: {filename}")
+
+                    # Report artifact creation to Discord
+                    if reporter and task_id:
+                        await reporter.report_artifact_created(
+                            task_id,
+                            "file",
+                            filename,
+                            f"ファイルを作成しました ({len(content)} 文字)"
+                        )
 
             except Exception as e:
                 logger.warning(f"⚠️ Failed to parse/save file: {e}")
@@ -986,13 +1088,61 @@ Create a brief implementation plan with:
 
         try:
             files_created = result.get("files_created", [])
-            if files_created:
-                await self.git_mcp.add(files_created)
+            if not files_created:
+                return
 
             commit_message = f"Implement: {task.content[:50]}\n\nGenerated by Taisho v{self.VERSION}"
+
+            # Request approval before git commit
+            reporter = self.orchestrator.get_reporter()
+            task_id = self.orchestrator.get_task_id()
+
+            if reporter and task_id:
+                from bushidan.approval_manager import ApprovalStatus
+
+                approval = await reporter.request_approval(
+                    task_id,
+                    action_type="git_commit",
+                    action_details={
+                        "files": len(files_created),
+                        "file_list": files_created,
+                        "message": commit_message
+                    }
+                )
+
+                if approval.status == ApprovalStatus.REJECTED:
+                    logger.info(f"❌ User rejected git commit")
+                    return  # Skip commit
+
+                if approval.status == ApprovalStatus.MODIFIED:
+                    # User may have modified the commit message
+                    if approval.user_instruction and "message" in approval.user_instruction:
+                        new_message = approval.user_instruction["message"]
+                        logger.info(f"✏️ User modified commit message")
+                        commit_message = new_message
+
+            # Execute git add and commit
+            await self.git_mcp.add(files_created)
             await self.git_mcp.commit(commit_message)
 
             logger.info(f"✅ Changes committed: {len(files_created)} files")
+
+            # Report Git commit to Discord
+            if reporter and task_id:
+                await reporter.report_artifact_created(
+                    task_id,
+                    "commit",
+                    f"{len(files_created)} files",
+                    f"Gitコミット完了: {commit_message.split(chr(10))[0]}"
+                )
+                # Report MCP usage
+                await reporter.report_mcp_usage(
+                    task_id,
+                    "git",
+                    "commit",
+                    {"files": len(files_created), "message": commit_message[:50]},
+                    "✅ コミット成功"
+                )
 
         except Exception as e:
             logger.warning(f"⚠️ Git commit failed: {e}")

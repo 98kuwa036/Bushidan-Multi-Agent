@@ -471,7 +471,7 @@ class LangGraphRouter:
                     "response": exec_result.final_result,
                     "status": "completed",
                     "steps_executed": exec_result.steps_executed,
-                    "tool_calls": exec_result.tool_calls_made,
+                    "tool_calls": len(exec_result.outputs),
                 },
                 "status": "completed",
                 "handled_by": "gemini_autonomous",

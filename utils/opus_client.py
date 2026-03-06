@@ -45,13 +45,13 @@ class OpusClient:
     
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self.model = "claude-opus-4-20250514"  # Latest Opus
+        self.model = "claude-opus-4-6"  # Latest Opus
         self.reviews_conducted = 0
         self.total_cost_yen = 0.0
-        
-        # Cost calculation (as of 2025-01-31)
-        self.cost_per_1m_input_tokens_usd = 15.0
-        self.cost_per_1m_output_tokens_usd = 75.0
+
+        # Cost calculation (as of 2026-02-26)
+        self.cost_per_1m_input_tokens_usd = 5.0
+        self.cost_per_1m_output_tokens_usd = 25.0
         self.usd_to_jpy = 150.0  # Approximate rate
         
     async def conduct_premium_review(

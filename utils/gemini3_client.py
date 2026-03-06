@@ -59,7 +59,7 @@ class Gemini3Client:
     - Tactical coordination for complex scenarios
     """
 
-    def __init__(self, api_key: str, model: str = "gemini-3-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-3-flash-preview"):
         self.api_key = api_key
         self.model = model
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"

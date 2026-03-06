@@ -38,8 +38,9 @@ import logging
 import os
 import re
 import sys
+import time
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 # .env ファイルを読み込む
 try:
@@ -112,6 +113,17 @@ class BushidanDiscordBot(discord.Client):
         self._init_error: Optional[str] = None
         self._current_mode: str = "battalion"  # デフォルトは大隊モード
 
+        # Multi-agent components
+        from bushidan.discord_reporter import WebhookPoolManager, DiscordAgentReporter
+        from bushidan.approval_manager import ApprovalManager
+        self.webhook_manager = WebhookPoolManager()
+        self.task_threads: dict = {}  # task_id -> TaskThread
+        self.agent_reporter = DiscordAgentReporter(self)
+        self.approval_manager = ApprovalManager(self)
+
+        # Thread ID to Task ID mapping for message monitoring
+        self.thread_id_to_task_id: dict = {}  # thread.id -> task_id
+
     async def setup_hook(self) -> None:
         """Bot 起動直後 (on_ready の前) にオーケストレーターを初期化."""
         await self._initialize_orchestrator()
@@ -167,6 +179,15 @@ class BushidanDiscordBot(discord.Client):
         if message.author == self.user:
             return
 
+        # Webhookメッセージは無視（エージェント投稿）
+        if message.webhook_id is not None:
+            return
+
+        # スレッド内メッセージの処理（インタラクティブモード）
+        if isinstance(message.channel, discord.Thread):
+            await self._handle_thread_message(message)
+            return
+
         # メンションされた場合のみ応答
         if self.user not in message.mentions:
             return
@@ -183,18 +204,46 @@ class BushidanDiscordBot(discord.Client):
             await self._handle_command(task, message)
             return
 
-        # 通常タスク処理
-        processing_msg = await message.reply(f"📋 任務受領: **{task[:80]}**\n⏳ 処理中...")
+        # Create dedicated thread for task
+        from bushidan.discord_reporter import TaskThread
+        task_summary = task[:50] + "..." if len(task) > 50 else task
+        thread = await message.create_thread(
+            name=f"任務: {task_summary}",
+            auto_archive_duration=60  # 1 hour
+        )
+
+        # Create task ID
+        task_id = f"task_{int(time.time())}_{message.id}"
+
+        # Initial status message in thread
+        status_msg = await thread.send(
+            f"🎌 将軍が任務を受領しました\n📋 **任務内容**: {task[:100]}{'...' if len(task) > 100 else ''}\n⏳ 処理中..."
+        )
+        await status_msg.add_reaction("⏳")
+
+        # Track thread
+        from datetime import datetime
+        self.task_threads[task_id] = TaskThread(
+            task_id=task_id,
+            thread=thread,
+            original_message=message,
+            created_at=datetime.now(),
+            status_message=status_msg,
+            delegation_chain=["shogun"],
+            active_agent="shogun",
+            completed=False
+        )
+
+        # Thread ID mapping for interactive mode
+        self.thread_id_to_task_id[thread.id] = task_id
 
         try:
-            result = await self._process(task, message)
-            chunks = _split_message(result)
-            await processing_msg.edit(content=chunks[0])
-            for chunk in chunks[1:]:
-                await message.channel.send(chunk)
+            result = await self._process(task, message, task_id, thread)
+            # Finalize thread with summary
+            await self._finalize_thread(task_id, result)
         except Exception as e:
             logger.exception("タスク処理エラー")
-            await processing_msg.edit(content=f"❌ エラーが発生しました: {e}")
+            await self._finalize_thread(task_id, {"error": str(e), "status": "failed"})
 
     async def _handle_command(self, command: str, message: discord.Message) -> None:
         """スラッシュコマンドを処理."""
@@ -320,18 +369,30 @@ class BushidanDiscordBot(discord.Client):
         )
         await message.reply(response)
 
-    async def _process(self, task: str, message: discord.Message) -> str:
+    async def _process(
+        self,
+        task: str,
+        message: discord.Message,
+        task_id: str,
+        thread: discord.Thread
+    ) -> Dict[str, Any]:
         """タスクを武士団システムに委譲する."""
 
         # オーケストレーター未初期化の場合
         if self._orchestrator is None:
             if self._init_error:
-                return (
-                    f"⚠️ 武士団システムが初期化されていません。\n"
-                    f"エラー: `{self._init_error}`\n\n"
-                    f".env の CLAUDE_API_KEY と GEMINI_API_KEY を確認してください。"
-                )
-            return "⚠️ 武士団システムを初期化中です。しばらくお待ちください。"
+                return {
+                    "result": (
+                        f"⚠️ 武士団システムが初期化されていません。\n"
+                        f"エラー: `{self._init_error}`\n\n"
+                        f".env の CLAUDE_API_KEY と GEMINI_API_KEY を確認してください。"
+                    ),
+                    "status": "failed"
+                }
+            return {
+                "result": "⚠️ 武士団システムを初期化中です。しばらくお待ちください。",
+                "status": "failed"
+            }
 
         # オーケストレーター経由でタスク処理
         context = {
@@ -341,33 +402,142 @@ class BushidanDiscordBot(discord.Client):
             "channel": str(message.channel),
             "guild": str(message.guild) if message.guild else "DM",
             "mode": self._current_mode,
+            # NEW: Inject reporter for multi-agent Discord presence
+            "discord_thread": thread,
+            "discord_reporter": self.agent_reporter,
+            "task_id": task_id,
         }
 
         try:
             result = await self._orchestrator.process_task(task, context)
         except Exception as e:
             logger.exception(f"❌ タスク処理エラー: {e}")
-            return f"❌ 処理失敗: {e}"
+            result = {"error": str(e), "status": "failed"}
 
-        # エラー処理
-        if result.get("status") == "failed" or "error" in result:
-            error_msg = result.get("error", "不明なエラー")
-            tb = result.get("traceback", "")
-            if tb:
-                # トレースバックの最後の数行だけ表示（Discord の文字数制限対策）
-                tb_lines = tb.strip().splitlines()
-                tb_short = "\n".join(tb_lines[-10:])
-                logger.error("スタックトレース:\n%s", tb)
-                return f"❌ 処理失敗: {error_msg}\n```\n{tb_short}\n```"
-            return f"❌ 処理失敗: {error_msg}"
+        return result
 
-        content = result.get("result", "")
-        elapsed = result.get("elapsed_time", 0)
+    async def _finalize_thread(self, task_id: str, result: Dict[str, Any]) -> None:
+        """
+        Finalize thread with summary and status.
 
-        if not content:
-            return "⚠️ 返答が空でした。ログを確認してください。"
+        Args:
+            task_id: Task identifier
+            result: Task result dictionary
+        """
+        task_thread = self.task_threads.get(task_id)
+        if not task_thread:
+            return
 
-        return f"{content}\n\n*⏱️ 処理時間: {elapsed:.1f}秒 | モード: {self._current_mode}*"
+        # Remove "processing" reaction
+        try:
+            await task_thread.status_message.clear_reactions()
+        except:
+            pass
+
+        # Add completion status reaction
+        if result.get("status") == "completed" or (result.get("result") and not result.get("error")):
+            await task_thread.status_message.add_reaction("✅")
+            color = discord.Color.green()
+            status_text = "成功"
+        else:
+            await task_thread.status_message.add_reaction("❌")
+            color = discord.Color.red()
+            status_text = "失敗"
+
+        # Create summary embed
+        embed = discord.Embed(
+            title="📊 任務完了サマリー",
+            color=color
+        )
+
+        # Add delegation chain
+        from bushidan.discord_reporter import AGENT_CONFIG
+        chain_str = " → ".join([
+            AGENT_CONFIG.get(agent, {}).get("emoji", "🤖")
+            for agent in task_thread.delegation_chain
+        ])
+        embed.add_field(name="実行経路", value=chain_str, inline=False)
+
+        # Add execution time
+        elapsed = result.get("execution_time", result.get("elapsed_time", 0))
+        embed.add_field(name="⏱️ 処理時間", value=f"{elapsed:.1f}秒", inline=True)
+
+        # Add handler
+        handler = result.get("handled_by", task_thread.active_agent or "unknown")
+        handler_name = AGENT_CONFIG.get(handler, {}).get("display_name", handler)
+        embed.add_field(name="🎯 最終担当", value=handler_name, inline=True)
+
+        # Add status
+        embed.add_field(name="📋 ステータス", value=status_text, inline=True)
+
+        # Add agents involved
+        agents_str = ", ".join([
+            AGENT_CONFIG.get(a, {}).get("emoji", "🤖")
+            for a in sorted(task_thread.agents_involved)
+        ])
+        if agents_str:
+            embed.add_field(name="👥 関与エージェント", value=agents_str, inline=False)
+
+        await task_thread.thread.send(embed=embed)
+
+        # Mark complete
+        task_thread.completed = True
+
+        # Clean up thread ID mapping
+        self.thread_id_to_task_id.pop(task_thread.thread.id, None)
+
+    async def _handle_thread_message(self, message: discord.Message) -> None:
+        """
+        スレッド内のユーザーメッセージを処理（インタラクティブモード）
+
+        Args:
+            message: スレッド内のメッセージ
+        """
+        # Task IDを取得
+        task_id = self.thread_id_to_task_id.get(message.channel.id)
+        if not task_id:
+            logger.debug(f"📭 未追跡スレッドのメッセージ: {message.channel.id}")
+            return
+
+        task_thread = self.task_threads.get(task_id)
+        if not task_thread:
+            return
+
+        # 完了済みタスクは無視
+        if task_thread.completed:
+            return
+
+        logger.info(f"💬 スレッドメッセージ: {message.author.name} - {message.content[:50]}")
+
+        # ApprovalManagerに通知
+        try:
+            await self.approval_manager.handle_comment(message, task_id)
+        except Exception as e:
+            logger.error(f"❌ コメント処理エラー: {e}")
+
+    async def on_reaction_add(self, reaction: discord.Reaction, user: discord.User) -> None:
+        """
+        リアクション追加を処理（インタラクティブモード）
+
+        Args:
+            reaction: リアクション
+            user: リアクションしたユーザー
+        """
+        # Bot自身のリアクションは無視
+        if user == self.user:
+            return
+
+        # Botアカウントでない場合のみ処理
+        if user.bot:
+            return
+
+        logger.debug(f"👍 リアクション: {user.name} - {reaction.emoji} on {reaction.message.id}")
+
+        # ApprovalManagerに通知
+        try:
+            await self.approval_manager.handle_reaction(reaction, user)
+        except Exception as e:
+            logger.error(f"❌ リアクション処理エラー: {e}")
 
 
 def main() -> None:

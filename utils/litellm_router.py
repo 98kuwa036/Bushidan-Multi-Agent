@@ -87,12 +87,12 @@ class LiteLLMRouter:
             is_local=True
         )
         
-        # Karo (家老) - Cloud Gemini 2.0 Flash (fallback)
+        # Karo (家老) - Cloud Gemini 3 Flash (fallback)
         self.models["karo-gemini"] = ModelConfig(
             name="karo-gemini",
             tier=ModelTier.KARO,
             endpoint="https://generativelanguage.googleapis.com",
-            model_name="gemini-2.0-flash",
+            model_name="gemini-3-flash-preview",
             timeout=30,
             max_retries=2,
             cost_per_1k_tokens=0.075,  # ~¥130/month estimated

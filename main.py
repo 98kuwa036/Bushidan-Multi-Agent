@@ -25,7 +25,6 @@ import json
 import traceback
 from typing import Optional
 
-from core.shogun import Shogun
 from core.system_orchestrator import SystemOrchestrator
 from utils.config import load_config
 from utils.logger import setup_logger
@@ -81,15 +80,13 @@ async def main() -> None:
         logger.info("Loading configuration...")
         config = load_config()
 
-        # Initialize System Orchestrator
-        logger.info("Initializing System Orchestrator...")
+        # Initialize System Orchestrator (Shogun and all tiers are initialized inside)
+        logger.info("🔧 Initializing System Orchestrator...")
         orchestrator = SystemOrchestrator(config)
         await orchestrator.initialize()
 
-        # Initialize Shogun (High-Difficulty Coding Layer)
-        logger.info("Initializing Shogun (Coding Layer)...")
-        shogun = Shogun(orchestrator)
-        await shogun.initialize()
+        # Shogun is already initialized inside orchestrator._initialize_tiers()
+        shogun = orchestrator.shogun
 
         # Print component status
         _print_component_status(orchestrator)
@@ -98,7 +95,7 @@ async def main() -> None:
         logger.info("v{} Ready for commands".format(VERSION))
         logger.info("-" * 60)
 
-        # Start main event loop
+        # Start main event loop (tasks flow through LangGraph router via orchestrator)
         await shogun.start_service()
 
     except KeyboardInterrupt:
