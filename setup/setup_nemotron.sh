@@ -23,7 +23,7 @@
 #
 # 【ハードウェア要件】
 #   - HP ProDesk 600 G4
-#   - Intel Core i5-8500 (6C/6T)
+#   - Intel Core i5-8100 (4C/4T)
 #   - RAM: 32GB DDR4 (必須: Q4_K_M モデル ~21GB 使用)
 #   - ディスク: 25GB 以上の空き容量
 #
@@ -56,7 +56,7 @@ MODEL_URL="https://huggingface.co/bartowski/Nemotron-3-Nano-30B-A3B-Instruct-GGU
 PROJECT_DIR="${HOME}/Bushidan-Multi-Agent"
 
 # HP ProDesk 600 CPU 最適化設定
-CPU_THREADS=6          # i5-8500: 6コア (HT無し)
+CPU_THREADS=4          # i5-8500: 6コア (HT無し)
 CONTEXT_SIZE=8192      # 隠密: 長文対応（メモリに余裕あれば増やす）
 BATCH_SIZE=512         # CPU 最適バッチサイズ
 PARALLEL_REQUESTS=1    # CPU 安定性のため単一リクエスト
@@ -64,7 +64,7 @@ PORT=8080
 HOST="0.0.0.0"
 
 # エンドポイント（EliteDesk 本陣からのアクセス用）
-PRODESDK_IP="192.168.11.232"
+PRODESDK_IP="192.168.11.239"
 
 # 実行モード
 AUTO_MODE=0
