@@ -434,38 +434,82 @@ kengyo:
     required: "Gemini Flash Vision"
     optional: "Playwright MCP (Smithery)"
 
-# --- 隠密 (Onmitsu) - Local Confidential Processing ---
+# --- 隠密 (Onmitsu) - Local Processing ---
 onmitsu:
   codename: "Onmitsu"
-  role: "隠密 - 機密・超長文・ローカル処理"
-  model: "nemotron-3-nano"
+  role: "隠密 - 機密・超長文・ローカル処理 + 日本語特化"
   provider: "local_llamacpp"
 
-  local:
+  # ── メイン常駐: Nemotron-3-Nano (port 8080) ───────────────────────────
+  nemotron:
+    model: "nemotron-3-nano"
     backend: "llama.cpp"
-    model: "Nemotron-3-Nano.gguf"
-    endpoint: "http://192.168.11.232:8080"
+    model_file: "Nemotron-3-Nano.gguf"
+    endpoint: "http://192.168.11.239:8080"  # EliteDesk ローカルLLM
     context_length: 8192
     quantization: "Q4_K_M"
-    threads: 6
-    batch_size: 512
+    ram_usage_gb: 22
+    threads: 4                              # i5-8100: 4C/4T
     mlock: true
     expected_speed: "15-25 tok/s (CPU)"
     cost_yen: 0
-    power_cost_yen: 3
+    always_on: true
+
+  # ── オンデマンド: ELYZA (port 8081) ─────────────────────────────────
+  elyza:
+    primary:
+      name: "Llama-3-ELYZA-JP-8B"
+      model_file: "Llama-3-ELYZA-JP-8B-q4_k_m.gguf"
+      huggingface: "elyza/Llama-3-ELYZA-JP-8B-GGUF"
+      endpoint: "http://192.168.11.239:8081"
+      ram_usage_gb: 5
+      coexists_with_nemotron: true          # 22+5+5(OS)=32GB ギリギリ共存可能
+      chat_template: "llama3"
+      quantization: "Q4_K_M"
+
+    fallback:
+      name: "ELYZA-japanese-Llama-2-7b-instruct"
+      model_file: "ELYZA-japanese-Llama-2-7b-instruct-q4_k_m.gguf"
+      huggingface: "elyza/ELYZA-japanese-Llama-2-7b-instruct"
+      endpoint: "http://192.168.11.239:8081"
+      ram_usage_gb: 4.5
+      coexists_with_nemotron: true
+      chat_template: "llama2"
+      quantization: "Q4_K_M"
+
+    activation_triggers:
+      - "日本語で書いて"
+      - "日本語で回答"
+      - "和文"
+      - "翻訳"
+      - "添削"
+      - "校正"
+      - "小説"
+      - "俳句"
+      - "短歌"
+      - "敬語で"
+      - "ビジネスメール"
+    fallback_to_nemotron_if_unavailable: true
 
   strengths:
-    - "NVIDIA製: 脱中国・信頼性の高いモデル"
-    - "ローカル完結: API送信不要・機密情報安全"
-    - "超長文対応: コンテキスト制限緩和"
-    - "CPU最適化: llama.cpp + AVX2, FMA"
-    - "¥0運用: 電気代のみ"
+    - "Nemotron: NVIDIA製・脱中国・機密情報安全"
+    - "Nemotron: ローカル完結・API送信不要"
+    - "ELYZA: 日本語特化・自然な日本語生成"
+    - "ELYZA: 翻訳・添削・創作に最適"
+    - "共通: ¥0運用 (電気代のみ)"
+    - "共通: CPU最適化 (llama.cpp + AVX2)"
 
   activation_triggers:
-    - "confidential_data"
-    - "sensitive_code"
-    - "offline_required"
-    - "long_context_local"
+    nemotron:
+      - "confidential_data"
+      - "sensitive_code"
+      - "offline_required"
+      - "long_context_local"
+    elyza:
+      - "japanese_writing"
+      - "translation_to_japanese"
+      - "japanese_proofreading"
+      - "japanese_creative_writing"
 
 # --- 足軽 (Ashigaru) - Execution Layer ---
 ashigaru:

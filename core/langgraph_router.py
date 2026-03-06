@@ -63,6 +63,8 @@ class TaskState(TypedDict):
     is_multi_step: bool
     is_action_task: bool
     is_simple_qa: bool
+    is_japanese_priority: bool  # 日本語特化タスク → ELYZA ルート
+    is_confidential: bool       # 機密タスク → Nemotron ルート
     complexity: str           # "simple" | "medium" | "complex" | "strategic"
     confidence: float
 
@@ -133,6 +135,7 @@ class LangGraphRouter:
         graph.add_node("gemini_autonomous", self._execute_gemini_autonomous)
         graph.add_node("taisho_mcp",       self._execute_taisho_mcp)        # v11.5 新規
         graph.add_node("karo_default",     self._execute_karo_default)
+        graph.add_node("onmitsu_local",    self._execute_onmitsu_local)     # v11.5+ 新規: ローカルLLM
         graph.add_node("persist_notion",   self._persist_notion)            # v11.5 新規
 
         # ── エントリーポイント ───────────────────────────
@@ -151,11 +154,13 @@ class LangGraphRouter:
                 "gemini_autonomous": "gemini_autonomous",
                 "taisho_mcp":        "taisho_mcp",
                 "karo_default":      "karo_default",
+                "onmitsu_local":     "onmitsu_local",
             },
         )
 
         # 全実行ルート → persist_notion → END
-        for node in ("groq_qa", "gunshi_pdca", "gemini_autonomous", "taisho_mcp", "karo_default"):
+        for node in ("groq_qa", "gunshi_pdca", "gemini_autonomous", "taisho_mcp",
+                     "karo_default", "onmitsu_local"):
             graph.add_edge(node, "persist_notion")
         graph.add_edge("persist_notion", END)
 
@@ -175,18 +180,24 @@ class LangGraphRouter:
         analysis = detector.analyze(content)
         is_multi_step = analysis.is_multi_step and analysis.confidence >= 0.6
 
-        is_action_task  = self._detect_action_task(content)
-        is_simple_qa    = self._detect_simple_qa(content) and not is_action_task
-        complexity      = self._assess_complexity(content)
+        is_action_task        = self._detect_action_task(content)
+        is_simple_qa          = self._detect_simple_qa(content) and not is_action_task
+        is_japanese_priority  = self._detect_japanese_priority(content)
+        is_confidential       = self._detect_confidential(content)
+        complexity            = self._assess_complexity(content)
 
         logger.info(
-            "📊 分析結果: multi_step=%s action=%s simple_qa=%s complexity=%s",
-            is_multi_step, is_action_task, is_simple_qa, complexity,
+            "📊 分析結果: multi_step=%s action=%s simple_qa=%s "
+            "japanese=%s confidential=%s complexity=%s",
+            is_multi_step, is_action_task, is_simple_qa,
+            is_japanese_priority, is_confidential, complexity,
         )
         return {
             "is_multi_step": is_multi_step,
             "is_action_task": is_action_task,
             "is_simple_qa": is_simple_qa,
+            "is_japanese_priority": is_japanese_priority,
+            "is_confidential": is_confidential,
             "complexity": complexity,
             "confidence": analysis.confidence,
             "status": "analyzed",
@@ -228,6 +239,42 @@ class LangGraphRouter:
             if not any(kw in content_lower for kw in action_kws):
                 return True
         return False
+
+    def _detect_japanese_priority(self, content: str) -> bool:
+        """
+        日本語特化タスクを検出 → ELYZA ルート候補。
+
+        「全体が日本語」ではなく「日本語品質が重要なタスク」を対象にする。
+        単なる問い合わせ (ですか / とは) は groq_qa で十分。
+        """
+        japanese_quality_patterns = [
+            # 日本語生成・ライティング
+            "日本語で書いて", "日本語で回答", "日本語で作成",
+            "和文", "日本語テキスト", "日本語文章",
+            # 翻訳
+            "日本語に翻訳", "和訳", "translate.*japanese", "japanese.*translat",
+            # 校正・添削
+            "添削", "校正", "文法チェック", "文章を直して",
+            # 創作
+            "小説", "俳句", "短歌", "詩を書", "物語を書",
+            # メール・ビジネス文書
+            "ビジネスメール", "敬語で", "丁寧な日本語",
+        ]
+        content_lower = content.lower()
+        for pattern in japanese_quality_patterns:
+            if pattern in content_lower or pattern in content:
+                return True
+        return False
+
+    def _detect_confidential(self, content: str) -> bool:
+        """機密・ローカル処理タスクを検出 → Nemotron ルート。"""
+        confidential_patterns = [
+            "機密", "秘密", "confidential", "private", "internal",
+            "オフライン", "offline", "local only", "api送信不可",
+            "社外秘", "外部送信禁止",
+        ]
+        content_lower = content.lower()
+        return any(p in content_lower or p in content for p in confidential_patterns)
 
     def _assess_complexity(self, content: str) -> str:
         """タスク複雑度をヒューリスティックで判定."""
@@ -317,21 +364,35 @@ class LangGraphRouter:
 
     def _route_decision(self, state: TaskState) -> str:
         """
-        v11.5 ルーティング判断。
+        v11.5+ ルーティング判断。
 
         優先度:
+          0. 機密タスク → onmitsu_local (Nemotron)
+          0. 日本語特化タスク → onmitsu_local (ELYZA or Nemotron フォールバック)
           1. 戦略/複雑 → gunshi_pdca (o3-mini PDCA)
           2. ツール連携アクション → taisho_mcp (MCP tools 利用可能時)
           3. マルチステップ → gemini_autonomous
           4. シンプル Q&A → groq_qa
           5. デフォルト → karo_default
         """
-        content      = state["content"]
-        tools        = state.get("available_tools", [])
-        complexity   = state.get("complexity", "medium")
-        is_multi     = state.get("is_multi_step", False)
-        is_action    = state.get("is_action_task", False)
-        is_simple_qa = state.get("is_simple_qa", False)
+        content           = state["content"]
+        tools             = state.get("available_tools", [])
+        complexity        = state.get("complexity", "medium")
+        is_multi          = state.get("is_multi_step", False)
+        is_action         = state.get("is_action_task", False)
+        is_simple_qa      = state.get("is_simple_qa", False)
+        is_japanese       = state.get("is_japanese_priority", False)
+        is_confidential   = state.get("is_confidential", False)
+
+        # ── 0-a. 機密タスク → 隠密 (Nemotron ローカル処理) ──────────────────
+        if is_confidential:
+            logger.info("🥷 Route: onmitsu_local (機密タスク → Nemotron)")
+            return "onmitsu_local"
+
+        # ── 0-b. 日本語特化タスク → 隠密ローカル (ELYZA or Nemotron) ─────────
+        if is_japanese:
+            logger.info("🎌 Route: onmitsu_local (日本語特化 → ELYZA/Nemotron)")
+            return "onmitsu_local"
 
         # ── 1. 戦略的 / 複雑タスク → 軍師 PDCA ────────────────────────────
         if complexity in ("strategic", "complex") or (is_multi and complexity != "simple"):
@@ -561,6 +622,85 @@ class LangGraphRouter:
             return {
                 "status": "failed", "error": str(e),
                 "handled_by": "karo_default", "agent_role": "家老",
+                "execution_time": time.time() - start, "mcp_tools_used": [],
+            }
+
+    # =========================================================================
+    # Node: onmitsu_local — ローカルLLM実行 (v11.5+ 新規)
+    # =========================================================================
+
+    async def _execute_onmitsu_local(self, state: TaskState) -> dict:
+        """
+        ローカルLLM実行ノード。
+
+        ルーティング:
+          - 機密タスク (is_confidential=True) → Nemotron (port 8080, 常駐)
+          - 日本語特化タスク (is_japanese_priority=True)
+              → ELYZA 起動中なら ELYZA (port 8081)
+              → ELYZA 未起動なら Nemotron にフォールバック
+
+        どちらも OpenAI 互換 API なので同じ呼び出し方。
+        """
+        start = time.time()
+        is_confidential = state.get("is_confidential", False)
+        notion_ctx = state.get("notion_context", "")
+
+        try:
+            from utils.local_model_manager import get_local_model_manager
+            from utils.nemotron_llamacpp_client import NemotronLlamaCppClient
+
+            manager = get_local_model_manager()
+
+            # 機密タスク or ELYZA 未起動 → Nemotron
+            if is_confidential:
+                logger.info("🥷 隠密 Nemotron: 機密タスク処理")
+                client = NemotronLlamaCppClient()
+                result_text = await client.process_confidential(
+                    state["content"], task_type="confidential"
+                )
+                agent_role = "隠密-Nemotron"
+                handled_by = "onmitsu_nemotron"
+            else:
+                # 日本語タスク → ELYZA 優先
+                elyza = await manager.get_japanese_client()
+                if elyza:
+                    logger.info("🎌 ELYZA: 日本語特化タスク処理")
+                    result_text = await elyza.generate_japanese(
+                        state["content"], context=notion_ctx
+                    )
+                    agent_role = "隠密-ELYZA"
+                    handled_by = "onmitsu_elyza"
+                else:
+                    # ELYZA 未起動 → Nemotron フォールバック
+                    logger.info("🥷 ELYZA未起動 → Nemotron フォールバック (日本語タスク)")
+                    client = NemotronLlamaCppClient()
+                    system = (
+                        "あなたは日本語テキスト生成アシスタントです。"
+                        "自然で流暢な日本語で回答してください。"
+                    )
+                    messages = [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": state["content"]},
+                    ]
+                    result_text = await client.generate(messages)
+                    agent_role = "隠密-Nemotron(JP)"
+                    handled_by = "onmitsu_nemotron_fallback"
+
+            return {
+                "result": {"response": result_text, "status": "completed"},
+                "status": "completed",
+                "handled_by": handled_by,
+                "agent_role": agent_role,
+                "execution_time": time.time() - start,
+                "route": "onmitsu_local",
+                "mcp_tools_used": [],
+            }
+
+        except Exception as e:
+            logger.error("❌ onmitsu_local 実行失敗: %s", e)
+            return {
+                "status": "failed", "error": str(e),
+                "handled_by": "onmitsu_local", "agent_role": "隠密",
                 "execution_time": time.time() - start, "mcp_tools_used": [],
             }
 
