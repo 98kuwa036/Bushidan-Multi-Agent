@@ -471,7 +471,7 @@ class SystemOrchestrator:
             from core.kengyo import Kengyo
             gemini_client = self.clients.get("gemini3")
             self._kengyo = Kengyo(
-                gemini_client=gemini_client,
+                kimi_client=gemini_client,
                 smithery_mcp=getattr(self, 'smithery_mcp', None),
                 orchestrator=self,  # For Discord reporter access
             )
