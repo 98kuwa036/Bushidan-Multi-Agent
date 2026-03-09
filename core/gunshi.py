@@ -183,7 +183,7 @@ class Gunshi:
 
     async def initialize(self) -> None:
         """軍師の初期化"""
-        self.client = self.orchestrator.get_client("o3mini")
+        self.client = self.orchestrator.get_client("o3_mini")
 
         if self.client:
             logger.info("🧠 軍師初期化完了 (o3-mini reasoning_effort=high + PDCA Engine)")
