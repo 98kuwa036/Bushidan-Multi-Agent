@@ -64,35 +64,37 @@ MM_MAX_LENGTH = 16000
 
 # ── エージェント別メンション設定 v12 (10役職) ────────────────────────────────
 # Mattermost ユーザー名 → エージェントキー
-# ※ uketuke-bot / gaiji-bot / yuhitsu-bot は新規作成後に追記
 AGENT_USERNAMES: dict[str, str] = {
     "daigensui-bot": "daigensui",
     "shogun-bot":    "shogun",
     "gunshi-bot":    "gunshi",
-    "sanbo-a-bot":   "sanbo",      # sanbo-a-bot を 参謀 (sanbo) として流用
+    "sanbo-a-bot":   "sanbo",      # 旧アカウント流用
     "kengyo-bot":    "kengyo",
     "onmitsu-bot":   "onmitsu",
-    "karo-b-bot":    "seppou",     # karo-b-bot を 斥候 (seppou) として流用
-    # 新規アカウント (作成後に token を AGENT_CONFIG に設定すること)
-    # "uketuke-bot": "uketuke",
-    # "gaiji-bot":   "gaiji",
-    # "yuhitsu-bot": "yuhitsu",
-    # "seppou-bot":  "seppou",
+    "uketuke-bot":   "uketuke",
+    "gaiji-bot":     "gaiji",
+    "yuhitsu-bot":   "yuhitsu",
+    "seppou-bot":    "seppou",
+    # 後方互換 (旧アカウント名)
+    "karo-b-bot":    "seppou",
 }
 
 # Mattermost ユーザーID → エージェントキー
-# ※ uketuke / gaiji / yuhitsu は新規作成後に追加
 AGENT_USER_IDS: dict[str, str] = {
     "qdgwz7m43i8sxqqyz8sioopcme": "daigensui",
     "shydug161tdxunfjhtg6ksha1o": "shogun",
     "s5tqp9iqajydzg1ta3aysuofuw": "gunshi",
-    "b1oyouc777rd3rp73hiog3hpir": "sanbo",     # 旧 sanbo_a → sanbo
+    "b1oyouc777rd3rp73hiog3hpir": "sanbo",
     "nzrkeikfebyjj8oo5fnn4jdfer": "kengyo",
     "ys4w69oc3fyxmbcq1hhm7cywar": "onmitsu",
-    "36zqhqgnh3brbp6ng87wj7fjda": "seppou",    # 旧 karo_b → seppou
-    # 旧アカウント (後方互換のため残す)
-    "b5rdyq38pbfrxfneeecx9shdxe": "sanbo",     # 旧 sanbo_b → sanbo
-    "pebjz98tnpy6mk51sjh884py5a": "seppou",    # 旧 karo_a → seppou
+    "t3pk8bgx9j8d5e8anr449b6ixh": "uketuke",
+    "ipzbzaxfdifk7xudbe33k59pwy": "gaiji",
+    "xsac94u8zin5xf355s9ca93pqe": "yuhitsu",
+    "igpx8m7fainfmpr16gh6a84dzo": "seppou",
+    # 後方互換 (旧アカウント)
+    "36zqhqgnh3brbp6ng87wj7fjda": "seppou",   # 旧 karo_b
+    "b5rdyq38pbfrxfneeecx9shdxe": "sanbo",    # 旧 sanbo_b
+    "pebjz98tnpy6mk51sjh884py5a": "seppou",   # 旧 karo_a
 }
 
 # エージェントキー → LangGraph 強制ルート
@@ -579,31 +581,26 @@ class BushidanMattermostBot:
         return None
 
     async def _call_claude_direct(self, agent_key: str, message: str) -> str:
-        """大元帥・将軍への直接呼び出し (Anthropic API)"""
-        try:
-            import anthropic
-        except ImportError:
-            return "❌ anthropic ライブラリが未インストールです"
-
+        """大元帥・将軍への呼び出し (Proプラン CLI 優先 → API フォールバック)"""
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             return "❌ ANTHROPIC_API_KEY が設定されていません"
 
-        model  = AGENT_CLAUDE_MODELS.get(agent_key, "claude-sonnet-4-6")
+        model   = AGENT_CLAUDE_MODELS.get(agent_key, "claude-sonnet-4-6")
         persona = AGENT_PERSONAS.get(agent_key, "")
-        logger.info("🎌 [%s] Anthropic 直接呼び出し: %s (%s...)", agent_key, model, message[:60])
+        logger.info("🎌 [%s] Claude呼び出し開始 (CLI優先): %s (%s...)", agent_key, model, message[:60])
 
         try:
-            client = anthropic.AsyncAnthropic(api_key=api_key)
-            resp = await client.messages.create(
+            from utils.claude_cli_client import call_claude_with_fallback
+            return await call_claude_with_fallback(
+                prompt=message,
                 model=model,
-                system=persona,
-                messages=[{"role": "user", "content": message}],
+                api_key=api_key,
+                system=persona or None,
                 max_tokens=2000,
             )
-            return resp.content[0].text
         except Exception as e:
-            logger.error("[%s] Anthropic 呼び出しエラー: %s", agent_key, e)
+            logger.error("[%s] Claude呼び出しエラー: %s", agent_key, e)
             return f"❌ {agent_key} 応答エラー: {e}"
 
     async def _call_agent_direct(

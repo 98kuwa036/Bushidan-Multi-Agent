@@ -31,18 +31,18 @@ from mattermostdriver.driver import Driver
 logger = logging.getLogger("bushidan.mattermost_reporter")
 
 # ─── エージェント設定 v12 (10役職) ───────────────────────────────────────────
-# token が "PLACEHOLDER_*" のものは Mattermost に新規アカウント作成後に更新が必要
+# 全トークン設定済み (2026-03-09)
 AGENT_CONFIG: Dict[str, Dict[str, str]] = {
     # ── 受付 (uketuke) — Command R ──────────────────────────────────────────
     "uketuke": {
-        "token":   "PLACEHOLDER_UKETUKE",      # 新規作成: uketuke-bot
+        "token":   "8zp818ckfj81zptpubwh6zqtse",
         "display": "受付",
         "model":   "Command R",
         "emoji":   "🚪",
     },
     # ── 外事 (gaiji) — Command R+ ───────────────────────────────────────────
     "gaiji": {
-        "token":   "PLACEHOLDER_GAIJI",        # 新規作成: gaiji-bot
+        "token":   "zfcekita5pdqfmjag1y3utw4ke",
         "display": "外事",
         "model":   "Command R+",
         "emoji":   "🌐",
@@ -77,14 +77,14 @@ AGENT_CONFIG: Dict[str, Dict[str, str]] = {
     },
     # ── 右筆 (yuhitsu) — Llama ELYZA ────────────────────────────────────────
     "yuhitsu": {
-        "token":   "PLACEHOLDER_YUHITSU",      # 新規作成: yuhitsu-bot
+        "token":   "9ktzxdari7dkfjw9np66aznfby",
         "display": "右筆",
         "model":   "Llama ELYZA",
         "emoji":   "🖊️",
     },
-    # ── 斥候 (seppou) — Llama 3.3 70B Groq (旧: karo-b-bot を流用) ──────────
+    # ── 斥候 (seppou) — Llama 3.3 70B Groq ──────────────────────────────────
     "seppou": {
-        "token":   "wtdpo47mein7tns81pdhcei63o",
+        "token":   "iff7zm9mai86fcik6higjox4ua",
         "display": "斥候",
         "model":   "Llama 3.3 70B (Groq)",
         "emoji":   "🏹",
