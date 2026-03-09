@@ -1,0 +1,169 @@
+# Bushidan Interactive Mode Configuration
+#
+# インタラクティブモードの設定
+# 各作業ステップでユーザーの承認を求めるかどうかを制御します
+
+interactive_mode:
+  # インタラクティブモード有効化
+  enabled: true
+
+  # 承認が必要な作業種別
+  approval_required:
+    # エージェント間の委譲
+    delegation: true
+
+    # ファイル操作
+    file_create: true
+    file_edit: true
+    file_delete: true  # 危険な操作
+
+    # Git操作
+    git_commit: true
+    git_push: true  # 危険な操作
+    git_pull: false
+    git_clone: false
+
+    # コマンド実行
+    command_execution: true  # シェルコマンド実行
+
+    # データベース操作
+    database_query: false
+    database_mutation: true  # 危険な操作
+
+  # タイムアウト設定（秒）
+  approval_timeout: 300  # 5分
+
+  # タイムアウト時の動作（作業種別ごと）
+  timeout_actions:
+    # 安全な操作：自動承認
+    file_create: "auto_approve"
+    file_edit: "auto_approve"
+    git_commit: "auto_approve"
+    git_pull: "auto_approve"
+    git_clone: "auto_approve"
+    delegation: "auto_approve"
+
+    # 危険な操作：自動却下
+    file_delete: "auto_reject"
+    git_push: "auto_reject"
+    command_execution: "auto_reject"
+    database_mutation: "auto_reject"
+
+  # リアクション絵文字
+  reaction_emojis:
+    approve: "👍"
+    reject: "👎"
+    retry: "🔄"
+    modify: "✏️"
+
+  # キーワード認識
+  keywords:
+    approve:
+      - "承認"
+      - "ok"
+      - "OK"
+      - "approve"
+      - "yes"
+      - "いいよ"
+      - "よし"
+      - "go"
+      - "進めて"
+    reject:
+      - "却下"
+      - "no"
+      - "NO"
+      - "reject"
+      - "ダメ"
+      - "やめて"
+      - "中止"
+      - "stop"
+    retry:
+      - "やり直し"
+      - "retry"
+      - "再試行"
+      - "もう一度"
+      - "再度"
+    modify:
+      - "変更"
+      - "修正"
+      - "modify"
+      - "change"
+      - "編集"
+
+  # 戦国武将風の会話設定
+  speaking_style:
+    enabled: true  # 戦国武将風の会話を有効化
+
+    # 各エージェントの口調
+    agent_styles:
+      shogun:
+        greeting: "我が名は将軍なり。"
+        approval_request: "上様、お伺い申し上げまする。"
+        approved: "かたじけない。直ちに取り掛かる所存にて候。"
+        rejected: "承知つかまつった。直ちに中止いたす。"
+
+      gunshi:
+        greeting: "軍師、参上仕りました。"
+        approval_request: "殿、お伺い立てまする。"
+        approved: "御意。早速進めて参りまする。"
+        rejected: "承知仕りました。別の策を練りまする。"
+
+      karo:
+        greeting: "家老、罷り出でました。"
+        approval_request: "殿、御下命を仰ぎまする。"
+        approved: "はっ、直ちに。"
+        rejected: "承知つかまつりました。"
+
+      taisho:
+        greeting: "大将、推参仕りました。"
+        approval_request: "ご下命を賜りとうございまする。"
+        approved: "御意。ただちに実行つかまつる。"
+        rejected: "承知。作業を取り止めまする。"
+
+      kengyo:
+        greeting: "検校、参上つかまつった。"
+        approval_request: "ご検分いかがいたしましょうか。"
+        approved: "かしこまりました。検証に入りまする。"
+        rejected: "承知。検証を見送りまする。"
+
+      langgraph:
+        greeting: "LangGraph、起動いたしました。"
+        approval_request: "采配の判断を仰ぎまする。"
+        approved: "心得た。采配を振るいまする。"
+        rejected: "承知。別の采配にて参りまする。"
+
+  # 承認メッセージの設定
+  messages:
+    # 承認待ちメッセージのフォーマット
+    approval_prompt: |
+      {emoji} **{agent_name}** {speaking_style}
+
+      **作業内容**: {action_description}
+
+      {details}
+
+      {approval_request_style}
+
+      👍 承認 | 👎 却下 | 🔄 やり直し | ✏️ 修正指示
+
+      または、コメントで指示を入力してください
+      （例: "test2.pyに変更して"、"承認"、"やめて"）
+
+    # タイムアウトメッセージ
+    timeout_auto_approve: |
+      ⏰ 時が過ぎ申した（{timeout}秒）
+      安全な作業ゆえ、自動にて進めさせていただきまする
+
+    timeout_auto_reject: |
+      ⏰ 時が過ぎ申した（{timeout}秒）
+      危険な作業ゆえ、自動にて中止させていただきまする
+
+    # 承認結果メッセージ
+    approved: "✅ {approved_style}"
+    rejected: "❌ {rejected_style}"
+    modified: "✏️ 御意。{instruction} にて進めまする"
+
+  # デバッグ設定
+  debug:
+    log_approvals: true
+    log_user_messages: true

@@ -1,0 +1,72 @@
+{
+  "shogun": {
+    "webhook_url": "https://discord.com/api/webhooks/1476778203916795970/0_zskhzzUKZ-64FV1Gyt8QhDACYe4lfsf_mWt-qhk5v78_D5VCvgQooONdYaysOIsLms",
+    "webhook_id": 1476778203916795970,
+    "name": "将軍 (Shogun)",
+    "description": "戦略的意思決定・品質保証",
+    "model": "Claude Sonnet 4.6",
+    "emoji": "🎌",
+    "color": 10181046,
+    "created_at": "2026-02-27T03:09:21.266231+00:00"
+  },
+  "gunshi": {
+    "webhook_url": "https://discord.com/api/webhooks/1476778209600340110/_BGVa-5KF9daYzBtQ9EB76xdiONYmWUdjv6jIGoA_G4shd2nBK4xtfN9n5m_8Ny4S-C0",
+    "webhook_id": 1476778209600340110,
+    "name": "軍師 (Gunshi)",
+    "description": "作戦立案・PDCA Engine",
+    "model": "Qwen3-Coder-Next",
+    "emoji": "📋",
+    "color": 3447003,
+    "created_at": "2026-02-27T03:09:22.574367+00:00"
+  },
+  "karo": {
+    "webhook_url": "https://discord.com/api/webhooks/1476778215371706458/LuXn4B1kgFKgcHh6rtJ6MeChq19JXYC-QLOsUG8Xz-1bTrLd24_SZnUJWRSoI1E26oBT",
+    "webhook_id": 1476778215371706458,
+    "name": "家老 (Karo)",
+    "description": "タスク分解・調整",
+    "model": "Gemini 3 Flash",
+    "emoji": "👔",
+    "color": 3066993,
+    "created_at": "2026-02-27T03:09:23.887670+00:00"
+  },
+  "taisho": {
+    "webhook_url": "https://discord.com/api/webhooks/1476778220928897084/dTbbGyGJy1fit728iBPSJLiO8sgr116h0fiZXJEtgcMXFl7Ygrmf0WP7jbYZk51x-9-B",
+    "webhook_id": 1476778220928897084,
+    "name": "大将 (Taisho)",
+    "description": "実装層・MCP駆使",
+    "model": "Local Qwen3",
+    "emoji": "⚔️",
+    "color": 15158332,
+    "created_at": "2026-02-27T03:09:25.216582+00:00"
+  },
+  "yohei": {
+    "webhook_url": "https://discord.com/api/webhooks/1476778226780078121/I7yzp_JXJEeuihrci-3Des-QciODan8Rq1dh92DxsfO4r_MWQIVhIXB5Yw8peDg6Iw5g",
+    "webhook_id": 1476778226780078121,
+    "name": "傭兵 (Yohei/Kimi)",
+    "description": "並列サブタスク実行",
+    "model": "Kimi K2.5",
+    "emoji": "🗡️",
+    "color": 15965202,
+    "created_at": "2026-02-27T03:09:26.637926+00:00"
+  },
+  "kengyo": {
+    "webhook_url": "https://discord.com/api/webhooks/1476778232421552230/BN-xLt1iFS78yQqawCiXLG9RKObjpZsrrHZSrAXlUzeprJjcnUNefjAecm3DRNMRt8QV",
+    "webhook_id": 1476778232421552230,
+    "name": "検校 (Kengyo)",
+    "description": "ビジュアル検証",
+    "model": "Kimi Vision",
+    "emoji": "👁️",
+    "color": 1752220,
+    "created_at": "2026-02-27T03:09:27.967748+00:00"
+  },
+  "groq": {
+    "webhook_url": "https://discord.com/api/webhooks/1476778237869822034/Kl422q-Bpu-YUqLK7Hc5K1bZ95foj4npMdcGeEDezMDVOiET28Qyfh1rtX1wRiTqxhp2",
+    "webhook_id": 1476778237869822034,
+    "name": "足軽-Groq (Ashigaru)",
+    "description": "Simple タスク高速処理",
+    "model": "Llama 3.3 70B",
+    "emoji": "⚡",
+    "color": 9807270,
+    "created_at": "2026-02-27T03:09:29.323709+00:00"
+  }
+}

@@ -446,7 +446,7 @@ async def get_bushidan_status() -> str:
                 "agents": agents,
                 "infrastructure": {
                     "llamacpp_endpoint": os.environ.get(
-                        "LLAMACPP_ENDPOINT", "http://192.168.11.232:8080"
+                        "LLAMACPP_ENDPOINT", "http://192.168.11.239:8080"
                     ),
                     "llamacpp_online": health.get("llamacpp", False),
                 },

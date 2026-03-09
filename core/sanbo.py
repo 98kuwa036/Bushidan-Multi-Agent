@@ -1,12 +1,12 @@
 """
-Bushidan Multi-Agent System v11.4 - Sanbo (参謀: 実装実行層)
+Bushidan Multi-Agent System v11.5 - Sanbo (参謀: 実装実行層)
 
 参謀層は軍師 PDCA の Do フェーズにおける主力実装エンジン。
-GPT-5（参謀-A）と Grok-code-fast-1（参謀-B）の2モデル協調実装。
+Mistral Large 3（参謀-A）と Grok 4.1 Fast（参謀-B）の2モデル協調実装。
 
-v11.4 参謀構成:
-- 参謀-A (Sanbo-A): GPT-5 - 汎用コーディング・複雑なロジック
-- 参謀-B (Sanbo-B): Grok-code-fast-1 - 実装特化・高速（~240 tok/s）
+v11.5 参謀構成:
+- 参謀-A (Sanbo-A): Mistral Large 3 - 汎用コーディング・EU準拠・コスパ最強
+- 参謀-B (Sanbo-B): Grok 4.1 Fast - 実装特化・超高速・業界最安値クラス
 
 設計原則:
 - 軍師（o3-mini）との役割分離: 軍師＝推論・計画, 参謀＝実装・コード生成

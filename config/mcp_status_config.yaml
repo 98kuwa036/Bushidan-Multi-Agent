@@ -1,0 +1,36 @@
+```yaml
+# MCP Status Check Configuration for Bushidan System v10.1
+
+# Network settings
+network_timeout: 5
+
+# MCP Services to monitor
+mcp_services:
+  - mcp_core_service
+  - mcp_data_service  
+  - mcp_network_service
+  - mcp_storage_service
+
+# Service-specific configurations
+services:
+  mcp_core_service:
+    endpoint: "http://localhost:8080/health"
+    process_name: "mcp_core"
+
+  mcp_data_service:
+    endpoint: "http://localhost:8081/health" 
+    process_name: "mcp_data"
+
+  mcp_network_service:
+    endpoint: "http://localhost:8082/health"
+    process_name: "mcp_network"
+
+  mcp_storage_service:
+    endpoint: "http://localhost:8083/health"
+    process_name: "mcp_storage"
+
+# Logging configuration
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+```

@@ -1,38 +1,21 @@
-"""武士団 Mattermost Bot - 完全統合版
+"""武士団 Mattermost Bot - インタラクティブボタン統合版
 
-core/system_orchestrator.py を経由して9層階層に委譲します。
+Discord でできなかったことを Mattermost で実現:
+  ✅ [承認] [却下] [修正指示] ボタンによる承認フロー
+  ✅ スラッシュコマンド /bushidan <タスク> で直接投入
+  ✅ 16000文字の長文レスポンス
+  ✅ 投稿の上書き更新 (受領通知 → 結果)
 
-  Mattermost メッセージ (@メンション)
-       ↓
-  BushidanMattermostBot.handle_event()
-       ↓
-  SystemOrchestrator.process_task()  ← BDI + インテリジェントルーター
-       ↓
-  SIMPLE    → 家老-B Groq (即応)
-  MEDIUM    → 参謀-B Grok (並列実装)
-  COMPLEX   → 軍師 → 参謀A/B → 家老
-  STRATEGIC → 将軍自ら処理 / 大元帥最終裁可
-       ↓
-  Mattermost スレッドに返答
+起動:  python -m bushidan.mattermost_bot
 
-コマンド (メッセージで `!` プレフィックス):
-  !mode              - 現在のモードを表示
-  !mode battalion    - 大隊モード（全9層）
-  !mode company      - 中隊モード（軽量）
-  !mode platoon      - 小隊モード（最軽量）
-  !status            - システム状態を表示（9層全員）
-  !help              - ヘルプを表示
-
-必要な環境変数:
-  MATTERMOST_URL            - サーバー URL (例: chat.example.com)
-  MATTERMOST_TOKEN          - Bot アクセストークン
-  MATTERMOST_TEAM_NAME      - チーム名 (省略可)
-  MATTERMOST_PORT           - ポート番号 (デフォルト: 443)
-  MATTERMOST_SCHEME         - http/https (デフォルト: https)
-  MATTERMOST_COMMAND_PREFIX - コマンドプレフィックス (デフォルト: !)
-
-起動方法:
-  python -m bushidan.mattermost_bot
+環境変数:
+  MATTERMOST_URL           - ホスト名のみ (例: 192.168.11.234)
+  MATTERMOST_PORT          - ポート番号 (デフォルト: 8065)
+  MATTERMOST_SCHEME        - http / https (デフォルト: http)
+  MATTERMOST_TOKEN         - Bot アクセストークン
+  MATTERMOST_CHANNEL       - デフォルトチャンネルID
+  MATTERMOST_CALLBACK_HOST - このサーバーのホスト (例: 192.168.11.230)
+  MATTERMOST_CALLBACK_PORT - コールバック受信ポート (デフォルト: 8066)
 """
 
 import asyncio
@@ -42,7 +25,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 try:
     from dotenv import load_dotenv
@@ -52,433 +35,670 @@ except ImportError:
 
 LOG_DIR = Path(__file__).parent.parent / "logs"
 LOG_DIR.mkdir(exist_ok=True)
-LOG_FILE = LOG_DIR / "mattermost_bot.log"
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(LOG_FILE, encoding="utf-8"),
+        logging.FileHandler(LOG_DIR / "mattermost_bot.log", encoding="utf-8"),
     ],
 )
 logger = logging.getLogger("bushidan.mattermost")
 
+# ── 依存チェック ──────────────────────────────────────────────────────
+
 try:
-    from mattermostdriver import AsyncDriver
+    from mattermostdriver.driver import Driver
+    from mattermostdriver.websocket import Websocket
     HAS_MATTERMOST = True
 except ImportError:
     HAS_MATTERMOST = False
 
-# Mattermost の文字数制限に余裕を持たせる (上限 16383)
+try:
+    from aiohttp import web
+    HAS_AIOHTTP = True
+except ImportError:
+    HAS_AIOHTTP = False
+
 MM_MAX_LENGTH = 16000
+
+# ── エージェント別メンション設定 v12 (10役職) ────────────────────────────────
+# Mattermost ユーザー名 → エージェントキー
+# ※ uketuke-bot / gaiji-bot / yuhitsu-bot は新規作成後に追記
+AGENT_USERNAMES: dict[str, str] = {
+    "daigensui-bot": "daigensui",
+    "shogun-bot":    "shogun",
+    "gunshi-bot":    "gunshi",
+    "sanbo-a-bot":   "sanbo",      # sanbo-a-bot を 参謀 (sanbo) として流用
+    "kengyo-bot":    "kengyo",
+    "onmitsu-bot":   "onmitsu",
+    "karo-b-bot":    "seppou",     # karo-b-bot を 斥候 (seppou) として流用
+    # 新規アカウント (作成後に token を AGENT_CONFIG に設定すること)
+    # "uketuke-bot": "uketuke",
+    # "gaiji-bot":   "gaiji",
+    # "yuhitsu-bot": "yuhitsu",
+    # "seppou-bot":  "seppou",
+}
+
+# Mattermost ユーザーID → エージェントキー
+# ※ uketuke / gaiji / yuhitsu は新規作成後に追加
+AGENT_USER_IDS: dict[str, str] = {
+    "qdgwz7m43i8sxqqyz8sioopcme": "daigensui",
+    "shydug161tdxunfjhtg6ksha1o": "shogun",
+    "s5tqp9iqajydzg1ta3aysuofuw": "gunshi",
+    "b1oyouc777rd3rp73hiog3hpir": "sanbo",     # 旧 sanbo_a → sanbo
+    "nzrkeikfebyjj8oo5fnn4jdfer": "kengyo",
+    "ys4w69oc3fyxmbcq1hhm7cywar": "onmitsu",
+    "36zqhqgnh3brbp6ng87wj7fjda": "seppou",    # 旧 karo_b → seppou
+    # 旧アカウント (後方互換のため残す)
+    "b5rdyq38pbfrxfneeecx9shdxe": "sanbo",     # 旧 sanbo_b → sanbo
+    "pebjz98tnpy6mk51sjh884py5a": "seppou",    # 旧 karo_a → seppou
+}
+
+# エージェントキー → LangGraph 強制ルート
+# daigensui / shogun は Anthropic API を直接呼び出し (AGENT_CLAUDE_MODELS 参照)
+AGENT_FORCED_ROUTES: dict[str, str] = {
+    "gunshi":   "gunshi_pdca",    # 軍師 → o3-mini PDCA
+    "sanbo":    "taisho_mcp",     # 参謀 → MCP ツール連携
+    "kengyo":   "gaiji_rag",      # 検校 → 外事 Command R+ (視覚解析含む)
+    "gaiji":    "gaiji_rag",      # 外事 → Command R+
+    "uketuke":  "karo_default",   # 受付 → Command R フォールバック
+    "yuhitsu":  "yuhitsu_jp",     # 右筆 → ELYZA 日本語清書
+    "seppou":   "groq_qa",        # 斥候 → Llama 3.3 Groq
+    "onmitsu":  "onmitsu_local",  # 隠密 → Nemotron ローカル
+    # 後方互換
+    "sanbo_a":  "taisho_mcp",
+    "sanbo_b":  "taisho_mcp",
+    "karo_a":   "gaiji_rag",
+    "karo_b":   "groq_qa",
+}
+
+# エージェントペルソナ (Claude 直接呼び出し用)
+AGENT_PERSONAS: dict[str, str] = {
+    "daigensui": (
+        "あなたは大元帥（Claude Opus 4.6）、武士団マルチエージェントシステムの総司令官です。"
+        "最高難度の判断を下す最高意思決定者として、深く洞察に富んだ回答を日本語でしてください。"
+    ),
+    "shogun": (
+        "あなたは将軍（Claude Sonnet 4.6）、武士団のメインワーカーです。"
+        "高難度コーディングと実装を担当します。的確かつ実践的に日本語で回答してください。"
+    ),
+}
+
+# エージェントキー → Claude モデルID (Anthropic 直接呼び出し用)
+AGENT_CLAUDE_MODELS: dict[str, str] = {
+    "daigensui": "claude-opus-4-6",
+    "shogun":    "claude-sonnet-4-6",
+}
 
 MODE_DESCRIPTIONS = {
     "battalion": (
-        "🏯 **大隊モード** (battalion)\n"
-        "大元帥→将軍→軍師→参謀A/B→家老A/B→検校→隠密 全9層\n"
-        "複雑なエンジニアリングタスク・戦略的意思決定向け"
+        "🏯 **大隊モード** (battalion) v12\n"
+        "受付→外事→検校→将軍→軍師→参謀→右筆→斥候→隠密→大元帥 全10役職"
     ),
-    "company": (
-        "🏠 **中隊モード** (company)\n"
-        "家老→大将→足軽\n"
-        "軽量・高速、チャット Bot 向け"
-    ),
-    "platoon": (
-        "⚔️ **小隊モード** (platoon)\n"
-        "大将→足軽のみ\n"
-        "最軽量・オフライン処理向け"
-    ),
+    "company":  "🏠 **中隊モード** (company)\n参謀→斥候→右筆 軽量・高速",
+    "platoon":  "⚔️ **小隊モード** (platoon)\n斥候のみ 最軽量",
 }
 
 
 def _split_message(text: str, limit: int = MM_MAX_LENGTH) -> list[str]:
-    """長いメッセージを Mattermost の文字数制限に合わせて分割."""
     if len(text) <= limit:
         return [text]
     chunks = []
     while text:
         chunk = text[:limit]
-        last_newline = chunk.rfind("\n")
-        if last_newline > limit // 2:
-            chunk = text[:last_newline]
+        last_nl = chunk.rfind("\n")
+        if last_nl > limit // 2:
+            chunk = text[:last_nl]
         chunks.append(chunk)
         text = text[len(chunk):].lstrip("\n")
     return chunks
 
 
+class MattermostAPI:
+    """mattermostdriver (同期) を asyncio.to_thread でラップした薄いラッパー."""
+
+    def __init__(self, driver: "Driver") -> None:
+        self._d = driver
+
+    async def get_user(self, user_id: str) -> Dict:
+        return await asyncio.to_thread(self._d.users.get_user, user_id)
+
+    async def create_post(self, options: Dict) -> Dict:
+        return await asyncio.to_thread(self._d.posts.create_post, options=options)
+
+    async def patch_post(self, post_id: str, options: Dict) -> None:
+        await asyncio.to_thread(self._d.posts.patch_post, post_id, options=options)
+
+    async def make_request(self, method: str, endpoint: str, **kwargs) -> Any:
+        def _call():
+            return self._d.client.make_request(method, endpoint, **kwargs)
+        return await asyncio.to_thread(_call)
+
+
 class BushidanMattermostBot:
-    """武士団 Mattermost Bot - 完全統合版."""
+    """武士団 Mattermost Bot."""
 
     def __init__(self) -> None:
-        self._driver: Optional[AsyncDriver] = None
-        self._bot_user_id: Optional[str] = None
+        self._driver: Optional[Driver]  = None
+        self._api:    Optional[MattermostAPI] = None
+        self._ws:     Optional[Websocket] = None
+        self._bot_user_id:  Optional[str] = None
         self._bot_username: Optional[str] = None
-        self._orchestrator = None
-        self._init_error: Optional[str] = None
+        self._orchestrator  = None
+        self._init_error:   Optional[str] = None
         self._current_mode: str = "battalion"
         self._cmd_prefix: str = os.environ.get("MATTERMOST_COMMAND_PREFIX", "!")
+        self._approval_mgr  = None
+        self._reporter      = None   # MattermostReporter (per-agent posting)
+        self._callback_base: str = ""
+
+    # ── 起動 ──────────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        """Bot を起動して WebSocket リスニングを開始."""
-        url = os.environ.get("MATTERMOST_URL", "")
-        token = os.environ.get("MATTERMOST_TOKEN", "")
-        port = int(os.environ.get("MATTERMOST_PORT", "443"))
-        scheme = os.environ.get("MATTERMOST_SCHEME", "https")
+        url    = os.environ.get("MATTERMOST_URL", "")
+        token  = os.environ.get("MATTERMOST_TOKEN", "")
+        port   = int(os.environ.get("MATTERMOST_PORT", "8065"))
+        scheme = os.environ.get("MATTERMOST_SCHEME", "http")
+        cb_host = os.environ.get("MATTERMOST_CALLBACK_HOST", "192.168.11.230")
+        cb_port = int(os.environ.get("MATTERMOST_CALLBACK_PORT", "8066"))
+        self._callback_base = f"http://{cb_host}:{cb_port}"
 
         if not url or not token:
-            logger.error("MATTERMOST_URL と MATTERMOST_TOKEN を .env に設定してください。")
+            logger.error("MATTERMOST_URL と MATTERMOST_TOKEN を設定してください。")
             sys.exit(1)
 
-        self._driver = AsyncDriver({
-            "url": url,
-            "token": token,
-            "port": port,
-            "scheme": scheme,
-            "debug": False,
+        self._driver = Driver({
+            "url": url, "token": token, "port": port, "scheme": scheme, "debug": False,
         })
+        await asyncio.to_thread(self._driver.login)
 
-        await self._driver.login()
-
-        me = await self._driver.users.get_user("me")
-        self._bot_user_id = me["id"]
+        self._api = MattermostAPI(self._driver)
+        me = await self._api.get_user("me")
+        self._bot_user_id  = me["id"]
         self._bot_username = me["username"]
-        logger.info(
-            "🏯 Mattermost ログイン完了: @%s (ID: %s)",
-            self._bot_username,
-            self._bot_user_id,
-        )
+        logger.info("🏯 Mattermost ログイン: @%s", self._bot_username)
 
-        # 武士団システムを初期化
+        # 承認マネージャー初期化
+        from bushidan.mattermost_approval import MattermostApprovalManager
+        self._approval_mgr = MattermostApprovalManager()
+        self._approval_mgr.set_api(self._api)
+
+        # エージェント別レポーター初期化
+        from bushidan.mattermost_reporter import MattermostReporter
+        channel_id = os.environ.get("MATTERMOST_CHANNEL", "")
+        self._reporter = MattermostReporter(
+            url=url, port=port, channel_id=channel_id, scheme=scheme
+        )
+        logger.info("🤖 エージェント別レポーター初期化完了 (%d エージェント)",
+                    len(self._reporter.available_agents))
+
+        # 武士団システム初期化
         await self._initialize_orchestrator()
 
-        logger.info("⚡ WebSocket 待機開始... @%s にメンションして呼び出せます", self._bot_username)
-        await self._driver.init_websocket(self._handle_event)
+        # HTTP コールバックサーバー (ボタン / スラッシュコマンド)
+        if HAS_AIOHTTP:
+            asyncio.create_task(self._run_callback_server(cb_port))
+            logger.info("🌐 コールバックサーバー起動: %s", self._callback_base)
 
-    async def _initialize_orchestrator(self, mode: Optional[str] = None) -> bool:
-        """オーケストレーターを初期化または再初期化."""
+        # WebSocket 接続 (直接 await)
+        self._ws = Websocket(self._driver.options, self._driver.client.token)
+        logger.info("⚡ WebSocket 接続中... @%s をメンションして呼び出せます", self._bot_username)
+        await self._ws.connect(self._handle_event)
+
+    # ── HTTP コールバックサーバー ────────────────────────────────────
+
+    async def _run_callback_server(self, port: int) -> None:
+        app = web.Application()
+        app.router.add_post("/api/actions", self._http_action_handler)
+        app.router.add_post("/api/slash",   self._http_slash_handler)
+        app.router.add_get("/health",       lambda r: web.json_response({"status": "ok"}))
+        runner = web.AppRunner(app)
+        await runner.setup()
+        await web.TCPSite(runner, "0.0.0.0", port).start()
+        logger.info("✅ コールバックサーバー listening ::%d", port)
+
+    async def _http_action_handler(self, request: "web.Request") -> "web.Response":
         try:
-            from utils.config import load_config
-            from core.system_orchestrator import SystemOrchestrator
+            body       = await request.json()
+            ctx        = body.get("context", {})
+            request_id = ctx.get("request_id", "")
+            action     = ctx.get("action", "")
+            user_name  = body.get("user_name", "unknown")
+            user_text  = body.get("text", "")
+            logger.info("🔔 ボタンクリック: [%s] %s by %s", request_id, action, user_name)
 
-            if mode:
-                os.environ["SYSTEM_MODE"] = mode
+            if self._approval_mgr and request_id:
+                msg = await self._approval_mgr.handle_action(
+                    request_id, action, user_name, user_text)
+            else:
+                msg = "⚠️ 承認マネージャー未初期化"
 
-            logger.info("🔧 武士団システムを初期化中... (モード: %s)", mode or "default")
-            config = load_config()
-            self._orchestrator = SystemOrchestrator(config)
-            await self._orchestrator.initialize()
-            self._current_mode = config.mode.value
-            self._init_error = None
-            logger.info("✅ 武士団システム初期化完了 (モード: %s)", self._current_mode)
-            return True
+            return web.json_response({"ephemeral_text": msg, "skip_slack_parsing": True})
         except Exception as e:
-            self._init_error = str(e)
-            logger.error("❌ 武士団システム初期化失敗: %s", e)
-            return False
+            logger.exception("アクションハンドラーエラー")
+            return web.json_response({"ephemeral_text": f"❌ {e}"}, status=500)
+
+    async def _http_slash_handler(self, request: "web.Request") -> "web.Response":
+        try:
+            data       = await request.post()
+            text       = data.get("text", "").strip()
+            channel_id = data.get("channel_id", "")
+            user_name  = data.get("user_name", "unknown")
+            post_id    = data.get("post_id", "")
+            logger.info("⚡ /bushidan: user=%s text=%s", user_name, text[:80])
+
+            if not text:
+                return web.json_response({
+                    "response_type": "ephemeral",
+                    "text": "使い方: `/bushidan <タスク内容>`",
+                })
+
+            asyncio.create_task(
+                self._process_slash_task(text, channel_id, post_id, user_name))
+
+            return web.json_response({
+                "response_type": "in_channel",
+                "text": f"📋 **@{user_name}** の任務受領: `{text[:80]}`\n⏳ 処理中...",
+            })
+        except Exception as e:
+            logger.exception("スラッシュハンドラーエラー")
+            return web.json_response({"text": f"❌ {e}"}, status=500)
+
+    async def _process_slash_task(
+        self, task: str, channel_id: str, root_id: str, user_name: str
+    ) -> None:
+        try:
+            result_dict = await self._process_task_dict(task, channel_id, root_id)
+            handled_by = result_dict.get("handled_by", "unknown")
+            result_text = result_dict.get("_formatted", "")
+            chunks = _split_message(result_text)
+            if self._reporter:
+                for chunk in chunks:
+                    await self._reporter.post_from_node(
+                        handled_by, chunk, root_id=root_id, channel_id=channel_id)
+            else:
+                for chunk in chunks:
+                    await self._post(channel_id, chunk, root_id)
+        except Exception as e:
+            logger.exception("スラッシュタスク処理エラー")
+            await self._post(channel_id, f"❌ エラー: {e}", root_id)
+
+    # ── WebSocket イベント処理 ────────────────────────────────────────
 
     async def _handle_event(self, event_raw: str) -> None:
-        """WebSocket から受信したイベントを処理."""
         try:
             event = json.loads(event_raw) if isinstance(event_raw, str) else event_raw
-
             if event.get("event") != "posted":
                 return
 
-            data = event.get("data", {})
+            data     = event.get("data", {})
             post_raw = data.get("post")
             if not post_raw:
                 return
 
             post = json.loads(post_raw) if isinstance(post_raw, str) else post_raw
-
-            # 自分自身のメッセージは無視
             if post.get("user_id") == self._bot_user_id:
                 return
 
-            message: str = post.get("message", "")
-            channel_id: str = post.get("channel_id", "")
-            post_id: str = post.get("id", "")
-            # スレッドへの返信は root_id を維持、新規投稿は投稿自体を root に
-            root_id: str = post.get("root_id") or post_id
+            message    = post.get("message", "")
+            channel_id = post.get("channel_id", "")
+            post_id    = post.get("id", "")
+            root_id    = post.get("root_id") or post_id
 
-            # @メンション検出
-            is_mentioned = False
-            if self._bot_username and f"@{self._bot_username}" in message:
-                is_mentioned = True
-            elif self._bot_user_id:
-                mentions_raw = data.get("mentions", "[]")
-                mentions = (
-                    json.loads(mentions_raw)
-                    if isinstance(mentions_raw, str)
-                    else (mentions_raw or [])
-                )
-                if self._bot_user_id in mentions:
-                    is_mentioned = True
+            mentions_raw = data.get("mentions", "[]") or "[]"
+            mentions = json.loads(mentions_raw) if isinstance(mentions_raw, str) else mentions_raw
 
-            if not is_mentioned:
+            is_mentioned_main = (
+                (self._bot_username and f"@{self._bot_username}" in message)
+                or self._bot_user_id in mentions
+            )
+            # 特定エージェントへの直接メンション検出
+            mentioned_agent = self._find_mentioned_agent(message, mentions)
+
+            if not is_mentioned_main and not mentioned_agent:
                 return
 
-            # @mention タグを除去してタスク文字列を取り出す
-            task = re.sub(r"@\S+", "", message).strip()
             sender = data.get("sender_name", "unknown")
-            logger.info("📩 任務受信 from %s: %s", sender, task[:100])
+            task   = re.sub(r"@\S+", "", message).strip() or message.strip()
 
+            if mentioned_agent and not is_mentioned_main:
+                # 特定エージェントへの直接呼び出し
+                logger.info("🎯 エージェント指名 [%s] from %s: %s", mentioned_agent, sender, task[:80])
+                asyncio.create_task(
+                    self._call_agent_direct(mentioned_agent, task, channel_id, root_id))
+                return
+
+            logger.info("📩 任務受信 from %s: %s", sender, task[:100])
             await self._handle_message(task, channel_id, root_id, post_id)
 
         except Exception as e:
             logger.exception("イベント処理エラー: %s", e)
 
     async def _handle_message(
-        self,
-        task: str,
-        channel_id: str,
-        root_id: str,
-        post_id: str,
+        self, task: str, channel_id: str, root_id: str, post_id: str
     ) -> None:
-        """メッセージを処理してレスポンスを投稿."""
         if not task:
             await self._post(channel_id, "はい、何かご用でしょうか？", root_id)
             return
 
-        # コマンド処理
         if task.startswith(self._cmd_prefix):
             await self._handle_command(task, channel_id, root_id)
             return
 
-        # 受領通知を先に投稿
         ack_id = await self._post(
-            channel_id,
-            f"📋 任務受領: **{task[:80]}**\n⏳ 処理中...",
-            root_id,
-        )
-
+            channel_id, f"📋 任務受領: **{task[:80]}**\n⏳ 処理中...", root_id)
         try:
-            result = await self._process_task(task, channel_id, root_id)
-            chunks = _split_message(result)
-            await self._update_post(ack_id, chunks[0])
-            for chunk in chunks[1:]:
-                await self._post(channel_id, chunk, root_id)
+            result_dict = await self._process_task_dict(task, channel_id, root_id)
+            handled_by = result_dict.get("handled_by", "unknown")
+            agent_role = result_dict.get("agent_role", "")
+            result_text = result_dict.get("_formatted", result_dict.get("result", ""))
+
+            # 受領メッセージを「ルーティング先」表示に更新
+            await self._update_post(
+                ack_id,
+                f"📋 任務受領: **{task[:80]}**\n"
+                f"🔀 ルーティング → **{agent_role or handled_by}**"
+            )
+
+            # エージェント専用アカウントから返答を投稿
+            chunks = _split_message(result_text)
+            if self._reporter:
+                await self._reporter.post_from_node(
+                    handled_by, chunks[0], root_id=root_id, channel_id=channel_id)
+                for chunk in chunks[1:]:
+                    await self._reporter.post_from_node(
+                        handled_by, chunk, root_id=root_id, channel_id=channel_id)
+            else:
+                await self._post(channel_id, chunks[0], root_id)
+                for chunk in chunks[1:]:
+                    await self._post(channel_id, chunk, root_id)
         except Exception as e:
             logger.exception("タスク処理エラー")
-            await self._update_post(ack_id, f"❌ エラーが発生しました: {e}")
+            await self._update_post(ack_id, f"❌ エラー: {e}")
 
-    async def _handle_command(self, command: str, channel_id: str, root_id: str) -> None:
-        """コマンドを処理."""
-        parts = command.split()
-        cmd = parts[0].lstrip(self._cmd_prefix).lower()
-        args = parts[1:] if len(parts) > 1 else []
+    # ── コマンド ─────────────────────────────────────────────────────
+
+    async def _handle_command(self, cmd_str: str, channel_id: str, root_id: str) -> None:
+        parts = cmd_str.split()
+        cmd   = parts[0].lstrip(self._cmd_prefix).lower()
+        args  = parts[1:]
+        p     = self._cmd_prefix
 
         if cmd == "mode":
             await self._cmd_mode(args, channel_id, root_id)
         elif cmd == "status":
             await self._cmd_status(channel_id, root_id)
         elif cmd == "help":
-            await self._cmd_help(channel_id, root_id)
+            await self._post(channel_id, (
+                "**🏯 武士団 Mattermost Bot コマンド**\n\n"
+                "`@bushidan-bot <タスク>` — タスク投入\n"
+                "`/bushidan <タスク>` — スラッシュコマンド\n\n"
+                f"`{p}mode [battalion|company|platoon]` — モード確認・切り替え\n"
+                f"`{p}status` — 9層システム状態\n"
+                f"`{p}help` — このヘルプ\n\n"
+                "**承認フロー:**\n"
+                "重要操作時に [✅ 承認] [❌ 却下] [✏️ 修正指示] ボタンが表示されます。"
+            ), root_id)
         else:
-            await self._post(
-                channel_id,
-                (
-                    f"❓ 不明なコマンド: `{self._cmd_prefix}{cmd}`\n"
-                    f"`{self._cmd_prefix}help` でコマンド一覧を確認できます。"
-                ),
-                root_id,
-            )
+            await self._post(channel_id,
+                f"❓ 不明なコマンド: `{p}{cmd}`\n`{p}help` でコマンド一覧", root_id)
 
-    async def _cmd_mode(self, args: list[str], channel_id: str, root_id: str) -> None:
-        """モード表示・切り替えコマンド."""
-        valid_modes = ["battalion", "company", "platoon"]
-
+    async def _cmd_mode(self, args: list, channel_id: str, root_id: str) -> None:
+        p = self._cmd_prefix
         if not args:
-            current_desc = MODE_DESCRIPTIONS.get(self._current_mode, "不明")
-            p = self._cmd_prefix
-            response = (
-                f"**現在のモード:** `{self._current_mode}`\n\n"
-                f"{current_desc}\n\n"
-                f"---\n**切り替え方法:**\n"
-                f"`{p}mode battalion` - 大隊モード（全9層）\n"
-                f"`{p}mode company` - 中隊モード（軽量）\n"
-                f"`{p}mode platoon` - 小隊モード（最軽量）"
-            )
-            await self._post(channel_id, response, root_id)
+            desc = MODE_DESCRIPTIONS.get(self._current_mode, "不明")
+            await self._post(channel_id,
+                f"**現在のモード:** `{self._current_mode}`\n\n{desc}\n\n"
+                f"`{p}mode battalion|company|platoon` で切り替え", root_id)
             return
-
         new_mode = args[0].lower()
-        if new_mode not in valid_modes:
-            await self._post(
-                channel_id,
-                f"❌ 無効なモード: `{new_mode}`\n有効なモード: `battalion`, `company`, `platoon`",
-                root_id,
-            )
+        if new_mode not in MODE_DESCRIPTIONS:
+            await self._post(channel_id,
+                f"❌ 無効: `{new_mode}` | battalion / company / platoon", root_id)
             return
-
-        if new_mode == self._current_mode:
-            await self._post(channel_id, f"ℹ️ 既に `{new_mode}` モードです。", root_id)
-            return
-
-        msg_id = await self._post(
-            channel_id,
-            (
-                f"🔄 モードを `{self._current_mode}` → `{new_mode}` に切り替え中...\n"
-                f"⏳ システムを再初期化しています..."
-            ),
-            root_id,
-        )
-
-        success = await self._initialize_orchestrator(new_mode)
-
-        if success:
-            new_desc = MODE_DESCRIPTIONS.get(new_mode, "")
-            await self._update_post(msg_id, f"✅ モード切り替え完了!\n\n{new_desc}")
+        mid = await self._post(channel_id,
+            f"🔄 `{self._current_mode}` → `{new_mode}` 切り替え中...", root_id)
+        ok = await self._initialize_orchestrator(new_mode)
+        if ok:
+            await self._update_post(mid,
+                f"✅ 完了!\n\n{MODE_DESCRIPTIONS[new_mode]}")
         else:
-            await self._update_post(
-                msg_id,
-                f"❌ モード切り替え失敗\nエラー: `{self._init_error}`",
-            )
+            await self._update_post(mid, f"❌ 失敗: `{self._init_error}`")
 
     async def _cmd_status(self, channel_id: str, root_id: str) -> None:
-        """システム状態を表示 (v11.4 9層構成)."""
-        if self._orchestrator is None:
-            await self._post(
-                channel_id,
-                f"⚠️ システム未初期化\nエラー: `{self._init_error or '不明'}`",
-                root_id,
-            )
+        if not self._orchestrator:
+            await self._post(channel_id,
+                f"⚠️ システム未初期化\n`{self._init_error or '不明'}`", root_id)
             return
+        def chk(a): return "✅" if getattr(self._orchestrator, a, None) else "❌"
+        llamacpp = self._orchestrator.health_status.get("llamacpp", False)
+        kengyo   = getattr(self._orchestrator, "kengyo", None)
+        kengyo_ok = bool(kengyo and (
+            not hasattr(kengyo, "is_available") or kengyo.is_available()))
+        pending = self._approval_mgr.get_pending_count() if self._approval_mgr else 0
 
-        def _chk(attr: str) -> str:
-            return "✅" if getattr(self._orchestrator, attr, None) else "❌"
+        await self._post(channel_id, (
+            f"**🏯 武士団 v{self._orchestrator.VERSION}** | "
+            f"モード: `{self._current_mode}` | 承認待ち: {pending}件\n\n"
+            f"👑 大元帥 {chk('daigensui')} | 🎌 将軍 {chk('shogun')} | "
+            f"🧠 軍師 {chk('gunshi')}\n"
+            f"⚔️ 参謀 {chk('sanbo')} | 👔 家老 {chk('karo')} | "
+            f"👁️ 検校 {'✅' if kengyo_ok else '❌'} | "
+            f"🥷 隠密 {'✅' if llamacpp else '⚠️'}\n\n"
+            f"🌐 コールバック: `{self._callback_base}`"
+        ), root_id)
 
-        kengyo_obj = getattr(self._orchestrator, "kengyo", None)
-        kengyo_ok = bool(
-            kengyo_obj
-            and (not hasattr(kengyo_obj, "is_available") or kengyo_obj.is_available())
-        )
-        llamacpp_ok = self._orchestrator.health_status.get("llamacpp", False)
+    # ── オーケストレーター ────────────────────────────────────────────
 
-        response = (
-            f"**🏯 武士団システム v{self._orchestrator.VERSION}**\n"
-            f"**モード:** `{self._current_mode}`\n\n"
-            f"**【9層アーキテクチャ】**\n"
-            f"👑 大元帥 (Claude Opus 4.5):  {_chk('daigensui')}\n"
-            f"🎌 将軍   (Claude Sonnet 4.6): {_chk('shogun')}\n"
-            f"🧠 軍師   (o3-mini high):      {_chk('gunshi')}\n"
-            f"⚔️  参謀   (GPT-5 / Grok):     {_chk('sanbo')}\n"
-            f"👔 家老-A (Gemini Flash):      {_chk('karo')}\n"
-            f"🦙 家老-B (Llama 3.3 70B):    {_chk('karo')}\n"
-            f"👁️  検校   (Gemini Vision):     {'✅' if kengyo_ok else '❌'}\n"
-            f"🥷 隠密   (Nemotron Local):    {'✅' if llamacpp_ok else '⚠️ オフライン'}\n\n"
-            f"**【外部サービス】**\n"
-            f"🔗 llama.cpp (ProDesk 600): {'✅' if llamacpp_ok else '⚠️'}\n"
-        )
-        await self._post(channel_id, response, root_id)
+    async def _initialize_orchestrator(self, mode: Optional[str] = None) -> bool:
+        try:
+            from utils.config import load_config
+            from core.system_orchestrator import SystemOrchestrator
+            if mode:
+                os.environ["SYSTEM_MODE"] = mode
+            config = load_config()
+            self._orchestrator = SystemOrchestrator(config)
+            await self._orchestrator.initialize()
+            self._current_mode = config.mode.value
+            self._init_error   = None
+            logger.info("✅ 武士団システム初期化完了 (モード: %s)", self._current_mode)
+            return True
+        except Exception as e:
+            self._init_error = str(e)
+            logger.error("❌ 初期化失敗: %s", e)
+            return False
 
-    async def _cmd_help(self, channel_id: str, root_id: str) -> None:
-        """ヘルプを表示."""
-        p = self._cmd_prefix
-        response = (
-            "**🏯 武士団 Mattermost Bot コマンド**\n\n"
-            "**コマンド:**\n"
-            f"`{p}mode` - 現在のモードを表示\n"
-            f"`{p}mode <battalion|company|platoon>` - モード切り替え\n"
-            f"`{p}status` - システム状態を表示（9層全員）\n"
-            f"`{p}help` - このヘルプを表示\n\n"
-            "**モード:**\n"
-            "- `battalion` - 大隊（全9層、戦略タスク向け）\n"
-            "- `company`   - 中隊（家老→大将、軽量・高速）\n"
-            "- `platoon`   - 小隊（大将のみ、最軽量）\n\n"
-            "**使い方:**\n"
-            "`@Bushidan <タスク>` - タスクを9層システムに投入\n"
-            f"`@Bushidan {p}mode battalion` - 大隊モードに切り替え\n\n"
-            "**Mattermost MCP ツール** (エージェント向け):\n"
-            "`python -m mcp.mattermost_mcp_server` でMCPサーバーを起動"
-        )
-        await self._post(channel_id, response, root_id)
-
-    async def _process_task(self, task: str, channel_id: str, root_id: str) -> str:
-        """タスクを武士団システムに委譲."""
-        if self._orchestrator is None:
-            if self._init_error:
-                return (
-                    f"⚠️ 武士団システムが初期化されていません。\n"
-                    f"エラー: `{self._init_error}`\n\n"
-                    f"`.env` の API キー設定を確認してください。"
-                )
-            return "⚠️ 武士団システムを初期化中です。しばらくお待ちください。"
-
+    async def _process_task_dict(self, task: str, channel_id: str, root_id: str) -> dict:
+        """LangGraphの生の結果辞書を返す。handled_by / agent_role を含む。"""
+        if not self._orchestrator:
+            return {"status": "failed", "error": self._init_error or "未初期化",
+                    "_formatted": f"⚠️ 未初期化\nエラー: `{self._init_error}`",
+                    "handled_by": "unknown", "agent_role": ""}
         context = {
-            "source": "mattermost",
-            "channel_id": channel_id,
-            "root_id": root_id,
+            "source": "mattermost", "channel_id": channel_id, "root_id": root_id,
             "mode": self._current_mode,
+            "approval_manager": self._approval_mgr,
+            "callback_base": self._callback_base,
         }
-
         try:
             result = await self._orchestrator.process_task(task, context)
         except Exception as e:
-            logger.exception("タスク処理エラー: %s", e)
-            return f"❌ 処理失敗: {e}"
+            logger.exception("タスク処理エラー")
+            return {"status": "failed", "error": str(e),
+                    "_formatted": f"❌ 処理失敗: {e}",
+                    "handled_by": "unknown", "agent_role": ""}
 
-        if result.get("status") == "failed" or "error" in result:
-            error_msg = result.get("error", "不明なエラー")
-            tb = result.get("traceback", "")
-            if tb:
-                tb_lines = tb.strip().splitlines()
-                tb_short = "\n".join(tb_lines[-10:])
-                logger.error("スタックトレース:\n%s", tb)
-                return f"❌ 処理失敗: {error_msg}\n```\n{tb_short}\n```"
-            return f"❌ 処理失敗: {error_msg}"
+        if result.get("status") == "failed" or result.get("error"):
+            err = result.get("error", "不明")
+            tb  = result.get("traceback", "")
+            tb_short = "\n".join(tb.strip().splitlines()[-10:]) if tb else ""
+            fmt = f"❌ 処理失敗: {err}\n```\n{tb_short}\n```" if tb_short else f"❌ 処理失敗: {err}"
+            result["_formatted"] = fmt
+            return result
 
         content = result.get("result", "")
-        elapsed = result.get("elapsed_time", 0)
+        elapsed = result.get("elapsed_time", result.get("execution_time", 0))
+        fmt = (f"{content}\n\n*⏱️ {elapsed:.1f}秒 | {self._current_mode}*"
+               if content else "⚠️ 返答が空でした。")
+        result["_formatted"] = fmt
+        return result
 
-        if not content:
-            return "⚠️ 返答が空でした。ログを確認してください。"
+    async def _process_task(self, task: str, channel_id: str, root_id: str) -> str:
+        """後方互換: 結果を文字列で返す。"""
+        d = await self._process_task_dict(task, channel_id, root_id)
+        return d.get("_formatted", d.get("result", "❌ 不明なエラー"))
 
-        return f"{content}\n\n*⏱️ 処理時間: {elapsed:.1f}秒 | モード: {self._current_mode}*"
+    # ── 投稿ヘルパー ─────────────────────────────────────────────────
 
     async def _post(self, channel_id: str, message: str, root_id: str = "") -> str:
-        """チャンネルにメッセージを投稿して post_id を返す."""
-        options: dict = {"channel_id": channel_id, "message": message}
+        opts: Dict[str, Any] = {"channel_id": channel_id, "message": message}
         if root_id:
-            options["root_id"] = root_id
-        post = await self._driver.posts.create_post(options=options)
+            opts["root_id"] = root_id
+        post = await self._api.create_post(opts)
         return post.get("id", "")
 
     async def _update_post(self, post_id: str, message: str) -> None:
-        """既存の投稿内容を更新 (受領通知→結果に上書き)."""
         if not post_id:
             return
         try:
-            await self._driver.posts.patch_post(post_id, options={"message": message})
+            await self._api.patch_post(post_id, {"message": message})
         except Exception as e:
-            logger.warning("投稿の更新に失敗: %s", e)
+            logger.warning("投稿更新失敗: %s", e)
 
+    # ── エージェント直接メンション処理 ───────────────────────────────────
+
+    def _find_mentioned_agent(self, message: str, mentions: list) -> Optional[str]:
+        """メッセージ内で特定エージェントが @メンションされているか確認"""
+        for username, agent_key in AGENT_USERNAMES.items():
+            if f"@{username}" in message:
+                return agent_key
+        for user_id in mentions:
+            if user_id in AGENT_USER_IDS:
+                return AGENT_USER_IDS[user_id]
+        return None
+
+    async def _call_claude_direct(self, agent_key: str, message: str) -> str:
+        """大元帥・将軍への直接呼び出し (Anthropic API)"""
+        try:
+            import anthropic
+        except ImportError:
+            return "❌ anthropic ライブラリが未インストールです"
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return "❌ ANTHROPIC_API_KEY が設定されていません"
+
+        model  = AGENT_CLAUDE_MODELS.get(agent_key, "claude-sonnet-4-6")
+        persona = AGENT_PERSONAS.get(agent_key, "")
+        logger.info("🎌 [%s] Anthropic 直接呼び出し: %s (%s...)", agent_key, model, message[:60])
+
+        try:
+            client = anthropic.AsyncAnthropic(api_key=api_key)
+            resp = await client.messages.create(
+                model=model,
+                system=persona,
+                messages=[{"role": "user", "content": message}],
+                max_tokens=2000,
+            )
+            return resp.content[0].text
+        except Exception as e:
+            logger.error("[%s] Anthropic 呼び出しエラー: %s", agent_key, e)
+            return f"❌ {agent_key} 応答エラー: {e}"
+
+    async def _call_agent_direct(
+        self, agent_key: str, message: str, channel_id: str, root_id: str
+    ) -> None:
+        """特定エージェントに直接タスクを投げてそのアカウントから返信"""
+        from bushidan.mattermost_reporter import AGENT_CONFIG
+        cfg = AGENT_CONFIG.get(agent_key, {})
+        emoji  = cfg.get("emoji", "🤖")
+        model  = cfg.get("model", agent_key)
+        logger.info("🎯 エージェント直接呼び出し: %s (%s)", agent_key, model)
+
+        try:
+            if agent_key in AGENT_CLAUDE_MODELS:
+                # 大元帥・将軍: Anthropic API 直接
+                result = await self._call_claude_direct(agent_key, message)
+            else:
+                # 他エージェント: LangGraph forced_route 経由
+                forced_route = AGENT_FORCED_ROUTES.get(agent_key, "karo_default")
+                context = {
+                    "source":       "mattermost_direct",
+                    "channel_id":   channel_id,
+                    "root_id":      root_id,
+                    "mode":         self._current_mode,
+                    "forced_route": forced_route,
+                    "forced_agent": agent_key,
+                }
+                result_dict = await self._process_task_dict_with_context(
+                    message, channel_id, root_id, context)
+                result = result_dict.get("_formatted", "❌ 処理失敗")
+
+            # エージェントアカウントから投稿
+            full_message = f"{emoji} **[{model}]**\n\n{result}"
+            if self._reporter:
+                for chunk in _split_message(full_message):
+                    await self._reporter.post_as(
+                        agent_key, chunk, channel_id=channel_id, root_id=root_id)
+            else:
+                await self._post(channel_id, full_message, root_id)
+
+        except Exception as e:
+            logger.exception("エージェント直接呼び出しエラー [%s]: %s", agent_key, e)
+            await self._post(channel_id, f"❌ {agent_key} エラー: {e}", root_id)
+
+    async def _process_task_dict_with_context(
+        self, task: str, channel_id: str, root_id: str, extra_context: dict
+    ) -> dict:
+        """forced_route などの追加コンテキストを注入してタスク処理"""
+        if not self._orchestrator:
+            return {"_formatted": f"⚠️ 未初期化: {self._init_error}", "handled_by": "unknown"}
+        context = {
+            "source": "mattermost", "channel_id": channel_id, "root_id": root_id,
+            "mode": self._current_mode,
+            "approval_manager": self._approval_mgr,
+            "callback_base": self._callback_base,
+            **extra_context,
+        }
+        try:
+            result = await self._orchestrator.process_task(task, context)
+        except Exception as e:
+            logger.exception("タスク処理エラー")
+            return {"_formatted": f"❌ 処理失敗: {e}", "handled_by": "unknown"}
+
+        if result.get("status") == "failed" or result.get("error"):
+            err = result.get("error", "不明")
+            result["_formatted"] = f"❌ 処理失敗: {err}"
+            return result
+
+        content = result.get("result", "")
+        elapsed = result.get("elapsed_time", result.get("execution_time", 0))
+        result["_formatted"] = (
+            f"{content}\n\n*⏱️ {elapsed:.1f}秒*" if content else "⚠️ 返答が空でした。"
+        )
+        return result
+
+
+# ── エントリーポイント ────────────────────────────────────────────
 
 def main() -> None:
-    """エントリーポイント."""
+    missing = []
     if not HAS_MATTERMOST:
-        print(
-            "エラー: mattermostdriver が必要です\n"
-            "インストール: pip install mattermostdriver",
-            file=sys.stderr,
-        )
+        missing.append("mattermostdriver")
+    if not HAS_AIOHTTP:
+        missing.append("aiohttp")
+    if missing:
+        print(f"pip install {' '.join(missing)} が必要です", file=sys.stderr)
         sys.exit(1)
 
-    if not os.environ.get("MATTERMOST_URL") or not os.environ.get("MATTERMOST_TOKEN"):
-        print(
-            "エラー: MATTERMOST_URL と MATTERMOST_TOKEN が設定されていません\n"
-            ".env に以下を追加してください:\n"
-            "  MATTERMOST_URL=chat.example.com\n"
-            "  MATTERMOST_TOKEN=<bot-access-token>\n\n"
-            "トークン取得方法:\n"
-            "  Mattermost → メインメニュー → 統合機能 → ボットアカウント",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    for k in ("MATTERMOST_URL", "MATTERMOST_TOKEN"):
+        if not os.environ.get(k):
+            print(f"環境変数 {k} が未設定です", file=sys.stderr)
+            sys.exit(1)
 
     bot = BushidanMattermostBot()
-    logger.info("武士団 Mattermost Bot を起動します...")
+    logger.info("🏯 武士団 Mattermost Bot を起動します...")
     asyncio.run(bot.start())
 
 

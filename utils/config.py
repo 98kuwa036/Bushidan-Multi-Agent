@@ -1,13 +1,12 @@
 """
-Bushidan Multi-Agent System v10 - Configuration Management
+Bushidan Multi-Agent System v11.5 - Configuration Management
 
-Enhanced configuration loading for the 5-Tier Hybrid Architecture.
-Supports v10 features: PDCA Engine, Intelligent Routing, Prompt Caching, Power Optimization.
+v11.5 9層ハイブリッドアーキテクチャ対応
+除外: Alibaba/Qwen/Kimi (中国企業)
+採用: Anthropic/OpenAI/Mistral/xAI/Google/Meta/NVIDIA (西側企業のみ)
 """
 
 import os
-from typing import Dict, Any, Optional
-from dataclasses import dataclass
 from dotenv import load_dotenv
 
 from core.system_orchestrator import SystemConfig, SystemMode
@@ -18,9 +17,8 @@ logger = get_logger(__name__)
 
 
 def load_config() -> SystemConfig:
-    """Load v10 system configuration from environment variables"""
+    """Load v11.4 system configuration from environment variables"""
 
-    # Load .env file if it exists
     load_dotenv()
 
     # Required API keys
@@ -34,21 +32,15 @@ def load_config() -> SystemConfig:
 
     tavily_api_key = os.getenv("TAVILY_API_KEY", "")
 
-    # Additional API keys
-    groq_api_key = os.getenv("GROQ_API_KEY")
-    alibaba_api_key = os.getenv("ALIBABA_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-
-    # v10: Qwen3-Coder-Next (軍師)
-    qwen3_coder_next_api_key = os.getenv("QWEN3_CODER_NEXT_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
-    qwen3_coder_next_provider = os.getenv("QWEN3_CODER_NEXT_PROVIDER", "dashscope")
-
-    # v10.1: Kimi K2.5 (傭兵)
-    kimi_api_key = os.getenv("KIMI_API_KEY") or os.getenv("MOONSHOT_API_KEY")
-    kimi_provider = os.getenv("KIMI_PROVIDER", "moonshot")
+    # v11.5: API keys (西側企業のみ)
+    groq_api_key = os.getenv("GROQ_API_KEY")                   # 家老-B Llama 3.3
+    openai_api_key = os.getenv("OPENAI_API_KEY")               # 軍師 o3-mini
+    mistral_api_key = os.getenv("MISTRAL_API_KEY")             # 参謀-A Mistral Large 3
+    xai_api_key = os.getenv("XAI_API_KEY")                     # 参謀-B Grok 4.1 Fast
 
     # Optional tokens
     discord_token = os.getenv("DISCORD_BOT_TOKEN")
-    notion_token = os.getenv("NOTION_TOKEN")
+    notion_token = os.getenv("NOTION_TOKEN") or os.getenv("NOTION_API_KEY")
 
     # System mode
     mode_str = os.getenv("SYSTEM_MODE", "battalion").lower()
@@ -59,9 +51,8 @@ def load_config() -> SystemConfig:
         mode = SystemMode.BATTALION
 
     # Service endpoints
-    ollama_endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
     litellm_endpoint = os.getenv("LITELLM_ENDPOINT", "http://localhost:8000")
-    llamacpp_endpoint = os.getenv("LLAMACPP_ENDPOINT", "http://127.0.0.1:8080")
+    llamacpp_endpoint = os.getenv("LLAMACPP_ENDPOINT", "http://192.168.11.239:8080")
 
     # Feature flags
     intelligent_routing = os.getenv("INTELLIGENT_ROUTING_ENABLED", "true").lower() == "true"
@@ -74,24 +65,23 @@ def load_config() -> SystemConfig:
         gemini_api_key=gemini_api_key,
         tavily_api_key=tavily_api_key,
         groq_api_key=groq_api_key,
-        alibaba_api_key=alibaba_api_key,
-        qwen3_coder_next_api_key=qwen3_coder_next_api_key,
-        qwen3_coder_next_provider=qwen3_coder_next_provider,
-        kimi_api_key=kimi_api_key,
-        kimi_provider=kimi_provider,
+        openai_api_key=openai_api_key,
+        mistral_api_key=mistral_api_key,
+        xai_api_key=xai_api_key,
         discord_token=discord_token,
         notion_token=notion_token,
-        ollama_endpoint=ollama_endpoint,
         litellm_endpoint=litellm_endpoint,
         llamacpp_endpoint=llamacpp_endpoint,
         intelligent_routing_enabled=intelligent_routing,
         prompt_caching_enabled=prompt_caching,
-        power_optimization_enabled=power_optimization
+        power_optimization_enabled=power_optimization,
     )
 
-    logger.info(f"✅ Configuration v10.1 loaded - Mode: {mode.value}")
+    logger.info(f"✅ Configuration v11.5 loaded - Mode: {mode.value}")
     logger.info(f"  Intelligent Routing: {'✅' if intelligent_routing else '❌'}")
-    logger.info(f"  Prompt Caching: {'✅' if prompt_caching else '❌'}")
-    logger.info(f"  Power Optimization: {'✅' if power_optimization else '❌'}")
+    logger.info(f"  OpenAI (o3-mini): {'✅' if openai_api_key else '⚠️ 未設定'}")
+    logger.info(f"  Mistral (Large 3): {'✅' if mistral_api_key else '⚠️ 未設定'}")
+    logger.info(f"  xAI (Grok 4.1 Fast): {'✅' if xai_api_key else '⚠️ 未設定'}")
+    logger.info(f"  Nemotron Local: {llamacpp_endpoint}")
 
     return config

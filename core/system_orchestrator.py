@@ -1,21 +1,21 @@
 """
-Bushidan Multi-Agent System v11.4 - System Orchestrator (システム統括)
+Bushidan Multi-Agent System v11.5 - System Orchestrator (システム統括)
 
 9層ハイブリッドアーキテクチャの強化システム調整。
 管理対象: 大元帥 → 将軍 → 軍師 → 参謀A/B → 家老A/B → 検校 → 隠密
 
-v11.4 アーキテクチャ:
-- 大元帥 (Daigensui): Claude Opus 4.5 - 最高難度・戦略設計
+v11.5 アーキテクチャ:
+- 大元帥 (Daigensui): Claude Opus 4.6 - 最高難度・戦略設計
 - 将軍 (Shogun): Claude Sonnet 4.6 - 高難度コーディング
 - 軍師 (Gunshi): o3-mini (high) - 推論・設計・PDCA
-- 参謀-A (Sanbo-A): GPT-5 - 汎用コーディング
-- 参謀-B (Sanbo-B): Grok-code-fast-1 - 実装・バグ修正・高速
-- 家老-A (Karo-A): Gemini Flash - 軽量タスク
+- 参謀-A (Sanbo-A): Mistral Large 3 - 汎用コーディング・EU準拠
+- 参謀-B (Sanbo-B): Grok 4.1 Fast - 実装・バグ修正・超高速
+- 家老-A (Karo-A): Gemini 3 Flash - 軽量タスク
 - 家老-B (Karo-B): Llama 3.3 70B (Groq) - アルゴリズム特化
-- 検校 (Kengyo): Gemini Flash Vision - マルチモーダル
+- 検校 (Kengyo): Gemini 3 Flash Vision - マルチモーダル
 - 隠密 (Onmitsu): Nemotron-3-Nano (Local) - 機密・超長文
 
-2台構成: ProDesk 600 (LLM専用, 192.168.11.232) + EliteDesk (メインオーケストレーション)
+2台構成: ローカルLLMサーバー (LLM専用, 192.168.11.239) + EliteDesk (メインオーケストレーション)
 
 機能:
 - Smithery MCP 管理
@@ -36,10 +36,10 @@ from pathlib import Path
 import yaml
 
 from utils.logger import get_logger
-from mcp.memory_mcp import MemoryMCP
-from mcp.filesystem_mcp import FilesystemMCP
-from mcp.git_mcp import GitMCP
-from mcp.web_search_mcp import SmartWebSearchMCP as WebSearchMCP
+from mcp_servers.memory_mcp import MemoryMCP
+from mcp_servers.filesystem_mcp import FilesystemMCP
+from mcp_servers.git_mcp import GitMCP
+from mcp_servers.web_search_mcp import SmartWebSearchMCP as WebSearchMCP
 
 
 logger = get_logger(__name__)
@@ -67,8 +67,9 @@ class MCPPermissionManager:
     不正なアクセスを防止する。
     """
 
-    # 役職優先度順序（上位ほど優先）
-    ROLE_PRIORITY = ["daigensui", "shogun", "gunshi", "sanbo_a", "sanbo_b", "karo_a", "karo_b", "kengyo", "onmitsu"]
+    # 役職優先度順序 v12 (上位ほど優先)
+    # 受付→外事→検校→将軍→軍師→参謀→右筆→斥候→隠密→大元帥
+    ROLE_PRIORITY = ["uketuke", "gaiji", "kengyo", "shogun", "gunshi", "sanbo", "yuhitsu", "seppou", "onmitsu", "daigensui"]
 
     def __init__(self, config_path: Optional[str] = None):
         self.permissions: Dict[str, Dict[str, Dict]] = {}
@@ -307,16 +308,17 @@ class SystemMode(Enum):
 
 @dataclass
 class SystemConfig:
-    """v11.4 Configuration structure"""
+    """v11.5 Configuration structure"""
     mode: SystemMode
     claude_api_key: str
     gemini_api_key: str
     tavily_api_key: str
 
-    # v11.4: API keys
+    # v11.5: API keys
     groq_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None  # o3-mini (Gunshi), GPT-5 (Sanbo-A)
-    xai_api_key: Optional[str] = None     # Grok-code-fast-1 (Sanbo-B)
+    openai_api_key: Optional[str] = None   # o3-mini (Gunshi)
+    mistral_api_key: Optional[str] = None  # Mistral Large 3 (Sanbo-A)
+    xai_api_key: Optional[str] = None      # Grok 4.1 Fast (Sanbo-B)
 
     # Optional tokens
     discord_token: Optional[str] = None
@@ -334,8 +336,8 @@ class SystemConfig:
     llamacpp_batch_size: int = 512  # CPU optimal
     llamacpp_mlock: bool = True  # Lock memory to prevent swapping
 
-    # v11.4: Configuration settings
-    version: str = "11.4"
+    # v11.5: Configuration settings
+    version: str = "11.5"
     intelligent_routing_enabled: bool = True
     prompt_caching_enabled: bool = True
     power_optimization_enabled: bool = True
@@ -348,17 +350,17 @@ class SystemConfig:
 
 class SystemOrchestrator:
     """
-    v11.4 システムオーケストレーター - 強化調整層
+    v11.5 システムオーケストレーター - 強化調整層
 
     9層ハイブリッドアーキテクチャを管理:
-    1. 大元帥 (Daigensui) - 最高戦略層: Claude Opus 4.5
+    1. 大元帥 (Daigensui) - 最高戦略層: Claude Opus 4.6
     2. 将軍 (Shogun) - 高難度コーディング: Claude Sonnet 4.6
     3. 軍師 (Gunshi) - 推論・設計・PDCA: o3-mini (reasoning_effort=high)
-    4. 参謀-A (Sanbo-A) - 汎用コーディング: GPT-5
-    5. 参謀-B (Sanbo-B) - 実装・バグ修正・高速: Grok-code-fast-1
-    6. 家老-A (Karo-A) - 軽量タスク: Gemini Flash
+    4. 参謀-A (Sanbo-A) - 汎用コーディング: Mistral Large 3
+    5. 参謀-B (Sanbo-B) - 実装・バグ修正・超高速: Grok 4.1 Fast
+    6. 家老-A (Karo-A) - 軽量タスク: Gemini 3 Flash
     7. 家老-B (Karo-B) - アルゴリズム特化: Llama 3.3 70B (Groq)
-    8. 検校 (Kengyo) - マルチモーダル: Gemini Flash Vision
+    8. 検校 (Kengyo) - マルチモーダル: Gemini 3 Flash Vision
     9. 隠密 (Onmitsu) - 機密・超長文: Nemotron-3-Nano (Local llama.cpp)
 
     機能:
@@ -369,7 +371,7 @@ class SystemOrchestrator:
     - MCP権限マトリクス: 役職別アクセス制御
     """
 
-    VERSION = "11.4"
+    VERSION = "11.5"
 
     def __init__(self, config: SystemConfig):
         self.config = config
@@ -491,11 +493,13 @@ class SystemOrchestrator:
             logger.error(f"トレースバック:\n{traceback.format_exc()}")
             self._langgraph_router = None
 
-        # v10.2: MCP-LangGraph Bridge 初期化
+        # v12: MCP-LangGraph Bridge 初期化 (langchain-mcp-adapters)
         try:
             from core.langgraph_mcp_bridge import LangGraphMCPBridge
             self._mcp_bridge = LangGraphMCPBridge(self)
-            logger.info("🔗 MCP-LangGraph Bridge 初期化完了 ✅")
+            await self._mcp_bridge.initialize()
+            tool_count = len(self._mcp_bridge._lc_tools)
+            logger.info(f"🔗 MCP-LangGraph Bridge 初期化完了 ✅ ({tool_count} tools)")
         except Exception as e:
             logger.warning(f"⚠️ MCP Bridge 初期化失敗 (MCP統合スキップ): {e}")
             self._mcp_bridge = None
@@ -530,7 +534,7 @@ class SystemOrchestrator:
 
         # v10.1: Smithery MCP Manager
         try:
-            from mcp.smithery_manager import SmitheryMCPManager
+            from mcp_servers.smithery_manager import SmitheryMCPManager
             self.smithery_mcp = SmitheryMCPManager()
             smithery_status = await self.smithery_mcp.initialize()
             available = sum(1 for v in smithery_status.values() if v)
@@ -583,27 +587,27 @@ class SystemOrchestrator:
             except Exception as e:
                 logger.warning(f"⚠️ o3-mini client failed: {e}")
 
-        # v11.4: GPT-5 Client (Sanbo-A - 汎用コーディング)
-        if self.config.openai_api_key:
+        # v11.5: Mistral Large 3 Client (Sanbo-A - 汎用コーディング・EU準拠)
+        if self.config.mistral_api_key:
             try:
                 from utils.gpt5_client import GPT5Client
                 self.clients["gpt5"] = GPT5Client(
-                    api_key=self.config.openai_api_key
+                    api_key=self.config.mistral_api_key
                 )
-                logger.info("✅ GPT-5 Client (参謀-A) initialized")
+                logger.info("✅ Mistral Large 3 Client (参謀-A) initialized")
             except Exception as e:
-                logger.warning(f"⚠️ GPT-5 client failed: {e}")
+                logger.warning(f"⚠️ Mistral Large 3 client failed: {e}")
 
-        # v11.4: Grok Client (Sanbo-B - 実装・バグ修正・高速) via xAI
+        # v11.5: Grok 4.1 Fast Client (Sanbo-B - 実装・バグ修正・超高速) via xAI
         if self.config.xai_api_key:
             try:
                 from utils.grok_client import GrokClient
                 self.clients["grok"] = GrokClient(
                     api_key=self.config.xai_api_key
                 )
-                logger.info("✅ Grok Client (参謀-B) initialized - grok-code-fast-1")
+                logger.info("✅ Grok 4.1 Fast Client (参謀-B) initialized")
             except Exception as e:
-                logger.warning(f"⚠️ Grok client failed: {e}")
+                logger.warning(f"⚠️ Grok 4.1 Fast client failed: {e}")
 
         # Gemini Flash Client (Karo-A - 軽量タスク / Kengyo - マルチモーダル)
         try:

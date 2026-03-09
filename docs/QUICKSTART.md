@@ -1,31 +1,35 @@
-# 武士団マルチエージェントシステム v10.1 - クイックスタート
+# 武士団マルチエージェントシステム v11.5 - クイックスタート
 
-Discord 経由で武士団システムを使い始めるまでの最短手順です。
+Discord / Mattermost 経由で武士団システムを使い始めるまでの最短手順です。
 
 ---
 
 ## 前提条件
 
-- Proxmox VE でコンテナ作成済み
-  - CT 100 (本陣 192.168.11.231): システム調整
-  - CT 101 (Qwen3 192.168.11.232): llama.cpp 推論サーバー
+- EliteDesk (192.168.11.230): メインオーケストレーションマシン
+- ローカルLLMサーバー (192.168.11.239): Nemotron-3-Nano 専用機（独立サーバー）
+- Mattermost (192.168.11.234:8065): bushidan チーム / bushidan-party チャンネル
 - 各APIキー取得済み（[API_SETUP_GUIDE.md](./API_SETUP_GUIDE.md) 参照）
 
 ---
 
-## Step 1: CT 101 - llama-server 設定
+## Step 1: ローカルLLMサーバー (192.168.11.239) - llama-server 設定
 
-### systemd サービスを設定・起動
+### セットアップスクリプトを使用（推奨）
 
 ```bash
-# CT 101 上で (root)
-nano /etc/systemd/system/bushidan-llamacpp.service
+# EliteDesk (192.168.11.230) で
+cd ~/Bushidan-Multi-Agent
+./setup/setup_nemotron.sh --auto
 ```
 
-内容:
-```ini
+### 手動で systemd サービスを設定
+
+```bash
+# ローカルLLMサーバー (192.168.11.239) 上で
+sudo tee /etc/systemd/system/bushidan-nemotron.service << 'EOF'
 [Unit]
-Description=Bushidan llama.cpp Server (Qwen3-Coder-30B)
+Description=Bushidan Onmitsu Nemotron-3-Nano Server
 After=network.target
 
 [Service]
@@ -33,8 +37,8 @@ Type=simple
 User=claude
 WorkingDirectory=/home/claude
 ExecStart=/home/claude/llama.cpp/build/bin/llama-server \
-    -m /home/claude/Bushidan-Multi-Agent/models/qwen3/Qwen3-Coder-30B-Q4_K_M.gguf \
-    -c 4096 \
+    -m /home/claude/Bushidan-Multi-Agent/models/nemotron/Nemotron-3-Nano-Q4_K_M.gguf \
+    -c 8192 \
     -t 6 \
     -b 512 \
     --parallel 1 \
@@ -44,38 +48,36 @@ ExecStart=/home/claude/llama.cpp/build/bin/llama-server \
     --mmap
 Restart=on-failure
 RestartSec=10
-MemoryMax=20G
+MemoryMax=25G
 LimitMEMLOCK=infinity
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-```bash
 sudo systemctl daemon-reload
-sudo systemctl enable bushidan-llamacpp
-sudo systemctl start bushidan-llamacpp
+sudo systemctl enable bushidan-nemotron
+sudo systemctl start bushidan-nemotron
 ```
 
 ### 動作確認
 
 ```bash
-# CT 101 ローカル
+# ローカルLLMサーバー上
 curl http://127.0.0.1:8080/health
 
-# CT 100 から
-curl http://192.168.11.232:8080/health
+# EliteDesk から
+curl http://192.168.11.239:8080/health
 # → {"status":"ok"}
 ```
 
 ---
 
-## Step 2: CT 100 - 環境変数設定
+## Step 2: EliteDesk (192.168.11.230) - 環境変数設定
 
 ```bash
-pct enter 100
-su - claude
 cd ~/Bushidan-Multi-Agent
+cp .env.example .env
 nano .env
 ```
 
@@ -89,25 +91,31 @@ GEMINI_API_KEY=AIzaSyxxxxx
 # ===== Discord =====
 DISCORD_BOT_TOKEN=MTIzNDU2Nzg5...
 
-# ===== llama.cpp =====
-LLAMACPP_ENDPOINT=http://192.168.11.232:8080
+# ===== Mattermost =====
+MATTERMOST_URL=192.168.11.234
+MATTERMOST_PORT=8065
+MATTERMOST_TOKEN=your_bot_token_here
+
+# ===== ローカルLLM (独立サーバー) =====
+LLAMACPP_ENDPOINT=http://192.168.11.239:8080
 ```
 
-### 推奨構成
+### 推奨構成 (v11.5)
 
 ```bash
-CLAUDE_API_KEY=sk-ant-api03-xxxxx
-GEMINI_API_KEY=AIzaSyxxxxx
-DISCORD_BOT_TOKEN=MTIzNDU2Nzg5...
-LLAMACPP_ENDPOINT=http://192.168.11.232:8080
-GROQ_API_KEY=gsk_xxxxx          # Simple タスク高速化 (無料)
-TAVILY_API_KEY=tvly-xxxxx       # Web検索 (無料枠)
-OPENROUTER_API_KEY=sk-or-v1-... # Gunshi (Qwen3-Coder-Next)
-QWEN3_CODER_NEXT_API_KEY=sk-or-v1-...
-QWEN3_CODER_NEXT_PROVIDER=openrouter
-ALIBABA_API_KEY=sk-or-v1-...   # Kagemusha (Qwen3-Plus) via OpenRouter
-KIMI_API_KEY=sk-xxxxx           # 傭兵 (並列実行)
-KIMI_PROVIDER=moonshot
+CLAUDE_API_KEY=sk-ant-api03-xxxxx     # 大元帥・将軍 (必須)
+GEMINI_API_KEY=AIzaSyxxxxx            # 家老-A・検校 (必須)
+MISTRAL_API_KEY=your_key_here         # 参謀-A Mistral Large 3 ★推奨
+XAI_API_KEY=xai-xxxxx                 # 参謀-B Grok 4.1 Fast ★推奨
+OPENAI_API_KEY=sk-proj-xxxxx          # 軍師 o3-mini (推奨)
+GROQ_API_KEY=gsk_xxxxx               # 家老-B Llama 3.3 70B (無料)
+TAVILY_API_KEY=tvly-xxxxx            # Web検索 (無料枠)
+MATTERMOST_URL=192.168.11.234
+MATTERMOST_PORT=8065
+MATTERMOST_TOKEN=your_bot_token_here
+LLAMACPP_ENDPOINT=http://192.168.11.239:8080
+ELYZA_HOST=192.168.11.239
+ELYZA_PORT=8081
 ```
 
 ---
@@ -273,28 +281,30 @@ journalctl -u bushidan-llamacpp -f
 ## ネットワーク構成図
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      Proxmox Host                             │
-│                                                               │
-│  ┌───────────────────┐         ┌──────────────────┐          │
-│  │    CT 100         │         │    CT 101        │          │
-│  │    (本陣)          │         │    (Qwen3)       │          │
-│  │  192.168.11.231   │  HTTP   │  192.168.11.232  │          │
-│  │                   │ ──────▶ │                  │          │
-│  │  Discord Bot      │  :8080  │  llama-server    │          │
-│  │                   │         │  Port: 8080      │          │
-│  └───────────────────┘         └──────────────────┘          │
-│            │                                                  │
-└────────────│─────────────────────────────────────────────────┘
-             │
-             ▼ HTTPS (WebSocket Gateway)
-     ┌───────────────┐
-     │  Discord API  │
-     │  Claude API   │
-     │  Gemini API   │
-     │  Groq API     │
-     │  OpenRouter   │
-     └───────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  EliteDesk (192.168.11.230) - メインオーケストレーション          │
+│                                                                  │
+│  Discord Bot / Mattermost Bot / LangGraph Router                 │
+│  PM2: bushidan-discord, bushidan-mattermost                      │
+└──────────┬──────────────────────────┬────────────────────────────┘
+           │ HTTP :8080               │ HTTP :8065
+           ▼                          ▼
+┌──────────────────────┐   ┌──────────────────────────┐
+│  ローカルLLMサーバー   │   │  Mattermost              │
+│  192.168.11.239      │   │  192.168.11.234:8065      │
+│  Nemotron port 8080  │   │  team: bushidan           │
+│  ELYZA    port 8081  │   │  ch: bushidan-party       │
+└──────────────────────┘   └──────────────────────────┘
+           │
+           ▼ HTTPS (Cloud APIs)
+   ┌─────────────────┐
+   │  Claude API     │  大元帥・将軍
+   │  Mistral API    │  参謀-A
+   │  xAI API        │  参謀-B (Grok)
+   │  OpenAI API     │  軍師 (o3-mini)
+   │  Gemini API     │  家老-A・検校
+   │  Groq API       │  家老-B (Llama)
+   └─────────────────┘
 ```
 
 ---

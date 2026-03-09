@@ -39,7 +39,7 @@ logger = get_logger(__name__)
 class LlamaCppConfig:
     """llama.cpp サーバー設定"""
     model_path: str = "models/nemotron/Nemotron-3-Nano-Q4_K_M.gguf"
-    host: str = "192.168.11.232"     # HP ProDesk 600
+    host: str = "192.168.11.239"     # ローカルLLMサーバー
     port: int = 8080
     threads: int = 6                  # i5-8500: 6C/6T
     context_size: int = 8192
@@ -67,7 +67,7 @@ class NemotronLlamaCppClient:
     NVIDIA Nemotron-3-Nano llama.cpp Client
     隠密 (Onmitsu) - 機密・超長文・ローカル処理エンジン
 
-    llama.cpp サーバー (http://192.168.11.232:8080) と通信し、
+    llama.cpp サーバー (http://192.168.11.239:8080) と通信し、
     OpenAI 互換 API 経由で Nemotron-3-Nano を呼び出す。
 
     特徴:
@@ -89,7 +89,7 @@ class NemotronLlamaCppClient:
 
         Args:
             config: llama.cpp 設定 (LlamaCppConfig)
-            endpoint: 直接エンドポイント指定 (e.g. "http://192.168.11.232:8080")
+            endpoint: 直接エンドポイント指定 (e.g. "http://192.168.11.239:8080")
         """
         self.config = config or LlamaCppConfig()
 

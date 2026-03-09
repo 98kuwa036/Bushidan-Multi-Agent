@@ -1,17 +1,18 @@
 """
-Bushidan Multi-Agent System v11.4 - xAI Grok Client
+Bushidan Multi-Agent System v11.5 - xAI Grok Client
 
-参謀-B (Sanbo-B) - 実装特化・高速エンジン
-xAI Grok-code-fast-1 モデルのクライアント。
-コーディング特化・240tok/s 超高速実装に特化した参謀。
+参謀-B (Sanbo-B) - 実装特化・超高速エンジン
+xAI Grok 4.1 Fast モデルのクライアント。
+業界最安値クラス・2Mコンテキスト・実装特化参謀。
 
-Model: xAI Grok-code-fast-1
-- xAI (Elon Musk) 製コーディング特化モデル
-- 約240 tok/s の超高速推論
+Model: xAI Grok 4.1 Fast (grok-4-fast)
+- xAI (Elon Musk) 製最速モデル
+- コスト: $0.20/1M input, $0.50/1M output (業界最安値クラス)
+- コンテキスト: 2,000,000 tokens
 - OpenAI 互換 API (api.x.ai/v1)
 
 Role: 参謀-B (Sanbo-B) - Chief Staff Officer B
-- 実装・バグ修正・高速コーディング
+- 実装・バグ修正・超高速コーディング
 - 軍師 PDCA の Do フェーズ主力実行者
 - 独立サブタスクの並列実装
 
@@ -51,11 +52,11 @@ class GrokUsageStats:
 
 class GrokClient:
     """
-    xAI Grok-code-fast-1 Client - 参謀-B (Sanbo-B) 実装特化エンジン
+    xAI Grok 4.1 Fast Client - 参謀-B (Sanbo-B) 実装特化エンジン
 
-    Model: grok-code-fast-1
-    - xAI (Elon Musk) 製コーディング特化最速モデル
-    - 約240 tok/s の超高速推論
+    Model: grok-4-fast (Grok 4.1 Fast)
+    - 業界最安値クラス: $0.20/$0.50 per 1M tokens
+    - コンテキスト: 2,000,000 tokens
     - OpenAI 互換 API
 
     Rate Limits:
@@ -63,8 +64,8 @@ class GrokClient:
     - 自動レートリミット管理を実装
     """
 
-    VERSION = "11.4"
-    DEFAULT_MODEL = "grok-code-fast-1"
+    VERSION = "11.5"
+    DEFAULT_MODEL = "grok-4-fast"
     DEFAULT_BASE_URL = "https://api.x.ai/v1"
 
     def __init__(
@@ -78,7 +79,7 @@ class GrokClient:
 
         Args:
             api_key: xAI APIキー (未指定時は環境変数 XAI_API_KEY から取得)
-            model: モデル名 (default: grok-code-fast-1)
+            model: モデル名 (default: grok-4-fast)
             base_url: API base URL (default: https://api.x.ai/v1)
         """
         self.api_key = api_key or os.environ.get("XAI_API_KEY", "")
@@ -98,18 +99,18 @@ class GrokClient:
         self.default_temperature = 0.2  # 実装特化：低温度で確実なコード生成
 
         # Cost estimation (approximate yen per 1K tokens)
-        # grok-code-fast-1 は grok-2 より安価な見込み
-        self._cost_per_1k_input_tokens_yen = 2.2    # ~$0.015
-        self._cost_per_1k_output_tokens_yen = 4.5   # ~$0.030
+        # Grok 4.1 Fast: $0.20/1M input, $0.50/1M output @ ¥150/$
+        self._cost_per_1k_input_tokens_yen = 0.030  # $0.0002/1K
+        self._cost_per_1k_output_tokens_yen = 0.075 # $0.0005/1K
 
         if not self.api_key:
             logger.warning("XAI_API_KEY が設定されていません")
 
         logger.info(
-            f"参謀-B Grok client initialized (v{self.VERSION})\n"
+            f"参謀-B Grok 4.1 Fast client initialized (v{self.VERSION})\n"
             f"   Model: {self.model}\n"
             f"   Base URL: {self.base_url}\n"
-            f"   Expected speed: ~240 tok/s"
+            f"   Cost: $0.20/$0.50 per 1M tokens"
         )
 
     async def generate(

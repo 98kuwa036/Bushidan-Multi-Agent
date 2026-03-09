@@ -122,19 +122,20 @@ MCP_SERVERS: List[MCPServerConfig] = [
         name="prisma",
         package="prisma-mcp-server",
         category=MCPCategory.DATA,
-        description="DB操作: Prisma経由のデータベースアクセス",
+        description="DB操作: Prisma経由のデータベースアクセス (npm未公開のため無効)",
         optional=True,
+        enabled=False,  # unpublished from npm (2025-05-05)
     ),
 
     # Discord連携は bushidan/discord_bot.py で直接処理 (MCP不要)
     # Integration
     MCPServerConfig(
         name="notion",
-        package="@anthropic/mcp-server-notion",
+        package="@notionhq/notion-mcp-server",   # 正式パッケージ名
         category=MCPCategory.INTEGRATION,
         description="Notion連携: ページ読み書き・データベース操作",
-        required_env=["NOTION_TOKEN"],
-        env_vars={"NOTION_TOKEN": ""},
+        required_env=["NOTION_API_KEY"],
+        env_vars={"NOTION_API_KEY": ""},
         optional=True,
     ),
     MCPServerConfig(
@@ -149,8 +150,9 @@ MCP_SERVERS: List[MCPServerConfig] = [
         name="git",
         package="@modelcontextprotocol/server-git",
         category=MCPCategory.INTEGRATION,
-        description="Git操作: コミット・ブランチ・差分管理",
+        description="Git操作 (npmパッケージ未公開のため無効 - Python uvxで提供)",
         args=["/home/claude"],
+        enabled=False,  # not available on npm; use Python uvx mcp-server-git instead
     ),
 ]
 

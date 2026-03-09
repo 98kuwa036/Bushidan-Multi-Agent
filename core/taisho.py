@@ -96,6 +96,9 @@ class Taisho:
         self.gpt5_client = None           # Tier 1: 参謀-A GPT-5
         self.grok_client = None           # Tier 2: 参謀-B Grok-code-fast-1
         self.gemini3_client = None        # Tier 3: 最終防衛 Gemini 3 Flash
+        # v11.5: 中国製モデル除外済み (参照のみ残すため None で保持)
+        self.qwen3_client = None
+        self.alibaba_qwen_client = None
 
         # MCP connections
         self.mcp_manager = None

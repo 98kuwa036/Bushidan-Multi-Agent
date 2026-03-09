@@ -1,15 +1,16 @@
 # =============================================================
-# 武士団マルチエージェントシステム v11.4 - Configuration
+# 武士団マルチエージェントシステム v12 - Configuration
 # =============================================================
-# "脱中国企業・9層ハイブリッドアーキテクチャ + PDCA + BDI"
+# "脱中国企業・10役職ハイブリッドアーキテクチャ + PDCA + BDI"
+# v12 メンバー再構成: 受付/外事/右筆/斥候 追加、参謀統合
 # =============================================================
 
 system:
   name: "Bushidan Multi-Agent System"
-  version: "11.4"
+  version: "12.0"
   language: "ja"
   philosophy: "脱中国企業・シンプル・イズ・ベスト + 実用性第一 + 汎用性の追求"
-  subtitle: "9-Tier Hybrid Architecture with o3-mini PDCA + BDI Framework + Nemotron Local"
+  subtitle: "10-Role Hybrid Architecture: Command R/R+ × Cohere + ELYZA + LangGraph × MCP × Notion"
 
 # --- BDI Framework Configuration ---
 bdi_framework:
@@ -119,6 +120,70 @@ bdi_framework:
         description: "Automatically fix errors"
 
 # --- v11.4 革新的機能 ---
+v12_member_structure:
+  description: "v12 メンバー再構成: 10役職体制"
+  member_list:
+    - role: "受付 (uketuke)"
+      model: "Command R"
+      provider: "Cohere"
+      purpose: "ルーター・受付・汎用中量タスク"
+      api_key: "COHERE_API_KEY"
+    - role: "外事 (gaiji)"
+      model: "Command R+"
+      provider: "Cohere"
+      purpose: "外部ツール・RAG・外部情報収集"
+      api_key: "COHERE_API_KEY"
+    - role: "検校 (kengyo)"
+      model: "Gemini 3 Flash Vision"
+      provider: "Google"
+      purpose: "視覚解析・マルチモーダル検証"
+    - role: "将軍 (shogun)"
+      model: "Claude Sonnet 4.6"
+      provider: "Anthropic"
+      purpose: "メインワーカー・高難度コーディング"
+    - role: "軍師 (gunshi)"
+      model: "o3-mini"
+      provider: "OpenAI"
+      purpose: "深層推論・PDCA作戦立案"
+    - role: "参謀 (sanbo)"
+      model: "Mistral Large 3 (mistral-large-2512)"
+      provider: "Mistral AI 🇫🇷"
+      purpose: "中量級推論・汎用コーディング"
+    - role: "右筆 (yuhitsu)"
+      model: "Llama ELYZA"
+      provider: "Local (NVIDIA)"
+      purpose: "日本語清書・翻訳・添削"
+    - role: "斥候 (seppou)"
+      model: "Llama 3.3 70B (Groq)"
+      provider: "Meta via Groq"
+      purpose: "高速フィルタ・雑談・シンプルQ&A"
+    - role: "隠密 (onmitsu)"
+      model: "Nemotron-3-Nano-30B"
+      provider: "NVIDIA Local"
+      purpose: "完全ローカル処理・機密データ"
+    - role: "大元帥 (daigensui)"
+      model: "Claude Opus 4.6"
+      provider: "Anthropic"
+      purpose: "最終エスカレーション・最高難度判断"
+
+  changes_from_v11_5:
+    - "追加: 受付 (Command R) - 新設ルーター役職"
+    - "追加: 外事 (Command R+) - RAG/外部情報特化"
+    - "追加: 右筆 (ELYZA) - 日本語清書専任 (元: 隠密の一機能)"
+    - "名称変更: 家老-B (Llama 3.3) → 斥候"
+    - "統合: 参謀-A/B → 参謀 (Mistral Large 3 のみ、Grok廃止)"
+    - "廃止: 家老-A (Gemini Flash) - 外事/斥候で代替"
+    - "廃止: 参謀-B (Grok 4.1 Fast)"
+    - "API追加: COHERE_API_KEY (受付・外事共有)"
+
+v11_5_member_update:
+  description: "v11.5 メンバー更新 (参考)"
+  changes:
+    - "大元帥: Claude Opus 4.5 → 4.6"
+    - "参謀-A: GPT-5 → Mistral Large 3"
+    - "参謀-B: Grok-code-fast-1 → Grok 4.1 Fast"
+    - "家老-A/検校: Gemini 2.5 Flash → Gemini 3 Flash"
+
 v11_4_innovations:
   de_china:
     enabled: true
@@ -128,11 +193,12 @@ v11_4_innovations:
       - "Moonshot / Kimi K2.5"
       - "Qwen series (all)"
     replaced_with:
-      - "OpenAI (o3-mini, GPT-5)"
-      - "xAI (Grok-code-fast-1)"
+      - "OpenAI (o3-mini)"
+      - "Mistral AI (Mistral Large 3) 🇫🇷"
+      - "xAI (Grok 4.1 Fast)"
       - "NVIDIA (Nemotron-3-Nano local)"
-      - "Google (Gemini Flash)"
-      - "Anthropic (Claude Opus 4.5, Sonnet 4.6)"
+      - "Google (Gemini 3 Flash)"
+      - "Anthropic (Claude Opus 4.6, Sonnet 4.6)"
       - "Meta (Llama 3.3 70B via Groq)"
 
   gunshi_pdca:
@@ -152,8 +218,8 @@ v11_4_innovations:
       do:
         description: "サブタスクを参謀A/B (GPT-5 / Grok) に委譲"
         execution_strategy: "independent=参謀B並列, dependent=sequential"
-        primary_executor: "GPT-5 (参謀-A) → Grok-code-fast-1 (参謀-B)"
-        fallback_executor: "家老-A (Gemini Flash)"
+        primary_executor: "Mistral Large 3 (参謀-A) → Grok 4.1 Fast (参謀-B)"
+        fallback_executor: "家老-A (Gemini 3 Flash)"
 
       check:
         description: "o3-mini で全結果を一括検証 + 検校ビジュアル検証"
@@ -164,7 +230,7 @@ v11_4_innovations:
           - "サブタスク間整合性 (import, 型, インターフェース)"
           - "コード品質 (バグ, セキュリティ)"
           - "実装の完全性"
-          - "UI/ビジュアル検証 (検校: Gemini Flash Vision + Playwright)"
+          - "UI/ビジュアル検証 (検校: Gemini 3 Flash Vision + Playwright)"
 
       act:
         description: "不合格サブタスクに修正指示 → 再実装"
@@ -177,7 +243,7 @@ v11_4_innovations:
       - "GPT-5 + Grok 並列実装: 高速・高品質"
 
     api_providers:
-      - "OpenAI (o3-mini, GPT-5)"
+      - "OpenAI (o3-mini)"
       - "xAI (Grok)"
 
   nemotron_local:
@@ -198,10 +264,10 @@ v11_4_innovations:
       - "Simple → 家老-B Groq Llama3.3 (instant, free)"
       - "Medium → 参謀-B Grok (fast implementation)"
       - "Complex → 軍師 o3-mini PDCA (reasoning + 参謀で実装)"
-      - "Strategic → 大元帥 Claude Opus 4.5 (最高権限)"
+      - "Strategic → 大元帥 Claude Opus 4.6 (最高権限)"
       - "Coding → 将軍 Claude Sonnet 4.6 (高難度コーディング)"
       - "Confidential → 隠密 Nemotron-3-Nano (ローカル処理)"
-      - "Visual → 検校 Gemini Flash Vision (マルチモーダル)"
+      - "Visual → 検校 Gemini 3 Flash Vision (マルチモーダル)"
     complexity_judgment:
       simple: "Questions, lookups (<50 chars, no code) → 家老-B Groq"
       medium: "Standard implementation → 参謀-B Grok or 参謀-A GPT-5"
@@ -216,17 +282,17 @@ v11_4_innovations:
     chains:
       simple:
         primary: "家老-B Groq Llama 3.3 70B (free, 300-500 tok/s)"
-        fallback: "家老-A Gemini Flash"
+        fallback: "家老-A Gemini 3 Flash"
       medium:
-        primary: "参謀-B Grok-code-fast-1 (高速実装)"
-        secondary: "参謀-A GPT-5 (汎用)"
-        final_defense: "家老-A Gemini Flash"
+        primary: "参謀-B Grok 4.1 Fast (超高速実装)"
+        secondary: "参謀-A Mistral Large 3 (汎用)"
+        final_defense: "家老-A Gemini 3 Flash"
       complex:
         primary: "軍師 o3-mini PDCA: Plan→Do(参謀並列)→Check→Act"
-        do_chain: "参謀-A GPT-5 → 参謀-B Grok → 家老-A Gemini Flash"
-        gunshi_unavailable: "参謀-A GPT-5 → 参謀-B Grok → 家老-A Gemini Flash"
+        do_chain: "参謀-A Mistral Large 3 → 参謀-B Grok 4.1 Fast → 家老-A Gemini 3 Flash"
+        gunshi_unavailable: "参謀-A Mistral Large 3 → 参謀-B Grok 4.1 Fast → 家老-A Gemini 3 Flash"
       strategic:
-        primary: "大元帥 Claude Opus 4.5"
+        primary: "大元帥 Claude Opus 4.6"
         fallback: "将軍 Claude Sonnet 4.6"
 
   prompt_caching:
@@ -249,7 +315,7 @@ repo:
 daigensui:
   codename: "Daigensui"
   role: "大元帥 - 最高難度・戦略設計・最終品質保証"
-  model: "claude-opus-4-5-20250514"
+  model: "claude-opus-4-6"
 
   prompt_caching:
     enabled: true
@@ -293,7 +359,7 @@ shogun:
         cost_yen: "0-5"
       premium:
         target: ["strategic"]
-        model: "opus-4.5"
+        model: "opus-4.6"
         cost_yen: 10
 
 # --- 軍師 (Gunshi) - Reasoning & PDCA Layer ---
@@ -330,29 +396,31 @@ gunshi:
 # --- 参謀-A (Sanbo-A) - General Coding ---
 sanbo_a:
   codename: "Sanbo-A"
-  role: "参謀-A - 汎用コーディング"
-  model: "gpt-5"
-  provider: "openai"
+  role: "参謀-A - 汎用コーディング・EU準拠"
+  model: "mistral-large-2512"
+  provider: "mistral"
 
   api:
-    primary_provider: "openai"
+    primary_provider: "mistral"
     providers:
-      openai:
-        base_url: "https://api.openai.com/v1"
-        model_name: "gpt-5"
+      mistral:
+        base_url: "https://api.mistral.ai/v1"
+        model_name: "mistral-large-2512"
     temperature: 0.3
     max_tokens: 8192
 
   strengths:
-    - "最新世代GPT: 高品質コード生成"
+    - "Mistral Large 3: MoE 675B / Apache 2.0 / EU企業 🇫🇷"
+    - "コスパ最強: $0.50/$1.50/1M (GPT-5比 1/5以下)"
+    - "コンテキスト 262K tokens"
     - "汎用性: あらゆるプログラミング言語対応"
-    - "大規模コンテキスト: 長いコード解析"
+    - "EU準拠: GDPR/データ主権"
 
 # --- 参謀-B (Sanbo-B) - Fast Implementation ---
 sanbo_b:
   codename: "Sanbo-B"
-  role: "参謀-B - 実装・バグ修正・高速"
-  model: "grok-code-fast-1"
+  role: "参謀-B - 実装・バグ修正・超高速"
+  model: "grok-4-fast"
   provider: "xai"
 
   api:
@@ -360,27 +428,28 @@ sanbo_b:
     providers:
       xai:
         base_url: "https://api.x.ai/v1"
-        model_name: "grok-code-fast-1"
+        model_name: "grok-4-fast"
     temperature: 0.2
     max_tokens: 8192
 
   strengths:
-    - "高速推論: コーディング特化"
+    - "業界最安値クラス: $0.20/$0.50/1M"
+    - "コンテキスト 2M tokens"
     - "バグ修正: 迅速な問題解決"
-    - "実装速度: Grok系最速"
+    - "実装速度: 超高速推論"
 
 # --- 家老-A (Karo-A) - Lightweight Tasks ---
 karo_a:
   codename: "Karo-A"
   role: "家老-A - 軽量タスク・最終防衛線"
-  model: "gemini-2.5-flash"
+  model: "gemini-3-flash-preview"
   provider: "google"
 
   api:
     primary_provider: "google"
     providers:
       google:
-        model_name: "gemini-2.5-flash"
+        model_name: "gemini-3-flash-preview"
     temperature: 0.3
     max_tokens: 2000
 
@@ -406,12 +475,12 @@ karo_b:
 kengyo:
   codename: "Kengyo"
   role: "検校 - マルチモーダル・ビジュアルデバッガー"
-  model: "gemini-2.5-flash"
-  description: "Gemini Flash Vision でビジュアル検証"
+  model: "gemini-3-flash-preview"
+  description: "Gemini 3 Flash Vision でビジュアル検証"
 
   capabilities:
     - "スクリーンショット取得: Playwright MCP (Desktop + Mobile)"
-    - "ビジュアル解析: Gemini Flash Vision (レイアウト・表示・アクセシビリティ)"
+    - "ビジュアル解析: Gemini 3 Flash Vision (レイアウト・表示・アクセシビリティ)"
     - "リグレッション検出: Before/After 比較"
     - "マルチビューポート: Desktop (1280px) / Tablet (768px) / Mobile (375px)"
 
@@ -431,7 +500,7 @@ kengyo:
     graceful_degradation: "Playwright 未設定時はスキップ (テキスト検証のみ)"
 
   dependencies:
-    required: "Gemini Flash Vision"
+    required: "Gemini 3 Flash Vision"
     optional: "Playwright MCP (Smithery)"
 
 # --- 隠密 (Onmitsu) - Local Processing ---
@@ -445,7 +514,7 @@ onmitsu:
     model: "nemotron-3-nano"
     backend: "llama.cpp"
     model_file: "Nemotron-3-Nano.gguf"
-    endpoint: "http://192.168.11.239:8080"  # EliteDesk ローカルLLM
+    endpoint: "http://192.168.11.239:8080"  # ローカルLLMサーバー (EliteDesktとは独立)
     context_length: 8192
     quantization: "Q4_K_M"
     ram_usage_gb: 22
@@ -593,7 +662,7 @@ infrastructure:
       dedicated_to: "システム統括 (本陣)"
 
   llamacpp:
-    endpoint: "http://192.168.11.232:8080"
+    endpoint: "http://192.168.11.239:8080"
     model_path: "models/nemotron/Nemotron-3-Nano.gguf"
     threads: 6
     context_size: 8192
@@ -647,7 +716,7 @@ performance_targets:
 
     strategic:
       time_seconds: 45
-      route: "大元帥 Claude Opus 4.5"
+      route: "大元帥 Claude Opus 4.6"
       cost_yen: "0-10"
 
     coding:
@@ -881,7 +950,7 @@ v11_5_innovations:
     rules:
       - "STRATEGIC / COMPLEX → 軍師 o3-mini PDCA (gunshi_pdca)"
       - "ACTION + TOOL_AVAILABLE → Taisho MCP chain (taisho_mcp)"
-      - "MULTI_STEP → Gemini Flash autonomous (gemini_autonomous)"
+      - "MULTI_STEP → Gemini 3 Flash autonomous (gemini_autonomous)"
       - "SIMPLE Q&A → 家老-B Groq instant (groq_qa)"
       - "DEFAULT → 家老 routing (karo_default)"
     tool_routing:

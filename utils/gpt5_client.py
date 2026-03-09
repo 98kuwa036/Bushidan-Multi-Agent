@@ -1,25 +1,28 @@
 """
-Bushidan Multi-Agent System v11.4 - OpenAI GPT-5 Client
+Bushidan Multi-Agent System v11.5 - Mistral Large 3 Client (参謀-A)
 
 参謀-A (Sanbo-A) - 高度汎用推論エンジン
-OpenAI GPT-5モデルのクライアント。
-広範な知識と高度な推論能力を兼ね備えた汎用参謀。
+Mistral Large 3 (mistral-large-2512) モデルのクライアント。
+EU準拠・コスパ最強・汎用コーディングに特化した参謀。
 
-Model: OpenAI GPT-5
-- 最新世代の汎用大規模言語モデル
-- 広範な知識と高度な推論能力
-- OpenAI API経由でのクラウド推論
-- Cost: API usage based (per-token pricing)
+Model: Mistral Large 3 (mistral-large-2512)
+- MoE 675B パラメータ・Apache 2.0 ライセンス
+- コンテキスト: 262K tokens
+- コスト: $0.50/1M input, $1.50/1M output (GPT-5比 1/5以下)
+- Mistral AI API (api.mistral.ai/v1)
+- EU企業 🇫🇷 - GDPR/データ主権準拠
 
 Role: 参謀-A (Sanbo-A) - Chief Staff Officer A
-- 戦略立案の補佐・実行計画の策定
+- 汎用コーディング・設計補佐
 - 多角的な分析と提案を担当
-- 軍師 (o3-mini) と連携した意思決定支援
+- 軍師 (o3-mini) と連携した実行計画策定
 
 Usage Context (運用黄金律):
 - 複雑なタスクの分析・計画策定
 - コードレビュー・設計判断
 - 軍師の推論結果を実行可能な計画に落とし込む
+
+Note: クラス名 GPT5Client は後方互換性のため維持
 """
 
 import asyncio
@@ -37,7 +40,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class GPT5UsageStats:
-    """GPT-5 API usage statistics / GPT-5 API使用統計"""
+    """Mistral Large 3 API usage statistics / Mistral API使用統計"""
     total_requests: int = 0
     successful_requests: int = 0
     failed_requests: int = 0
@@ -52,35 +55,36 @@ class GPT5UsageStats:
 
 class GPT5Client:
     """
-    OpenAI GPT-5 Client - 参謀-A (Sanbo-A) 高度汎用推論エンジン
+    Mistral Large 3 Client - 参謀-A (Sanbo-A) 汎用推論エンジン
+    (クラス名 GPT5Client は後方互換性のため維持)
 
-    Model: GPT-5
-    - 最新世代のOpenAI旗艦モデル
-    - 広範な知識ベースと高精度推論
-    - 大規模コンテキストウィンドウ対応
+    Model: mistral-large-2512 (Mistral Large 3)
+    - MoE 675B / Apache 2.0 / EU企業 🇫🇳
+    - コンテキスト 262K tokens
+    - $0.50/$1.50 per 1M tokens (GPT-5比 1/5以下)
 
     Rate Limits:
-    - Tier依存 (組織のAPIプランによる)
+    - Mistral API プランに依存
     - 自動レートリミット管理を実装
     """
 
-    VERSION = "11.4"
+    VERSION = "11.5"
 
     def __init__(
         self,
         api_key: Optional[str] = None,
-        model: str = "gpt-5",
-        base_url: str = "https://api.openai.com/v1"
+        model: str = "mistral-large-2512",
+        base_url: str = "https://api.mistral.ai/v1"
     ):
         """
-        GPT-5クライアントを初期化
+        Mistral Large 3 クライアントを初期化
 
         Args:
-            api_key: OpenAI APIキー (未指定時は環境変数 OPENAI_API_KEY から取得)
-            model: モデル名 (default: gpt-5)
+            api_key: Mistral APIキー (未指定時は環境変数 MISTRAL_API_KEY から取得)
+            model: モデル名 (default: mistral-large-2512)
             base_url: API base URL
         """
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        self.api_key = api_key or os.environ.get("MISTRAL_API_KEY", "")
         self.model = model
         self.base_url = base_url
 
@@ -97,14 +101,15 @@ class GPT5Client:
         self.default_temperature = 0.7
 
         # Cost estimation (approximate yen per 1K tokens)
-        self._cost_per_1k_input_tokens_yen = 7.5    # ~$0.05
-        self._cost_per_1k_output_tokens_yen = 22.5   # ~$0.15
+        # Mistral Large 3: $0.50/1M input, $1.50/1M output @ ¥150/$
+        self._cost_per_1k_input_tokens_yen = 0.075   # $0.0005/1K
+        self._cost_per_1k_output_tokens_yen = 0.225  # $0.0015/1K
 
         if not self.api_key:
-            logger.warning("OPENAI_API_KEY が設定されていません")
+            logger.warning("MISTRAL_API_KEY が設定されていません")
 
         logger.info(
-            f"参謀-A GPT-5 client initialized (v{self.VERSION})\n"
+            f"参謀-A Mistral Large 3 client initialized (v{self.VERSION})\n"
             f"   Model: {self.model}\n"
             f"   Base URL: {self.base_url}"
         )

@@ -1,4 +1,3 @@
-```
 # Python
 __pycache__/
 *.pyc
@@ -21,4 +20,21 @@ Thumbs.db
 
 # Output directory
 output/
-```
+
+# Secrets
+.env
+
+# Core dumps (Python crash files)
+core.*
+
+# Runtime data
+logs/
+models/
+shogun_memory.jsonl
+.tmp/
+
+# Test / scratch scripts
+test_api_keys.py
+
+# Embedded git repos (separate projects)
+codings/

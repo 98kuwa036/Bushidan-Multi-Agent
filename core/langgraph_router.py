@@ -1,11 +1,9 @@
 """
-武士団 Multi-Agent System v11.5 - LangGraph Router (MCP + Notion 密結合)
+武士団 Multi-Agent System v12 - LangGraph Router (MCP + Notion 密結合)
 
-v11.5 革新: LangGraph StateGraph に MCP ツール検出と Notion コンテキスト取得を
-グラフのノードとして組み込み、ルーティング判断を「ツール認識・Notion 知識参照」
-ベースに進化させた。
+v12 メンバー再構成: 10役職・Cohere Command R/R+ 追加
 
-StateGraph v11.5:
+StateGraph v12:
   [START]
     ↓
   [analyze]        タスク複雑度・マルチステップ・アクション検出
@@ -14,24 +12,26 @@ StateGraph v11.5:
     ↓
   [route_decision] ツール認識・パーミッション・Notion 知識参照ルーティング
     ↓
-  ┌───────────────────────────────────────┐
-  │  groq_qa          │  Simple Q&A (家老-B Groq)           │
-  │  gunshi_pdca      │  Complex/Strategic (軍師 o3-mini)   │
-  │  gemini_autonomous│  Multi-step (Gemini Flash)          │
-  │  taisho_mcp       │  Tool chain (Taisho + MCP)         │
-  │  karo_default     │  Default fallback (家老)            │
-  └───────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────┐
+  │  groq_qa          │  高速フィルタ (斥候 Llama 3.3)          │
+  │  gunshi_pdca      │  深層推論 (軍師 o3-mini)                │
+  │  gaiji_rag        │  外部/RAG (外事 Command R+)             │
+  │  taisho_mcp       │  Tool chain (参謀 + MCP)               │
+  │  yuhitsu_jp       │  日本語清書 (右筆 ELYZA)                │
+  │  onmitsu_local    │  完全ローカル (隠密 Nemotron)           │
+  │  karo_default     │  受付フォールバック (受付 Command R)    │
+  └──────────────────────────────────────────────────────┘
     ↓
   [persist_notion]  非同期: Notion に全タスク結果を自動保存
     ↓
   [END]
 
-v11.5 新機能:
-  - MCP ツール認識ルーティング: GitHub/tavily/playwright の存在を見て経路変更
-  - Notion コンテキスト注入: 家訓・直近決定事例をルーター判断に活用
-  - 軍師 PDCA ルート: COMPLEX/STRATEGIC タスクを o3-mini → 参謀A/B に委譲
-  - 自動 Notion 永続化: 全タスクを fire-and-forget で Notion に記録
-  - パーミッション検査: MCPPermissionManager との統合
+v12 変更点:
+  - gaiji_rag ノード追加: 外事 (Command R+) による外部ツール/RAG
+  - yuhitsu_jp ノード追加: 右筆 (ELYZA) による日本語清書
+  - onmitsu_local: 機密専用 (Nemotron のみ)、日本語は yuhitsu_jp に移管
+  - karo_default: 受付 (Command R) へ更新
+  - 受付→外事→検校→将軍→軍師→参謀→右筆→斥候→隠密→大元帥 (10役職)
 """
 
 import asyncio
@@ -130,13 +130,14 @@ class LangGraphRouter:
         # ── ノード登録 ────────────────────────────────────
         graph.add_node("analyze",          self._analyze_task)
         graph.add_node("fetch_context",    self._fetch_context)
-        graph.add_node("groq_qa",          self._execute_groq_qa)
-        graph.add_node("gunshi_pdca",      self._execute_gunshi_pdca)       # v11.5 新規
-        graph.add_node("gemini_autonomous", self._execute_gemini_autonomous)
-        graph.add_node("taisho_mcp",       self._execute_taisho_mcp)        # v11.5 新規
-        graph.add_node("karo_default",     self._execute_karo_default)
-        graph.add_node("onmitsu_local",    self._execute_onmitsu_local)     # v11.5+ 新規: ローカルLLM
-        graph.add_node("persist_notion",   self._persist_notion)            # v11.5 新規
+        graph.add_node("groq_qa",          self._execute_groq_qa)           # 斥候 Llama 3.3
+        graph.add_node("gunshi_pdca",      self._execute_gunshi_pdca)       # 軍師 o3-mini PDCA
+        graph.add_node("gaiji_rag",        self._execute_gaiji_rag)         # v12: 外事 Command R+
+        graph.add_node("taisho_mcp",       self._execute_taisho_mcp)        # MCP ツール連携
+        graph.add_node("yuhitsu_jp",       self._execute_yuhitsu_jp)        # v12: 右筆 ELYZA
+        graph.add_node("karo_default",     self._execute_karo_default)      # 受付 Command R フォールバック
+        graph.add_node("onmitsu_local",    self._execute_onmitsu_local)     # 隠密 Nemotron (機密専用)
+        graph.add_node("persist_notion",   self._persist_notion)
 
         # ── エントリーポイント ───────────────────────────
         graph.set_entry_point("analyze")
@@ -144,23 +145,24 @@ class LangGraphRouter:
         # analyze → fetch_context (直通)
         graph.add_edge("analyze", "fetch_context")
 
-        # fetch_context → 各実行ルート (条件分岐)
+        # fetch_context → 各実行ルート (条件分岐) v12
         graph.add_conditional_edges(
             "fetch_context",
             self._route_decision,
             {
-                "groq_qa":           "groq_qa",
-                "gunshi_pdca":       "gunshi_pdca",
-                "gemini_autonomous": "gemini_autonomous",
-                "taisho_mcp":        "taisho_mcp",
-                "karo_default":      "karo_default",
-                "onmitsu_local":     "onmitsu_local",
+                "groq_qa":       "groq_qa",
+                "gunshi_pdca":   "gunshi_pdca",
+                "gaiji_rag":     "gaiji_rag",
+                "taisho_mcp":    "taisho_mcp",
+                "yuhitsu_jp":    "yuhitsu_jp",
+                "karo_default":  "karo_default",
+                "onmitsu_local": "onmitsu_local",
             },
         )
 
         # 全実行ルート → persist_notion → END
-        for node in ("groq_qa", "gunshi_pdca", "gemini_autonomous", "taisho_mcp",
-                     "karo_default", "onmitsu_local"):
+        for node in ("groq_qa", "gunshi_pdca", "gaiji_rag", "taisho_mcp",
+                     "yuhitsu_jp", "karo_default", "onmitsu_local"):
             graph.add_edge(node, "persist_notion")
         graph.add_edge("persist_notion", END)
 
@@ -335,8 +337,16 @@ class LangGraphRouter:
         }
 
     async def _get_mcp_tool_info(self) -> dict:
-        """MCPManager から実行中サーバーのツール一覧を取得."""
+        """
+        MCP Bridge (langchain-mcp-adapters) からツールスキーマ一覧を取得。
+        Bridge 未使用時は旧 MCPManager にフォールバック。
+        """
         try:
+            bridge = getattr(self.orchestrator, "_mcp_bridge", None)
+            if bridge and bridge.is_available():
+                return bridge.get_tool_schemas()
+
+            # フォールバック: 旧 MCPManager
             mcp_manager = getattr(self.orchestrator, "mcp_manager", None)
             if mcp_manager and hasattr(mcp_manager, "list_tools"):
                 return mcp_manager.list_tools()
@@ -364,49 +374,67 @@ class LangGraphRouter:
 
     def _route_decision(self, state: TaskState) -> str:
         """
-        v11.5+ ルーティング判断。
+        v12 ルーティング判断 (10役職対応)。
 
         優先度:
-          0. 機密タスク → onmitsu_local (Nemotron)
-          0. 日本語特化タスク → onmitsu_local (ELYZA or Nemotron フォールバック)
-          1. 戦略/複雑 → gunshi_pdca (o3-mini PDCA)
-          2. ツール連携アクション → taisho_mcp (MCP tools 利用可能時)
-          3. マルチステップ → gemini_autonomous
-          4. シンプル Q&A → groq_qa
-          5. デフォルト → karo_default
+          0. 強制ルーティング (@メンション時)
+          1. 機密タスク → onmitsu_local (隠密 Nemotron)
+          2. 日本語清書タスク → yuhitsu_jp (右筆 ELYZA)
+          3. 戦略/複雑 → gunshi_pdca (軍師 o3-mini PDCA)
+          4. ツール連携アクション → taisho_mcp (参謀 + MCP tools)
+          5. 外部/RAG/マルチステップ → gaiji_rag (外事 Command R+)
+          6. シンプル Q&A / 高速 → groq_qa (斥候 Llama 3.3)
+          7. デフォルト → karo_default (受付 Command R)
         """
-        content           = state["content"]
-        tools             = state.get("available_tools", [])
-        complexity        = state.get("complexity", "medium")
-        is_multi          = state.get("is_multi_step", False)
-        is_action         = state.get("is_action_task", False)
-        is_simple_qa      = state.get("is_simple_qa", False)
-        is_japanese       = state.get("is_japanese_priority", False)
-        is_confidential   = state.get("is_confidential", False)
+        content         = state["content"]
+        tools           = state.get("available_tools", [])
+        complexity      = state.get("complexity", "medium")
+        is_multi        = state.get("is_multi_step", False)
+        is_action       = state.get("is_action_task", False)
+        is_simple_qa    = state.get("is_simple_qa", False)
+        is_japanese     = state.get("is_japanese_priority", False)
+        is_confidential = state.get("is_confidential", False)
 
-        # ── 0-a. 機密タスク → 隠密 (Nemotron ローカル処理) ──────────────────
+        # ── 強制ルーティング (特定エージェントへの直接メンション時) ─────────
+        _valid_routes = {
+            "groq_qa", "gunshi_pdca", "gaiji_rag", "taisho_mcp",
+            "yuhitsu_jp", "karo_default", "onmitsu_local",
+            # 後方互換 (旧ノード名)
+            "gemini_autonomous",
+        }
+        forced_route = state.get("context", {}).get("forced_route")
+        if forced_route in _valid_routes:
+            # 旧名 gemini_autonomous → gaiji_rag に透過的にリダイレクト
+            if forced_route == "gemini_autonomous":
+                forced_route = "gaiji_rag"
+            logger.info("🎯 Route: %s (強制ルーティング)", forced_route)
+            return forced_route
+
+        # ── 1. 機密タスク → 隠密 (Nemotron ローカル処理) ────────────────────
         if is_confidential:
-            logger.info("🥷 Route: onmitsu_local (機密タスク → Nemotron)")
+            logger.info("🥷 Route: onmitsu_local (機密 → 隠密 Nemotron)")
             return "onmitsu_local"
 
-        # ── 0-b. 日本語特化タスク → 隠密ローカル (ELYZA or Nemotron) ─────────
+        # ── 2. 日本語清書タスク → 右筆 (ELYZA) ──────────────────────────────
         if is_japanese:
-            logger.info("🎌 Route: onmitsu_local (日本語特化 → ELYZA/Nemotron)")
-            return "onmitsu_local"
+            logger.info("🖊️ Route: yuhitsu_jp (日本語清書 → 右筆 ELYZA)")
+            return "yuhitsu_jp"
 
-        # ── 1. 戦略的 / 複雑タスク → 軍師 PDCA ────────────────────────────
+        # ── 3. 戦略的 / 複雑タスク → 軍師 PDCA ─────────────────────────────
         if complexity in ("strategic", "complex") or (is_multi and complexity != "simple"):
-            logger.info("🧠 Route: gunshi_pdca (complexity=%s, multi=%s)", complexity, is_multi)
+            logger.info(
+                "🧠 Route: gunshi_pdca (complexity=%s, multi=%s)", complexity, is_multi
+            )
             return "gunshi_pdca"
 
-        # ── 2. ツール特化アクション → taisho_mcp ────────────────────────────
+        # ── 4. ツール特化アクション → taisho_mcp ─────────────────────────────
         if is_action and tools:
             content_lower = content.lower()
             tool_routes = {
-                "github": ["git", "github", "commit", "push", "pull", "pr", "issue"],
+                "github":     ["git", "github", "commit", "push", "pull", "pr", "issue"],
                 "filesystem": ["ファイル", "file", "read", "write", "directory"],
-                "tavily": ["search", "検索", "web", "調べ"],
-                "exa": ["semantic", "意味検索"],
+                "tavily":     ["search", "検索", "web", "調べ"],
+                "exa":        ["semantic", "意味検索"],
                 "playwright": ["browser", "ブラウザ", "screenshot", "スクリーン"],
                 "mattermost": ["mattermost", "channel", "チャンネル", "投稿"],
             }
@@ -415,18 +443,18 @@ class LangGraphRouter:
                     logger.info("🔧 Route: taisho_mcp (tool=%s)", tool_name)
                     return "taisho_mcp"
 
-        # ── 3. マルチステップ → Gemini autonomous ───────────────────────────
-        if is_multi:
-            logger.info("⚙️ Route: gemini_autonomous (multi-step)")
-            return "gemini_autonomous"
+        # ── 5. マルチステップ / 外部情報収集 → 外事 (Command R+) ────────────
+        if is_multi or is_action:
+            logger.info("🌐 Route: gaiji_rag (外部/RAG → 外事 Command R+)")
+            return "gaiji_rag"
 
-        # ── 4. シンプル Q&A → Groq (即応・無料) ────────────────────────────
+        # ── 6. シンプル Q&A → 斥候 Groq (即応・無料) ────────────────────────
         if is_simple_qa and complexity == "simple":
-            logger.info("⚡ Route: groq_qa (simple Q&A)")
+            logger.info("⚡ Route: groq_qa (simple Q&A → 斥候 Llama 3.3)")
             return "groq_qa"
 
-        # ── 5. デフォルト → 家老 ────────────────────────────────────────────
-        logger.info("🏯 Route: karo_default")
+        # ── 7. デフォルト → 受付 (Command R) ────────────────────────────────
+        logger.info("🏯 Route: karo_default (受付 Command R)")
         return "karo_default"
 
     # =========================================================================
@@ -447,8 +475,10 @@ class LangGraphRouter:
                 system_prompt += f"\n\n【参照知識】\n{state['notion_context'][:500]}"
 
             response = await groq_client.generate(
-                system=system_prompt,
-                user=state["content"],
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": state["content"]},
+                ],
                 max_tokens=512,
             )
             return {
@@ -549,6 +579,57 @@ class LangGraphRouter:
                 "execution_time": time.time() - start, "mcp_tools_used": [],
             }
 
+    # =========================================================================
+    # Node: gaiji_rag — 外事 Command R+ (外部ツール・RAG) v12 新規
+    # =========================================================================
+
+    async def _execute_gaiji_rag(self, state: TaskState) -> dict:
+        """
+        外事 (Command R+) による外部情報収集・RAG・マルチステップ処理。
+
+        Command R+ はグラウンディング・RAG 特化モデルなので、
+        Web 検索 / 外部ドキュメント参照タスクに最適。
+        未設定時は groq_qa にフォールバック。
+        """
+        start = time.time()
+        try:
+            from utils.cohere_client import create_gaiji_client
+
+            client = create_gaiji_client()
+            if not client:
+                logger.warning("⚠️ 外事クライアント未設定 → groq_qa フォールバック")
+                return await self._execute_groq_qa(state)
+
+            notion_ctx = state.get("notion_context", "")
+            system_prompt = (
+                "あなたは外事担当 (Command R+)。外部情報収集・RAG・マルチステップ処理の専門家です。"
+                "正確で包括的な回答を日本語で提供してください。"
+            )
+            if notion_ctx:
+                system_prompt += f"\n\n【Notion 知識】\n{notion_ctx[:600]}"
+
+            response = await client.generate(
+                messages=[{"role": "user", "content": state["content"]}],
+                max_tokens=2048,
+                system_prompt=system_prompt,
+            )
+            return {
+                "result": {"response": response, "status": "completed"},
+                "status": "completed",
+                "handled_by": "gaiji_rag",
+                "agent_role": "外事",
+                "execution_time": time.time() - start,
+                "route": "gaiji_rag",
+                "mcp_tools_used": [],
+            }
+        except Exception as e:
+            logger.error("❌ 外事 (Command R+) 実行失敗: %s", e)
+            return {
+                "status": "failed", "error": str(e),
+                "handled_by": "gaiji_rag", "agent_role": "外事",
+                "execution_time": time.time() - start, "mcp_tools_used": [],
+            }
+
     async def _execute_taisho_mcp(self, state: TaskState) -> dict:
         """MCP ツールを活用したアクションタスクを Taisho + ツールで実行 (v11.5 新規)."""
         start = time.time()
@@ -626,65 +707,84 @@ class LangGraphRouter:
             }
 
     # =========================================================================
-    # Node: onmitsu_local — ローカルLLM実行 (v11.5+ 新規)
+    # Node: yuhitsu_jp — 右筆 ELYZA (日本語清書) v12 新規
+    # =========================================================================
+
+    async def _execute_yuhitsu_jp(self, state: TaskState) -> dict:
+        """
+        右筆 (ELYZA) による日本語清書・翻訳・添削処理。
+
+        日本語品質が重要なタスク専用ノード。
+        ELYZA 未起動時は Nemotron フォールバック → groq_qa フォールバック。
+        """
+        start = time.time()
+        notion_ctx = state.get("notion_context", "")
+        try:
+            from utils.local_model_manager import get_local_model_manager
+
+            manager = get_local_model_manager()
+            elyza = await manager.get_japanese_client()
+
+            if elyza:
+                logger.info("🖊️ 右筆 ELYZA: 日本語清書タスク処理")
+                result_text = await elyza.generate_japanese(
+                    state["content"], context=notion_ctx
+                )
+                agent_role = "右筆-ELYZA"
+                handled_by = "yuhitsu_elyza"
+            else:
+                # ELYZA 未起動 → Nemotron フォールバック
+                logger.info("🥷 ELYZA未起動 → 右筆 Nemotron フォールバック")
+                from utils.nemotron_llamacpp_client import NemotronLlamaCppClient
+                client = NemotronLlamaCppClient()
+                system = (
+                    "あなたは日本語テキスト清書アシスタント (右筆) です。"
+                    "自然で流暢な日本語で回答してください。"
+                )
+                result_text = await client.generate([
+                    {"role": "system", "content": system},
+                    {"role": "user",   "content": state["content"]},
+                ])
+                agent_role = "右筆-Nemotron"
+                handled_by = "yuhitsu_nemotron"
+
+            return {
+                "result": {"response": result_text, "status": "completed"},
+                "status": "completed",
+                "handled_by": handled_by,
+                "agent_role": agent_role,
+                "execution_time": time.time() - start,
+                "route": "yuhitsu_jp",
+                "mcp_tools_used": [],
+            }
+        except Exception as e:
+            logger.error("❌ 右筆 (ELYZA) 実行失敗: %s → groq_qa フォールバック", e)
+            return await self._execute_groq_qa(state)
+
+    # =========================================================================
+    # Node: onmitsu_local — 隠密 Nemotron (機密専用) v12: 日本語は yuhitsu_jp へ
     # =========================================================================
 
     async def _execute_onmitsu_local(self, state: TaskState) -> dict:
         """
-        ローカルLLM実行ノード。
+        隠密 (Nemotron) — 機密・完全ローカル処理専用 v12
 
-        ルーティング:
-          - 機密タスク (is_confidential=True) → Nemotron (port 8080, 常駐)
-          - 日本語特化タスク (is_japanese_priority=True)
-              → ELYZA 起動中なら ELYZA (port 8081)
-              → ELYZA 未起動なら Nemotron にフォールバック
-
-        どちらも OpenAI 互換 API なので同じ呼び出し方。
+        v12 変更: 日本語特化は yuhitsu_jp ノードに移管。
+        このノードは機密データ処理のみ担当 (API 送信不可)。
         """
         start = time.time()
-        is_confidential = state.get("is_confidential", False)
         notion_ctx = state.get("notion_context", "")
 
         try:
-            from utils.local_model_manager import get_local_model_manager
             from utils.nemotron_llamacpp_client import NemotronLlamaCppClient
 
-            manager = get_local_model_manager()
-
-            # 機密タスク or ELYZA 未起動 → Nemotron
-            if is_confidential:
-                logger.info("🥷 隠密 Nemotron: 機密タスク処理")
-                client = NemotronLlamaCppClient()
-                result_text = await client.process_confidential(
-                    state["content"], task_type="confidential"
-                )
-                agent_role = "隠密-Nemotron"
-                handled_by = "onmitsu_nemotron"
-            else:
-                # 日本語タスク → ELYZA 優先
-                elyza = await manager.get_japanese_client()
-                if elyza:
-                    logger.info("🎌 ELYZA: 日本語特化タスク処理")
-                    result_text = await elyza.generate_japanese(
-                        state["content"], context=notion_ctx
-                    )
-                    agent_role = "隠密-ELYZA"
-                    handled_by = "onmitsu_elyza"
-                else:
-                    # ELYZA 未起動 → Nemotron フォールバック
-                    logger.info("🥷 ELYZA未起動 → Nemotron フォールバック (日本語タスク)")
-                    client = NemotronLlamaCppClient()
-                    system = (
-                        "あなたは日本語テキスト生成アシスタントです。"
-                        "自然で流暢な日本語で回答してください。"
-                    )
-                    messages = [
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": state["content"]},
-                    ]
-                    result_text = await client.generate(messages)
-                    agent_role = "隠密-Nemotron(JP)"
-                    handled_by = "onmitsu_nemotron_fallback"
+            logger.info("🥷 隠密 Nemotron: 機密タスク処理 (完全ローカル)")
+            client = NemotronLlamaCppClient()
+            result_text = await client.process_confidential(
+                state["content"], task_type="confidential"
+            )
+            agent_role = "隠密-Nemotron"
+            handled_by = "onmitsu_nemotron"
 
             return {
                 "result": {"response": result_text, "status": "completed"},

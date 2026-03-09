@@ -19,7 +19,7 @@
 #   - models/nemotron/Nemotron-3-Nano-Q4_K_M.gguf が配置 (~21GB)
 #   - scripts/start_nemotron.sh で手動起動可能
 #   - systemd サービス: bushidan-nemotron で自動起動
-#   - http://192.168.11.232:8080 で OpenAI 互換 API が稼働
+#   - http://192.168.11.239:8080 で OpenAI 互換 API が稼働
 #
 # 【ハードウェア要件】
 #   - HP ProDesk 600 G4
