@@ -27,8 +27,8 @@ def print_banner() -> None:
 ║    将軍    - Claude Sonnet 4.6  メインワーカー                 ║
 ║    軍師    - Mistral Large 3     深層推論・PDCA                 ║
 ║    参謀    - Mistral Large 3    汎用コーディング               ║
-║    外事    - Command R+         RAG・外部情報                  ║
-║    受付    - Command R          フォールバック                  ║
+║    外事    - Command A (03-25)         RAG・外部情報                  ║
+║    受付    - Command R7B (12-24)         フォールバック                  ║
 ║    斥候    - Llama 3.3 (Groq)   高速Q&A                       ║
 ║    検校    - Gemini Vision      マルチモーダル                 ║
 ║    右筆    - ELYZA (Local)      日本語清書                     ║

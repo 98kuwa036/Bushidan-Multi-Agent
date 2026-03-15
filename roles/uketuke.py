@@ -1,9 +1,13 @@
-"""roles/uketuke.py — 受付 (Command R 7B) ロール v14.1
+"""roles/uketuke.py — 受付 (Command R 7B-12-2024) ロール v14.2
 
 役割: ルーティング受付・軽量フォールバック応答
-モデル: Cohere Command R 7B (軽量版、$0.0375/M tokens)
+モデル: Cohere Command R 7B-12-2024（軽量版、$0.0375/M tokens、128K コンテキスト）
 
-v14.1 更新: command-r → command-r-7b (Cohere Command A への移行対応)
+v14.2 更新: command-r → command-r7b-12-2024
+  - 軽量（7B パラメータ）
+  - 高速・低レイテンシー
+  - コスト効率（$0.0375 入力 / $0.15 出力）
+  - RAG・ツール対応で十分な性能
 """
 
 import time

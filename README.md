@@ -76,8 +76,8 @@
 | 🎌 将軍 | `shogun` | Claude Sonnet 4.6 | Anthropic | メインワーカー・高難度コーディング | ¥0-5/req |
 | 🧠 軍師 | `gunshi` | Mistral Large 3 | Mistral AI | 深層推論・PDCA エンジン | ¥0.01-0.10/req |
 | 📋 参謀 | `sanbo` | Mistral Large 3 | Mistral AI | 汎用コーディング・MCP連携 | ¥0.01-0.10/req |
-| 🌏 外事 | `gaiji` | Command A (03-2025) | Cohere | RAG・外部情報・256K コンテキスト | $0.? |
-| 🔔 受付 | `uketuke` | Command R 7B | Cohere | 軽量フォールバック・128K コンテキスト | $0.0375 |
+| 🌏 外事 | `gaiji` | Command A (03-2025) | Cohere | RAG・外部情報・256K コンテキスト | 未公開 |
+| 🔔 受付 | `uketuke` | Command R 7B (12-2024) | Cohere | 軽量フォールバック・128K コンテキスト | $0.0375 |
 | ⚡ 斥候 | `seppou` | Llama 3.3 70B (Groq) | Meta / Groq | 高速Q&A・300-500tok/s | **¥0 (無料)** |
 | 👁️ 検校 | `kengyo` | Gemini 3 Flash Vision | Google | マルチモーダル・UI/UX検証 | ¥0.01/req |
 | ✍️ 右筆 | `yuhitsu` | ELYZA (Local) | ELYZA/Meta | 日本語清書・オフライン | **¥0** |
