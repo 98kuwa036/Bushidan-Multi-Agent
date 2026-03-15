@@ -22,6 +22,7 @@ Usage:
 """
 
 import asyncio
+import json
 import logging
 import os
 import time
@@ -80,15 +81,21 @@ class CohereClient:
                 "  .venv/bin/pip install httpx"
             )
 
+        # Cohere Chat API v2: system_prompt を messages の最初に追加
+        final_messages = list(messages)
+        if system_prompt:
+            # システムプロンプトを messages の最初に挿入
+            final_messages.insert(0, {
+                "role": "system",
+                "content": system_prompt
+            })
+
         body: Dict[str, Any] = {
             "model":       self.model,
-            "messages":    messages,
+            "messages":    final_messages,
             "max_tokens":  max_tokens,
             "temperature": temperature,
         }
-        # Cohere Chat API v2: system_prompt は "preamble" キーで渡す
-        if system_prompt:
-            body["preamble"] = system_prompt
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -99,12 +106,18 @@ class CohereClient:
         start = time.time()
 
         try:
+            # デバッグ: リクエストボディをログ出力
+            logger.info(f"📤 Cohere Request Body: {json.dumps(body, ensure_ascii=False)[:300]}")
+
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.post(
                     f"{COHERE_BASE_URL}/chat",
                     json=body,
                     headers=headers,
                 )
+                # デバッグ: レスポンスコードとボディをログ出力
+                logger.info(f"📥 Cohere Response {resp.status_code}: {resp.text[:500]}")
+
                 resp.raise_for_status()
                 data = resp.json()
 

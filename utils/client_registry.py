@@ -170,8 +170,8 @@ class _NemotronAdapter(BaseLLMClient):
 
 # ─── ロールキー → アダプタ ファクトリ ─────────────────────────────────────────
 _FACTORIES = {
-    "uketuke":   lambda: _CohereAdapter("command-r"),
-    "gaiji":     lambda: _CohereAdapter("command-r-plus"),
+    "uketuke":   lambda: _CohereAdapter("command-r-7b"),      # v14.1: command-r → command-r-7b (軽量・安価)
+    "gaiji":     lambda: _CohereAdapter("command-a-03-2025"), # v14.1: command-r-plus → command-a-03-2025 (最新・RAG最適)
     "seppou":    lambda: _GroqAdapter(),
     "gunshi":    lambda: _MistralAdapter(),  # v14.1: o3-mini → Mistral Large 3 に統一
     "sanbo":     lambda: _MistralAdapter(),

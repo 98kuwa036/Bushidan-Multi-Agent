@@ -1,7 +1,9 @@
-"""roles/uketuke.py — 受付 (Command R) ロール v14
+"""roles/uketuke.py — 受付 (Command R 7B) ロール v14.1
 
-役割: ルーティング受付・フォールバック応答
-モデル: Cohere Command R
+役割: ルーティング受付・軽量フォールバック応答
+モデル: Cohere Command R 7B (軽量版、$0.0375/M tokens)
+
+v14.1 更新: command-r → command-r-7b (Cohere Command A への移行対応)
 """
 
 import time

@@ -1,7 +1,9 @@
-"""roles/gaiji.py — 外事 (Command R+) ロール v14
+"""roles/gaiji.py — 外事 (Command A 03-2025) ロール v14.1
 
 役割: 外部情報収集・RAG・マルチステップ処理
-モデル: Cohere Command R+ (RAG特化)
+モデル: Cohere Command A (03-2025) - 256K コンテキスト・RAG最適化
+
+v14.1 更新: command-r-plus → command-a-03-2025 (Cohere最新推奨モデル)
 """
 
 import time
@@ -11,7 +13,7 @@ from roles.base import BaseRole, RoleResult
 class GaijiRole(BaseRole):
     role_key = "gaiji"
     role_name = "外事"
-    model_name = "Command R+"
+    model_name = "Command A (03-2025)"
     emoji = "🌐"
     default_handled_by = "gaiji_rag"
 
@@ -27,7 +29,7 @@ class GaijiRole(BaseRole):
         try:
             system = self._build_system_prompt(
                 state,
-                "あなたは外事担当 (Command R+)。外部情報収集・RAG・マルチステップ処理の専門家です。"
+                "あなたは外事担当 (Command A)。外部情報収集・RAG・マルチステップ処理・ツール統合の専門家です。"
                 "正確で包括的な回答を日本語で提供してください。",
             )
             messages = self._format_messages(state)
