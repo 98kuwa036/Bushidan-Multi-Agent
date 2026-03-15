@@ -50,9 +50,9 @@ class ModelUpdateChecker:
 
             return {
                 "claude_sonnet": settings.get("shogun", {}).get("model", "unknown"),
-                "claude_opus": settings.get("shogun", {}).get("opus_model", "unknown"),
-                "gemini_flash": settings.get("taisho", {}).get("final_defense", {}).get("model", "unknown"),
-                "groq_llama": settings.get("karo", {}).get("dynamic_selection", {}).get("groq", {}).get("model", "unknown"),
+                "claude_opus": settings.get("daigensui", {}).get("model", "unknown"),
+                "gemini_flash": settings.get("kengyo", {}).get("model", "unknown"),
+                "groq_llama": settings.get("karo_b", {}).get("model", "unknown"),
             }
         except Exception as e:
             print(f"警告: 設定ファイル読み込みエラー: {e}")
