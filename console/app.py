@@ -19,12 +19,17 @@ import time
 import uuid
 from typing import Optional
 
+from dotenv import load_dotenv
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from utils.logger import get_logger
+
+# ── 環境変数読み込み (API キー等) ────────────────────────────────────────
+load_dotenv()
 
 logger = get_logger(__name__)
 
