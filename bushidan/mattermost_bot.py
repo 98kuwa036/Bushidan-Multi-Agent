@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -179,7 +180,7 @@ class MattermostAPI:
 
 
 class BushidanMattermostBot:
-    """武士団 Mattermost Bot."""
+    """武士団 Mattermost Bot v14 — LangGraph HITL + MemorySaver"""
 
     def __init__(self) -> None:
         self._driver: Optional[Driver]  = None
@@ -188,12 +189,19 @@ class BushidanMattermostBot:
         self._bot_user_id:  Optional[str] = None
         self._bot_username: Optional[str] = None
         self._orchestrator  = None
+        self._router        = None   # LangGraphRouter v14
         self._init_error:   Optional[str] = None
         self._current_mode: str = "battalion"
         self._cmd_prefix: str = os.environ.get("MATTERMOST_COMMAND_PREFIX", "!")
         self._approval_mgr  = None
         self._reporter      = None   # MattermostReporter (per-agent posting)
         self._callback_base: str = ""
+        # アクティブスレッドID集合
+        self._active_thread_ids: set = set()
+        # エージェントBotのユーザーID集合 (自己ループ防止)
+        self._agent_all_ids: set = set(AGENT_USER_IDS.keys())
+        # v14: HITL 待機中スレッド {thread_id → {event, state, timestamp}}
+        self._waiting_for_human: dict[str, dict] = {}
 
     # ── 起動 ──────────────────────────────────────────────────────────
 
@@ -242,6 +250,9 @@ class BushidanMattermostBot:
         if HAS_AIOHTTP:
             asyncio.create_task(self._run_callback_server(cb_port))
             logger.info("🌐 コールバックサーバー起動: %s", self._callback_base)
+
+        # アクティブスレッドID 定期クリーンアップ (6時間で削除)
+        asyncio.create_task(self._thread_cleanup_loop())
 
         # WebSocket 接続 (直接 await)
         self._ws = Websocket(self._driver.options, self._driver.client.token)
@@ -312,16 +323,11 @@ class BushidanMattermostBot:
     ) -> None:
         try:
             result_dict = await self._process_task_dict(task, channel_id, root_id)
-            handled_by = result_dict.get("handled_by", "unknown")
+            handled_by  = result_dict.get("handled_by", "unknown")
             result_text = result_dict.get("_formatted", "")
-            chunks = _split_message(result_text)
-            if self._reporter:
-                for chunk in chunks:
-                    await self._reporter.post_from_node(
-                        handled_by, chunk, root_id=root_id, channel_id=channel_id)
-            else:
-                for chunk in chunks:
-                    await self._post(channel_id, chunk, root_id)
+            self._active_thread_ids.add(root_id)
+            for chunk in _split_message(result_text):
+                await self._post_with_fallback(handled_by, chunk, channel_id, root_id)
         except Exception as e:
             logger.exception("スラッシュタスク処理エラー")
             await self._post(channel_id, f"❌ エラー: {e}", root_id)
@@ -342,6 +348,9 @@ class BushidanMattermostBot:
             post = json.loads(post_raw) if isinstance(post_raw, str) else post_raw
             if post.get("user_id") == self._bot_user_id:
                 return
+            # エージェントBotの投稿は無視 (ループ防止)
+            if post.get("user_id") in self._agent_all_ids:
+                return
 
             message    = post.get("message", "")
             channel_id = post.get("channel_id", "")
@@ -359,6 +368,15 @@ class BushidanMattermostBot:
             mentioned_agent = self._find_mentioned_agent(message, mentions)
 
             if not is_mentioned_main and not mentioned_agent:
+                # アクティブスレッドへの返信 → MemorySaver が会話履歴を保持しているので
+                # thread_id を渡してそのままルーターに投げるだけでよい
+                actual_root = post.get("root_id", "")
+                if actual_root and actual_root in self._active_thread_ids:
+                    sender = data.get("sender_name", "unknown")
+                    task   = re.sub(r"@\S+", "", message).strip() or message.strip()
+                    logger.info("🧵 スレッド返信 from %s: %s (thread=%s)", sender, task[:80], actual_root[:8])
+                    asyncio.create_task(
+                        self._handle_thread_reply(task, channel_id, actual_root))
                 return
 
             sender = data.get("sender_name", "unknown")
@@ -403,18 +421,12 @@ class BushidanMattermostBot:
                 f"🔀 ルーティング → **{agent_role or handled_by}**"
             )
 
-            # エージェント専用アカウントから返答を投稿
-            chunks = _split_message(result_text)
-            if self._reporter:
-                await self._reporter.post_from_node(
-                    handled_by, chunks[0], root_id=root_id, channel_id=channel_id)
-                for chunk in chunks[1:]:
-                    await self._reporter.post_from_node(
-                        handled_by, chunk, root_id=root_id, channel_id=channel_id)
-            else:
-                await self._post(channel_id, chunks[0], root_id)
-                for chunk in chunks[1:]:
-                    await self._post(channel_id, chunk, root_id)
+            # エージェント専用アカウントから返答を投稿 (失敗時はメインBotでフォールバック)
+            for chunk in _split_message(result_text):
+                await self._post_with_fallback(handled_by, chunk, channel_id, root_id)
+
+            # アクティブスレッドとして記録 (続きのスレッド返信を受け付ける)
+            self._active_thread_ids.add(root_id)
         except Exception as e:
             logger.exception("タスク処理エラー")
             await self._update_post(ack_id, f"❌ エラー: {e}")
@@ -497,6 +509,7 @@ class BushidanMattermostBot:
         try:
             from utils.config import load_config
             from core.system_orchestrator import SystemOrchestrator
+            from core.langgraph_router import LangGraphRouter
             if mode:
                 os.environ["SYSTEM_MODE"] = mode
             config = load_config()
@@ -504,43 +517,70 @@ class BushidanMattermostBot:
             await self._orchestrator.initialize()
             self._current_mode = config.mode.value
             self._init_error   = None
-            logger.info("✅ 武士団システム初期化完了 (モード: %s)", self._current_mode)
+
+            # LangGraph Router v14 を独立して初期化 (MemorySaver + HITL)
+            self._router = LangGraphRouter(orchestrator=self._orchestrator)
+            await self._router.initialize()
+
+            logger.info("✅ 武士団システム初期化完了 (モード: %s, LangGraph v14)", self._current_mode)
             return True
         except Exception as e:
             self._init_error = str(e)
             logger.error("❌ 初期化失敗: %s", e)
             return False
 
-    async def _process_task_dict(self, task: str, channel_id: str, root_id: str) -> dict:
-        """LangGraphの生の結果辞書を返す。handled_by / agent_role を含む。"""
-        if not self._orchestrator:
-            return {"status": "failed", "error": self._init_error or "未初期化",
-                    "_formatted": f"⚠️ 未初期化\nエラー: `{self._init_error}`",
-                    "handled_by": "unknown", "agent_role": ""}
-        context = {
-            "source": "mattermost", "channel_id": channel_id, "root_id": root_id,
-            "mode": self._current_mode,
-            "approval_manager": self._approval_mgr,
-            "callback_base": self._callback_base,
-        }
-        try:
-            result = await self._orchestrator.process_task(task, context)
-        except Exception as e:
-            logger.exception("タスク処理エラー")
-            return {"status": "failed", "error": str(e),
-                    "_formatted": f"❌ 処理失敗: {e}",
-                    "handled_by": "unknown", "agent_role": ""}
+    async def _process_task_dict(
+        self,
+        task: str,
+        channel_id: str,
+        root_id: str,
+        forced_role: Optional[str] = None,
+    ) -> dict:
+        """
+        LangGraph Router v13 でタスクを処理。
+        root_id を thread_id として渡すことで MemorySaver がスレッド継続を担保する。
+        """
+        router = self._router
+        if not router:
+            # フォールバック: 旧 orchestrator 経由
+            if not self._orchestrator:
+                return {"status": "failed", "error": self._init_error or "未初期化",
+                        "_formatted": f"⚠️ 未初期化\nエラー: `{self._init_error}`",
+                        "handled_by": "unknown", "agent_role": ""}
+            context = {
+                "source": "mattermost", "channel_id": channel_id, "root_id": root_id,
+                "mode": self._current_mode,
+                "forced_route": forced_role,
+            }
+            try:
+                result = await self._orchestrator.process_task(task, context)
+            except Exception as e:
+                logger.exception("タスク処理エラー (orchestrator)")
+                return {"status": "failed", "error": str(e),
+                        "_formatted": f"❌ 処理失敗: {e}",
+                        "handled_by": "unknown", "agent_role": ""}
+        else:
+            try:
+                result = await router.process_message(
+                    message=task,
+                    thread_id=root_id,       # ← MemorySaver のキー
+                    channel_id=channel_id,
+                    source="mattermost",
+                    forced_role=forced_role,
+                )
+            except Exception as e:
+                logger.exception("タスク処理エラー (router)")
+                return {"status": "failed", "error": str(e),
+                        "_formatted": f"❌ 処理失敗: {e}",
+                        "handled_by": "unknown", "agent_role": ""}
 
         if result.get("status") == "failed" or result.get("error"):
             err = result.get("error", "不明")
-            tb  = result.get("traceback", "")
-            tb_short = "\n".join(tb.strip().splitlines()[-10:]) if tb else ""
-            fmt = f"❌ 処理失敗: {err}\n```\n{tb_short}\n```" if tb_short else f"❌ 処理失敗: {err}"
-            result["_formatted"] = fmt
+            result["_formatted"] = f"❌ 処理失敗: {err}"
             return result
 
-        content = result.get("result", "")
-        elapsed = result.get("elapsed_time", result.get("execution_time", 0))
+        content = result.get("result", result.get("response", ""))
+        elapsed = result.get("execution_time", 0)
         fmt = (f"{content}\n\n*⏱️ {elapsed:.1f}秒 | {self._current_mode}*"
                if content else "⚠️ 返答が空でした。")
         result["_formatted"] = fmt
@@ -550,6 +590,112 @@ class BushidanMattermostBot:
         """後方互換: 結果を文字列で返す。"""
         d = await self._process_task_dict(task, channel_id, root_id)
         return d.get("_formatted", d.get("result", "❌ 不明なエラー"))
+
+    # ── スレッド会話管理 (v13: MemorySaver で会話履歴を管理) ─────────────
+
+    async def _handle_thread_reply(
+        self, message: str, channel_id: str, root_id: str
+    ) -> None:
+        """
+        アクティブスレッドへの返信処理 (v14 HITL対応)。
+
+        HITL 待機中のスレッドに返信があった場合、
+        human_response として設定して処理を再開する。
+        """
+        # HITL 待機中チェック
+        hitl_state = self._waiting_for_human.pop(root_id, None)
+        if hitl_state:
+            logger.info("🙋 HITL 再開: thread=%s response=%s", root_id[:8], message[:60])
+
+        try:
+            result_dict = await self._process_task_dict(message, channel_id, root_id)
+            handled_by  = result_dict.get("handled_by", "unknown")
+            result_text = result_dict.get("_formatted", result_dict.get("result", "❌"))
+
+            # HITL 待機状態の検出
+            if result_dict.get("dialog_status") == "waiting_for_human":
+                question = result_dict.get("human_question", "")
+                self._waiting_for_human[root_id] = {
+                    "timestamp": time.time(),
+                    "question": question,
+                }
+                logger.info("🙋 HITL 待機開始: thread=%s question=%s", root_id[:8], question[:60])
+                # 300秒後に自動タイムアウト
+                asyncio.create_task(self._hitl_timeout(root_id, channel_id, 300))
+
+            for chunk in _split_message(result_text):
+                await self._post_with_fallback(handled_by, chunk, channel_id, root_id)
+        except Exception as e:
+            logger.exception("スレッド返信処理エラー")
+            await self._post(channel_id, f"❌ エラー: {e}", root_id)
+
+    async def _hitl_timeout(self, root_id: str, channel_id: str, timeout: int) -> None:
+        """HITL タイムアウト — 指定秒後に自動継続"""
+        await asyncio.sleep(timeout)
+        if root_id in self._waiting_for_human:
+            del self._waiting_for_human[root_id]
+            logger.info("⏱️ HITL タイムアウト: thread=%s (%ds)", root_id[:8], timeout)
+            await self._post(channel_id, f"⏱️ 応答タイムアウト ({timeout}秒) — 自動継続", root_id)
+
+    async def _call_claude_with_history(self, agent_key: str, messages: list) -> str:
+        """大元帥・将軍: 会話履歴付き API 呼び出し (CLI は履歴非対応のため API 直接使用)"""
+        from utils.claude_cli_client import call_claude_with_history
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            return "❌ ANTHROPIC_API_KEY が未設定です"
+        model   = AGENT_CLAUDE_MODELS.get(agent_key, "claude-sonnet-4-6")
+        persona = AGENT_PERSONAS.get(agent_key, "")
+        return await call_claude_with_history(
+            messages=messages, model=model, api_key=api_key,
+            system=persona or None, max_tokens=2000)
+
+    @staticmethod
+    def _format_history_prompt(history: list, new_message: str) -> str:
+        """過去の会話履歴をプロンプト形式にまとめる (LangGraph 用)"""
+        if not history:
+            return new_message
+        lines = ["[以前の会話]"]
+        for h in history[-10:]:
+            role    = "ユーザー" if h.get("role") == "user" else "エージェント"
+            content = h.get("content", "")[:500]
+            lines.append(f"{role}: {content}")
+        lines += ["", "[現在の質問]", new_message]
+        return "\n".join(lines)
+
+    async def _post_with_fallback(
+        self, handled_by: str, chunk: str, channel_id: str, root_id: str
+    ) -> None:
+        """エージェント専用アカウントで投稿し、失敗時はメインBotでフォールバック。"""
+        if self._reporter:
+            posted = await self._reporter.post_from_node(
+                handled_by, chunk, root_id=root_id, channel_id=channel_id)
+            if posted is None:
+                # エージェント投稿失敗 → ヘッダー付きでメインBotから代理投稿
+                from bushidan.mattermost_reporter import NODE_TO_AGENT, AGENT_CONFIG
+                ak      = NODE_TO_AGENT.get(handled_by, "shogun")
+                cfg     = AGENT_CONFIG.get(ak, {})
+                emoji   = cfg.get("emoji", "🤖")
+                model_n = cfg.get("model", handled_by)
+                logger.warning("⚠️ [%s] エージェント投稿失敗 → メインBotで代理投稿", ak)
+                await self._post(
+                    channel_id,
+                    f"{emoji} **[{model_n}]** *(代理投稿)*\n\n{chunk}",
+                    root_id)
+        else:
+            await self._post(channel_id, chunk, root_id)
+
+    async def _thread_cleanup_loop(self) -> None:
+        """
+        アクティブスレッドIDを6時間ごとに全クリアする。
+        会話履歴は LangGraph MemorySaver が保持するため、
+        ここでは受信判定用のIDセットのみ管理する。
+        """
+        while True:
+            await asyncio.sleep(21600)  # 6時間
+            count = len(self._active_thread_ids)
+            self._active_thread_ids.clear()
+            if count:
+                logger.debug("🧹 アクティブスレッドIDクリア: %d件", count)
 
     # ── 投稿ヘルパー ─────────────────────────────────────────────────
 
@@ -606,75 +752,32 @@ class BushidanMattermostBot:
     async def _call_agent_direct(
         self, agent_key: str, message: str, channel_id: str, root_id: str
     ) -> None:
-        """特定エージェントに直接タスクを投げてそのアカウントから返信"""
+        """
+        特定エージェントに直接タスクを投げてそのアカウントから返信 (v13)。
+
+        forced_role を LangGraph Router v13 に渡す。
+        MemorySaver が root_id=thread_id で会話履歴を保持する。
+        """
         from bushidan.mattermost_reporter import AGENT_CONFIG
         cfg = AGENT_CONFIG.get(agent_key, {})
-        emoji  = cfg.get("emoji", "🤖")
-        model  = cfg.get("model", agent_key)
-        logger.info("🎯 エージェント直接呼び出し: %s (%s)", agent_key, model)
+        logger.info("🎯 エージェント直接呼び出し: %s", agent_key)
 
         try:
-            if agent_key in AGENT_CLAUDE_MODELS:
-                # 大元帥・将軍: Anthropic API 直接
-                result = await self._call_claude_direct(agent_key, message)
-            else:
-                # 他エージェント: LangGraph forced_route 経由
-                forced_route = AGENT_FORCED_ROUTES.get(agent_key, "karo_default")
-                context = {
-                    "source":       "mattermost_direct",
-                    "channel_id":   channel_id,
-                    "root_id":      root_id,
-                    "mode":         self._current_mode,
-                    "forced_route": forced_route,
-                    "forced_agent": agent_key,
-                }
-                result_dict = await self._process_task_dict_with_context(
-                    message, channel_id, root_id, context)
-                result = result_dict.get("_formatted", "❌ 処理失敗")
+            result_dict = await self._process_task_dict(
+                message, channel_id, root_id, forced_role=agent_key
+            )
+            handled_by  = result_dict.get("handled_by", agent_key)
+            result_text = result_dict.get("_formatted", result_dict.get("result", "❌"))
 
-            # エージェントアカウントから投稿
-            full_message = f"{emoji} **[{model}]**\n\n{result}"
-            if self._reporter:
-                for chunk in _split_message(full_message):
-                    await self._reporter.post_as(
-                        agent_key, chunk, channel_id=channel_id, root_id=root_id)
-            else:
-                await self._post(channel_id, full_message, root_id)
+            for chunk in _split_message(result_text):
+                await self._post_with_fallback(handled_by, chunk, channel_id, root_id)
+
+            # アクティブスレッドとして記録
+            self._active_thread_ids.add(root_id)
 
         except Exception as e:
             logger.exception("エージェント直接呼び出しエラー [%s]: %s", agent_key, e)
             await self._post(channel_id, f"❌ {agent_key} エラー: {e}", root_id)
-
-    async def _process_task_dict_with_context(
-        self, task: str, channel_id: str, root_id: str, extra_context: dict
-    ) -> dict:
-        """forced_route などの追加コンテキストを注入してタスク処理"""
-        if not self._orchestrator:
-            return {"_formatted": f"⚠️ 未初期化: {self._init_error}", "handled_by": "unknown"}
-        context = {
-            "source": "mattermost", "channel_id": channel_id, "root_id": root_id,
-            "mode": self._current_mode,
-            "approval_manager": self._approval_mgr,
-            "callback_base": self._callback_base,
-            **extra_context,
-        }
-        try:
-            result = await self._orchestrator.process_task(task, context)
-        except Exception as e:
-            logger.exception("タスク処理エラー")
-            return {"_formatted": f"❌ 処理失敗: {e}", "handled_by": "unknown"}
-
-        if result.get("status") == "failed" or result.get("error"):
-            err = result.get("error", "不明")
-            result["_formatted"] = f"❌ 処理失敗: {err}"
-            return result
-
-        content = result.get("result", "")
-        elapsed = result.get("elapsed_time", result.get("execution_time", 0))
-        result["_formatted"] = (
-            f"{content}\n\n*⏱️ {elapsed:.1f}秒*" if content else "⚠️ 返答が空でした。"
-        )
-        return result
 
 
 # ── エントリーポイント ────────────────────────────────────────────

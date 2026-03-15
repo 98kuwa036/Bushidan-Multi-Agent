@@ -118,6 +118,46 @@ async def _call_anthropic_api(
     return response.content[0].text
 
 
+async def _call_anthropic_api_with_messages(
+    messages: list,
+    model: str,
+    api_key: str,
+    system: Optional[str] = None,
+    max_tokens: int = 4096,
+) -> str:
+    """Anthropic API を messages 配列で呼び出す（会話履歴対応）"""
+    import anthropic
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
+    kwargs: dict = {"model": model, "max_tokens": max_tokens, "messages": messages}
+    if system:
+        kwargs["system"] = system
+    response = await client.messages.create(**kwargs)
+    logger.info("✅ Anthropic API 使用 (会話履歴 %d件, model=%s)", len(messages), model)
+    return response.content[0].text
+
+
+async def call_claude_with_history(
+    messages: list,
+    model: str,
+    api_key: str,
+    system: Optional[str] = None,
+    max_tokens: int = 4096,
+) -> str:
+    """
+    会話履歴付きで Claude を呼び出す。
+    CLI は単一プロンプトのみ対応のため、API を直接使用する。
+
+    Args:
+        messages: [{"role": "user"/"assistant", "content": "..."}]
+        model:    "claude-sonnet-4-6" など
+        api_key:  Anthropic APIキー
+        system:   システムプロンプト (省略可)
+        max_tokens: 最大トークン数
+    """
+    return await _call_anthropic_api_with_messages(messages, model, api_key, system, max_tokens)
+
+
 async def call_claude_with_fallback(
     prompt: str,
     model: str,

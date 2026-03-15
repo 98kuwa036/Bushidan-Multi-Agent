@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>武士団コンソール v14</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="login-screen" class="screen">
+  <div class="login-box">
+    <h1>🏯 武士団</h1>
+    <p>Multi-Agent Console v14</p>
+    <input type="password" id="password-input" placeholder="パスワード" autocomplete="current-password">
+    <button id="login-btn" onclick="doLogin()">ログイン</button>
+    <p id="login-error" class="error"></p>
+  </div>
+</div>
+
+<!-- Chat Screen -->
+<div id="chat-screen" class="screen hidden">
+  <!-- Header -->
+  <header>
+    <span class="title">🏯 武士団</span>
+    <select id="model-select">
+      <option value="auto">🔀 自動</option>
+    </select>
+    <button class="icon-btn" onclick="newThread()">+</button>
+  </header>
+
+  <!-- Messages -->
+  <div id="messages"></div>
+
+  <!-- Input -->
+  <div class="input-bar">
+    <textarea id="msg-input" placeholder="メッセージを入力..." rows="1"
+              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+    <button id="send-btn" onclick="sendMessage()">➤</button>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let token = localStorage.getItem('bushidan_token') || '';
+let threadId = '';
+let ws = null;
+
+// Auto-resize textarea
+const msgInput = document.getElementById('msg-input');
+msgInput.addEventListener('input', () => {
+  msgInput.style.height = 'auto';
+  msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px';
+});
+
+// Init
+async function init() {
+  // Try skip login if no password set
+  try {
+    const r = await fetch(API + '/api/health');
+    if (r.ok) {
+      await loadModels();
+      showChat();
+      connectWS();
+      return;
+    }
+  } catch(e) {}
+
+  if (token) {
+    showChat();
+    await loadModels();
+    connectWS();
+  }
+}
+
+async function doLogin() {
+  const pw = document.getElementById('password-input').value;
+  try {
+    const r = await fetch(API + '/api/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({password: pw})
+    });
+    if (!r.ok) {
+      document.getElementById('login-error').textContent = 'パスワードが違います';
+      return;
+    }
+    const d = await r.json();
+    token = d.token;
+    localStorage.setItem('bushidan_token', token);
+    await loadModels();
+    showChat();
+    connectWS();
+  } catch(e) {
+    document.getElementById('login-error').textContent = 'エラー: ' + e.message;
+  }
+}
+
+async function loadModels() {
+  try {
+    const r = await fetch(API + '/api/models');
+    const d = await r.json();
+    const sel = document.getElementById('model-select');
+    sel.innerHTML = '';
+    d.models.forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.key;
+      opt.textContent = m.emoji + ' ' + m.name;
+      sel.appendChild(opt);
+    });
+  } catch(e) { console.error(e); }
+}
+
+function showChat() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('chat-screen').classList.remove('hidden');
+  newThread();
+}
+
+function newThread() {
+  threadId = Math.random().toString(36).substring(2, 10);
+  document.getElementById('messages').innerHTML = '';
+  addSystemMsg('新しい会話を開始しました');
+}
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(proto + '//' + location.host + '/ws/chat');
+  ws.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (d.type === 'thinking') {
+      showThinking();
+    } else if (d.type === 'response') {
+      hideThinking();
+      addBotMsg(d.response, d.agent_role, d.execution_time);
+    } else if (d.type === 'error') {
+      hideThinking();
+      addSystemMsg('❌ ' + d.message);
+    }
+  };
+  ws.onclose = () => { setTimeout(connectWS, 3000); };
+  ws.onerror = () => {};
+}
+
+function sendMessage() {
+  const input = document.getElementById('msg-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  addUserMsg(msg);
+  input.value = '';
+  input.style.height = 'auto';
+
+  const model = document.getElementById('model-select').value;
+
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({message: msg, model: model, thread_id: threadId}));
+  } else {
+    // Fallback to REST
+    fetchChat(msg, model);
+  }
+}
+
+async function fetchChat(msg, model) {
+  showThinking();
+  try {
+    const r = await fetch(API + '/api/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: msg, model: model, thread_id: threadId})
+    });
+    const d = await r.json();
+    hideThinking();
+    addBotMsg(d.response, d.agent_role, d.execution_time);
+  } catch(e) {
+    hideThinking();
+    addSystemMsg('❌ ' + e.message);
+  }
+}
+
+// UI helpers
+function addUserMsg(text) {
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  div.textContent = text;
+  document.getElementById('messages').appendChild(div);
+  scrollBottom();
+}
+
+function addBotMsg(text, role, time) {
+  const div = document.createElement('div');
+  div.className = 'msg bot';
+  const header = document.createElement('div');
+  header.className = 'msg-header';
+  header.textContent = (role || 'AI') + (time ? ' (' + time.toFixed(1) + 's)' : '');
+  div.appendChild(header);
+  const body = document.createElement('div');
+  body.className = 'msg-body';
+  body.textContent = text;
+  div.appendChild(body);
+  document.getElementById('messages').appendChild(div);
+  scrollBottom();
+}
+
+function addSystemMsg(text) {
+  const div = document.createElement('div');
+  div.className = 'msg system';
+  div.textContent = text;
+  document.getElementById('messages').appendChild(div);
+  scrollBottom();
+}
+
+function showThinking() {
+  let el = document.getElementById('thinking');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'thinking';
+    el.className = 'msg bot thinking';
+    el.textContent = '考え中...';
+    document.getElementById('messages').appendChild(el);
+  }
+  scrollBottom();
+}
+
+function hideThinking() {
+  const el = document.getElementById('thinking');
+  if (el) el.remove();
+}
+
+function scrollBottom() {
+  const m = document.getElementById('messages');
+  m.scrollTop = m.scrollHeight;
+}
+
+init();
+</script>
+</body>
+</html>

@@ -24,81 +24,72 @@ v12 メンバー構成 (10役職):
 
 import asyncio
 import logging
+import os
 from typing import Any, Dict, Optional
 
 from mattermostdriver.driver import Driver
 
 logger = logging.getLogger("bushidan.mattermost_reporter")
 
-# ─── エージェント設定 v12 (10役職) ───────────────────────────────────────────
-# 全トークン設定済み (2026-03-09)
+# ─── エージェント設定 v14 (10役職) ───────────────────────────────────────────
+# トークンは環境変数 MM_TOKEN_{KEY} から取得
 AGENT_CONFIG: Dict[str, Dict[str, str]] = {
-    # ── 受付 (uketuke) — Command R ──────────────────────────────────────────
     "uketuke": {
-        "token":   "8zp818ckfj81zptpubwh6zqtse",
+        "token":   os.environ.get("MM_TOKEN_UKETUKE", ""),
         "display": "受付",
         "model":   "Command R",
         "emoji":   "🚪",
     },
-    # ── 外事 (gaiji) — Command R+ ───────────────────────────────────────────
     "gaiji": {
-        "token":   "zfcekita5pdqfmjag1y3utw4ke",
+        "token":   os.environ.get("MM_TOKEN_GAIJI", ""),
         "display": "外事",
         "model":   "Command R+",
         "emoji":   "🌐",
     },
-    # ── 検校 (kengyo) — Gemini Flash Vision ─────────────────────────────────
     "kengyo": {
-        "token":   "m9x519cbqb8hff5e5jcbpmqz8a",
+        "token":   os.environ.get("MM_TOKEN_KENGYO", ""),
         "display": "検校",
         "model":   "Gemini 3 Flash Vision",
         "emoji":   "👁️",
     },
-    # ── 将軍 (shogun) — Claude Sonnet 4.6 ───────────────────────────────────
     "shogun": {
-        "token":   "ptfkjhgsdpgqxbfpnk36ybwy1r",
+        "token":   os.environ.get("MM_TOKEN_SHOGUN", ""),
         "display": "将軍",
         "model":   "Claude Sonnet 4.6",
         "emoji":   "🏯",
     },
-    # ── 軍師 (gunshi) — o3-mini ─────────────────────────────────────────────
     "gunshi": {
-        "token":   "6n3ddwssh3njijtjjk7nhgxfew",
+        "token":   os.environ.get("MM_TOKEN_GUNSHI", ""),
         "display": "軍師",
         "model":   "o3-mini",
         "emoji":   "📜",
     },
-    # ── 参謀 (sanbo) — Mistral Large 3 (旧: sanbo-a-bot を流用) ─────────────
     "sanbo": {
-        "token":   "xjc9at7uzbn49bpj8dusea5ypo",
+        "token":   os.environ.get("MM_TOKEN_SANBO", ""),
         "display": "参謀",
         "model":   "Mistral Large 3",
         "emoji":   "🗡️",
     },
-    # ── 右筆 (yuhitsu) — Llama ELYZA ────────────────────────────────────────
     "yuhitsu": {
-        "token":   "9ktzxdari7dkfjw9np66aznfby",
+        "token":   os.environ.get("MM_TOKEN_YUHITSU", ""),
         "display": "右筆",
         "model":   "Llama ELYZA",
         "emoji":   "🖊️",
     },
-    # ── 斥候 (seppou) — Llama 3.3 70B Groq ──────────────────────────────────
     "seppou": {
-        "token":   "iff7zm9mai86fcik6higjox4ua",
+        "token":   os.environ.get("MM_TOKEN_SEPPOU", ""),
         "display": "斥候",
         "model":   "Llama 3.3 70B (Groq)",
         "emoji":   "🏹",
     },
-    # ── 隠密 (onmitsu) — Nemotron Local ─────────────────────────────────────
     "onmitsu": {
-        "token":   "ekff6cdkytdkdq7o5msb76s5ea",
+        "token":   os.environ.get("MM_TOKEN_ONMITSU", ""),
         "display": "隠密",
         "model":   "Nemotron-3-Nano (Local)",
         "emoji":   "🥷",
     },
-    # ── 大元帥 (daigensui) — Claude Opus 4.6 ────────────────────────────────
     "daigensui": {
-        "token":   "81cag4cjdbd8jmsn8jmb5o4ohr",
+        "token":   os.environ.get("MM_TOKEN_DAIGENSUI", ""),
         "display": "大元帥",
         "model":   "Claude Opus 4.6",
         "emoji":   "⚔️",

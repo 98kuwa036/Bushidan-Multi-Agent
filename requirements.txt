@@ -1,8 +1,7 @@
-# Bushidan Multi-Agent System v12 - Dependencies
-# 脱中国企業・10役職体制
-# o3-mini PDCA + BDI Framework + Nemotron Local + Cohere + Mistral
+# Bushidan Multi-Agent System v14 - Dependencies
+# 10役職体制 + LangGraph v14 + MCP SDK + モバイルコンソール
 
-# Core dependencies (required)
+# Core dependencies
 httpx>=0.24.0
 aiohttp>=3.8.0
 python-dotenv>=1.0.0
@@ -10,63 +9,40 @@ pydantic>=2.0.0
 pyyaml>=6.0
 asyncio-throttle>=1.0.2
 
-# AI Model APIs (v12 - 脱中国企業・10役職)
+# AI Model APIs (v14 - 10役職)
 anthropic>=0.40.0             # Claude Opus 4.6 (大元帥) + Sonnet 4.6 (将軍)
 openai>=1.50.0                # o3-mini (軍師)
 google-generativeai>=0.8.0    # Gemini 3 Flash Vision (検校)
 groq>=0.4.0                   # Llama 3.3 70B (斥候)
 cohere>=5.0.0                 # Command R (受付) + Command R+ (外事)
 mistralai>=1.0.0              # Mistral Large 3 (参謀)
-litellm>=1.0.0                # OpenAI-compatible API proxy
 
-# DSPy integration (recommended)
-dspy>=2.0.0
-
-# LangGraph (hybrid routing)
+# LangGraph (v14 routing)
 langgraph>=1.0.0
 langchain-core>=0.3.0
-langchain-mcp-adapters>=0.1.0    # LangGraph ↔ MCP 統合アダプター
+langchain-mcp-adapters>=0.1.0
 
-# Enhanced web search and scraping
+# Web search
 tavily-python>=0.3.0
 playwright>=1.40.0
 
-# Optional integrations
+# Integrations
 discord.py>=2.3.0
 notion-client>=2.0.0
-mattermostdriver>=7.3.2    # Mattermost Bot + MCP サーバー
-mcp>=1.0.0                 # Model Context Protocol SDK (FastMCP)
+mattermostdriver>=7.3.2
+mcp>=1.0.0
 
-# Data analysis (codings directory tools)
+# v14: Mobile Console
+fastapi>=0.110.0
+uvicorn>=0.29.0
+
+# Data analysis
 pandas>=1.3.0
 tabulate>=0.8.9
 
-# Development dependencies (dev only)
+# Development
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 black>=23.0.0
 ruff>=0.1.0
 mypy>=1.5.0
-
-# System utilities
-pathlib2>=2.3.7
-
-# ============================================================================
-# v12 Architecture (脱中国企業・10役職体制)
-# ============================================================================
-#
-#   REMOVED (v12):
-#     - GPT-5 (参謀-Aから除外、Mistral Large 3に統一)
-#     - xAI Grok (参謀-Bから廃止)
-#     - 家老-A (Gemini Flash → 廃止)
-#
-#   ADDED (v12):
-#     - cohere (受付 Command R + 外事 Command R+)
-#     - mistralai (参謀 Mistral Large 3)
-#     - 右筆 ELYZA (ローカル llama.cpp)
-#
-#   KEPT:
-#     - anthropic (Claude Opus 4.6 + Sonnet 4.6)
-#     - google-generativeai (Gemini 3 Flash Vision)
-#     - groq (Llama 3.3 70B = 斥候)
-#     - Nemotron-3-Nano (NVIDIA, local llama.cpp = 隠密)

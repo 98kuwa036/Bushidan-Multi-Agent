@@ -1,37 +1,32 @@
 """
-武士団 Multi-Agent System v12 - LangGraph Router (MCP + Notion 密結合)
+武士団 Multi-Agent System v14 - LangGraph Router
 
-v12 メンバー再構成: 10役職・Cohere Command R/R+ 追加
+v14 主な変更点:
+  - ノードタイムアウト: _exec_node() に asyncio.wait_for ラップ
+  - ヘルスチェック統合: _route_decision() でフォールバック
+  - Human-in-the-loop: human_interrupt ノード + 3分岐 followup
+  - context_summary: リレー間コンテキスト要約
+  - MCP ツール注入: _exec_node() で state に tools 注入
 
-StateGraph v12:
+StateGraph v14:
   [START]
     ↓
-  [analyze]        タスク複雑度・マルチステップ・アクション検出
+  [analyze_intent]    タスク複雑度・種別分析
     ↓
-  [fetch_context]  並列: MCP ツール一覧 + Notion 家訓/直近タスク取得
+  [notion_retrieve]   Notion RAG 検索
     ↓
-  [route_decision] ツール認識・パーミッション・Notion 知識参照ルーティング
+  [route_decision]    ルーティング判断 (10役職 + ヘルスチェック)
     ↓
-  ┌──────────────────────────────────────────────────────┐
-  │  groq_qa          │  高速フィルタ (斥候 Llama 3.3)          │
-  │  gunshi_pdca      │  深層推論 (軍師 o3-mini)                │
-  │  gaiji_rag        │  外部/RAG (外事 Command R+)             │
-  │  taisho_mcp       │  Tool chain (参謀 + MCP)               │
-  │  yuhitsu_jp       │  日本語清書 (右筆 ELYZA)                │
-  │  onmitsu_local    │  完全ローカル (隠密 Nemotron)           │
-  │  karo_default     │  受付フォールバック (受付 Command R)    │
-  └──────────────────────────────────────────────────────┘
+  ┌─────────────────────────────────────────────────────┐
+  │ groq_qa / gunshi_pdca / gaiji_rag / taisho_mcp      │
+  │ yuhitsu_jp / karo_default / onmitsu_local           │
+  │ shogun_direct / daigensui_direct / kengyo_vision    │
+  └─────────────────────────────────────────────────────┘
     ↓
-  [persist_notion]  非同期: Notion に全タスク結果を自動保存
-    ↓
-  [END]
-
-v12 変更点:
-  - gaiji_rag ノード追加: 外事 (Command R+) による外部ツール/RAG
-  - yuhitsu_jp ノード追加: 右筆 (ELYZA) による日本語清書
-  - onmitsu_local: 機密専用 (Nemotron のみ)、日本語は yuhitsu_jp に移管
-  - karo_default: 受付 (Command R) へ更新
-  - 受付→外事→検校→将軍→軍師→参謀→右筆→斥候→隠密→大元帥 (10役職)
+  [check_followup]    3分岐: human / loop / done
+    ├─ "human" → [human_interrupt]  (HITL 中断)
+    ├─ "loop"  → [notion_retrieve]  (自律ループ)
+    └─ "done"  → [notion_store]     (完了)
 """
 
 import asyncio
@@ -39,923 +34,567 @@ import time
 from typing import Any, Literal, Optional
 
 from langgraph.graph import StateGraph, END
-from typing_extensions import TypedDict
+from langgraph.checkpoint.memory import MemorySaver
 
+from core.state import BushidanState
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# ── ノード別タイムアウト (秒) ────────────────────────────────────────────────
+NODE_TIMEOUTS = {
+    "groq_qa":          30,
+    "karo_default":     60,
+    "gaiji_rag":        60,
+    "taisho_mcp":       60,
+    "kengyo_vision":    60,
+    "gunshi_pdca":      90,
+    "yuhitsu_jp":       90,
+    "shogun_direct":   120,
+    "onmitsu_local":   120,
+    "daigensui_direct":180,
+}
 
-# =============================================================================
-# State Definition v11.5
-# =============================================================================
-
-class TaskState(TypedDict):
-    """LangGraph state v11.5 — MCP ツール認識 + Notion コンテキスト付き"""
-
-    # ── 入力 ────────────────────────────────────────────────
-    content: str
-    context: dict
-    priority: int
-    source: str
-
-    # ── 分析結果 (analyze ノード) ─────────────────────────
-    is_multi_step: bool
-    is_action_task: bool
-    is_simple_qa: bool
-    is_japanese_priority: bool  # 日本語特化タスク → ELYZA ルート
-    is_confidential: bool       # 機密タスク → Nemotron ルート
-    complexity: str           # "simple" | "medium" | "complex" | "strategic"
-    confidence: float
-
-    # ── コンテキスト取得 (fetch_context ノード) ─────────────
-    available_tools: list     # 実行中 MCP サーバーのツール名一覧
-    tool_schemas: dict        # ツール名 → スキーマの辞書
-    notion_context: str       # 家訓 + 直近タスク要約（LLM プロンプト用）
-
-    # ── ルーティング決定 ─────────────────────────────────
-    route: str                # 選択された実行ルート
-
-    # ── 実行結果 ─────────────────────────────────────────
-    result: Optional[dict]
-    status: str               # "pending" | "executing" | "completed" | "failed"
-    handled_by: str
-    agent_role: str           # 実際に処理したエージェント役職
-    execution_time: float
-    error: Optional[str]
-    mcp_tools_used: list      # このタスクで呼び出した MCP ツール名
-
-    # ── Notion 永続化 ─────────────────────────────────────
-    notion_page_id: Optional[str]
+# ── フォールバックマップ (障害時の代替ルート) ────────────────────────────────
+_FALLBACK_MAP = {
+    "groq_qa":          "karo_default",
+    "gunshi_pdca":      "shogun_direct",
+    "gaiji_rag":        "karo_default",
+    "taisho_mcp":       "shogun_direct",
+    "yuhitsu_jp":       "karo_default",
+    "onmitsu_local":    "karo_default",
+    "kengyo_vision":    "shogun_direct",
+    "daigensui_direct": "shogun_direct",
+    "shogun_direct":    "karo_default",
+}
 
 
 # =============================================================================
-# LangGraph Router v11.5
+# Role Registry — 遅延インポートでロール一覧を管理
+# =============================================================================
+
+def _load_roles() -> dict:
+    """roles/ パッケージから全ロールをロードする (起動時1回のみ)"""
+    from roles.uketuke import UketukeRole
+    from roles.gaiji import GaijiRole
+    from roles.seppou import SeppouRole
+    from roles.gunshi import GunshiRole
+    from roles.sanbo import SanboRole
+    from roles.shogun import ShogunRole
+    from roles.daigensui import DaigensuiRole
+    from roles.yuhitsu import YuhitsuRole
+    from roles.onmitsu import OnmitsuRole
+    from roles.kengyo import KengyoRole
+    return {
+        "uketuke":   UketukeRole(),
+        "gaiji":     GaijiRole(),
+        "seppou":    SeppouRole(),
+        "gunshi":    GunshiRole(),
+        "sanbo":     SanboRole(),
+        "shogun":    ShogunRole(),
+        "daigensui": DaigensuiRole(),
+        "yuhitsu":   YuhitsuRole(),
+        "onmitsu":   OnmitsuRole(),
+        "kengyo":    KengyoRole(),
+    }
+
+
+# =============================================================================
+# LangGraph Router v14
 # =============================================================================
 
 class LangGraphRouter:
-    """
-    LangGraph StateGraph ベースのタスクルーター v11.5
+    """LangGraph StateGraph v14 — タイムアウト + ヘルスチェック + HITL"""
 
-    変更点 (v10.x → v11.5):
-      - fetch_context ノード追加: MCP ツール一覧 + Notion 家訓を事前取得
-      - route_decision がツール認識・Notion 参照ベースに進化
-      - gunshi_pdca ルート追加: COMPLEX/STRATEGIC タスクを軍師 o3-mini に委譲
-      - persist_notion ノード追加: 全タスク結果を Notion へ自動保存
-      - MCPPermissionManager との統合
-    """
-
-    def __init__(self, orchestrator: "SystemOrchestrator"):
+    def __init__(self, orchestrator: Any = None):
         self.orchestrator = orchestrator
-        self._graph = None
+        self._roles: dict = {}
         self._compiled = None
-        self._auto_save_notion = True  # Notion 自動保存フラグ
+        self._checkpointer = MemorySaver()
 
     async def initialize(self) -> None:
-        """LangGraph ルーターを初期化."""
-        logger.info("🔗 LangGraph Router v11.5 初期化中...")
+        logger.info("🔗 LangGraph Router v14 初期化中...")
         try:
-            self._graph = self._build_graph()
-            self._compiled = self._graph.compile()
-            logger.info("✅ LangGraph Router v11.5 初期化完了")
+            self._roles = _load_roles()
+            self._compiled = self._build_graph().compile(
+                checkpointer=self._checkpointer
+            )
+            # バックグラウンドヘルスチェック開始 (5分間隔でキャッシュ更新)
+            self._health_task = asyncio.create_task(
+                self._background_health_check(), name="health_check_bg"
+            )
+            logger.info("✅ LangGraph Router v14 初期化完了 (MemorySaver 有効)")
         except Exception as e:
             import traceback
             logger.error("❌ LangGraph Router 初期化エラー: %s\n%s", e, traceback.format_exc())
             raise
 
+    async def _background_health_check(self) -> None:
+        """5分間隔で全ロールのヘルスチェックを実行し、キャッシュを更新する。"""
+        await asyncio.sleep(10)  # 起動直後は待機
+        while True:
+            try:
+                from utils.client_registry import ClientRegistry
+                registry = ClientRegistry.get()
+                results = await registry.health_check_all()
+                unhealthy = [k for k, v in results.items() if not v]
+                if unhealthy:
+                    logger.warning("🏥 unhealthy ロール: %s", unhealthy)
+                else:
+                    logger.debug("🏥 全ロール healthy")
+            except Exception as e:
+                logger.debug("🏥 ヘルスチェック失敗: %s", e)
+            await asyncio.sleep(300)  # 5分間隔
+
     def _build_graph(self) -> StateGraph:
-        """v11.5 StateGraph を構築."""
-        graph = StateGraph(TaskState)
+        graph = StateGraph(BushidanState)
 
-        # ── ノード登録 ────────────────────────────────────
-        graph.add_node("analyze",          self._analyze_task)
-        graph.add_node("fetch_context",    self._fetch_context)
-        graph.add_node("groq_qa",          self._execute_groq_qa)           # 斥候 Llama 3.3
-        graph.add_node("gunshi_pdca",      self._execute_gunshi_pdca)       # 軍師 o3-mini PDCA
-        graph.add_node("gaiji_rag",        self._execute_gaiji_rag)         # v12: 外事 Command R+
-        graph.add_node("taisho_mcp",       self._execute_taisho_mcp)        # MCP ツール連携
-        graph.add_node("yuhitsu_jp",       self._execute_yuhitsu_jp)        # v12: 右筆 ELYZA
-        graph.add_node("karo_default",     self._execute_karo_default)      # 受付 Command R フォールバック
-        graph.add_node("onmitsu_local",    self._execute_onmitsu_local)     # 隠密 Nemotron (機密専用)
-        graph.add_node("persist_notion",   self._persist_notion)
+        # ── ノード登録 ────────────────────────────────────────────────
+        graph.add_node("analyze_intent",   self._analyze_intent)
+        graph.add_node("notion_retrieve",  self._notion_retrieve)
+        graph.add_node("groq_qa",          self._exec_node("seppou",    "groq_qa"))
+        graph.add_node("gunshi_pdca",      self._exec_node("gunshi",    "gunshi_pdca"))
+        graph.add_node("gaiji_rag",        self._exec_node("gaiji",     "gaiji_rag"))
+        graph.add_node("taisho_mcp",       self._exec_node("sanbo",     "taisho_mcp"))
+        graph.add_node("yuhitsu_jp",       self._exec_node("yuhitsu",   "yuhitsu_jp"))
+        graph.add_node("karo_default",     self._exec_node("uketuke",   "karo_default"))
+        graph.add_node("onmitsu_local",    self._exec_node("onmitsu",   "onmitsu_local"))
+        graph.add_node("shogun_direct",    self._exec_node("shogun",    "shogun_direct"))
+        graph.add_node("daigensui_direct", self._exec_node("daigensui", "daigensui_direct"))
+        graph.add_node("kengyo_vision",    self._exec_node("kengyo",    "kengyo_vision"))
+        graph.add_node("check_followup",   self._check_followup)
+        graph.add_node("human_interrupt",  self._human_interrupt)
+        graph.add_node("notion_store",     self._notion_store)
 
-        # ── エントリーポイント ───────────────────────────
-        graph.set_entry_point("analyze")
+        # ── エントリーポイント ──────────────────────────────────────
+        graph.set_entry_point("analyze_intent")
+        graph.add_edge("analyze_intent", "notion_retrieve")
 
-        # analyze → fetch_context (直通)
-        graph.add_edge("analyze", "fetch_context")
-
-        # fetch_context → 各実行ルート (条件分岐) v12
+        # notion_retrieve → ルーティング
         graph.add_conditional_edges(
-            "fetch_context",
+            "notion_retrieve",
             self._route_decision,
             {
-                "groq_qa":       "groq_qa",
-                "gunshi_pdca":   "gunshi_pdca",
-                "gaiji_rag":     "gaiji_rag",
-                "taisho_mcp":    "taisho_mcp",
-                "yuhitsu_jp":    "yuhitsu_jp",
-                "karo_default":  "karo_default",
-                "onmitsu_local": "onmitsu_local",
+                "groq_qa":          "groq_qa",
+                "gunshi_pdca":      "gunshi_pdca",
+                "gaiji_rag":        "gaiji_rag",
+                "taisho_mcp":       "taisho_mcp",
+                "yuhitsu_jp":       "yuhitsu_jp",
+                "karo_default":     "karo_default",
+                "onmitsu_local":    "onmitsu_local",
+                "shogun_direct":    "shogun_direct",
+                "daigensui_direct": "daigensui_direct",
+                "kengyo_vision":    "kengyo_vision",
             },
         )
 
-        # 全実行ルート → persist_notion → END
-        for node in ("groq_qa", "gunshi_pdca", "gaiji_rag", "taisho_mcp",
-                     "yuhitsu_jp", "karo_default", "onmitsu_local"):
-            graph.add_edge(node, "persist_notion")
-        graph.add_edge("persist_notion", END)
+        # 全実行ノード → check_followup
+        for node in (
+            "groq_qa", "gunshi_pdca", "gaiji_rag", "taisho_mcp",
+            "yuhitsu_jp", "karo_default", "onmitsu_local",
+            "shogun_direct", "daigensui_direct", "kengyo_vision",
+        ):
+            graph.add_edge(node, "check_followup")
+
+        # check_followup → 3分岐: human / loop / done
+        graph.add_conditional_edges(
+            "check_followup",
+            self._followup_decision,
+            {
+                "human": "human_interrupt",
+                "loop":  "notion_retrieve",
+                "done":  "notion_store",
+            },
+        )
+        graph.add_edge("human_interrupt", "notion_store")
+        graph.add_edge("notion_store", END)
 
         return graph
 
     # =========================================================================
-    # Node: analyze — タスク特性の分析
+    # ノード: analyze_intent — タスク特性分析
     # =========================================================================
 
-    def _analyze_task(self, state: TaskState) -> dict:
-        """タスクの複雑度・種別を分析してルーティング用メタデータを付与."""
-        content = state["content"]
-        logger.info("📊 [analyze] タスク分析中... (%s...)", content[:60])
+    def _analyze_intent(self, state: BushidanState) -> dict:
+        message = state.get("message", "")
+        logger.info("📊 [analyze_intent] '%s'...", message[:60])
 
-        from core.multi_step_task_detector import MultiStepTaskDetector
-        detector = MultiStepTaskDetector()
-        analysis = detector.analyze(content)
-        is_multi_step = analysis.is_multi_step and analysis.confidence >= 0.6
+        content_lower = message.lower()
 
-        is_action_task        = self._detect_action_task(content)
-        is_simple_qa          = self._detect_simple_qa(content) and not is_action_task
-        is_japanese_priority  = self._detect_japanese_priority(content)
-        is_confidential       = self._detect_confidential(content)
-        complexity            = self._assess_complexity(content)
+        strategic_kws = ["設計", "アーキテクチャ", "システム全体", "戦略", "design", "architecture"]
+        complex_kws   = ["実装して", "作って", "修正して", "リファクタ", "implement", "build", "refactor"]
+        if any(kw in message for kw in strategic_kws) or len(message) > 800:
+            complexity = "strategic"
+        elif any(kw in message for kw in complex_kws) or len(message) > 300:
+            complexity = "complex"
+        elif len(message) < 60:
+            complexity = "simple"
+        else:
+            complexity = "medium"
 
-        logger.info(
-            "📊 分析結果: multi_step=%s action=%s simple_qa=%s "
-            "japanese=%s confidential=%s complexity=%s",
-            is_multi_step, is_action_task, is_simple_qa,
-            is_japanese_priority, is_confidential, complexity,
-        )
+        multi_kws = ["そして", "次に", "さらに", "まず", "step", "then", "after"]
+        is_multi = any(kw in content_lower for kw in multi_kws) and len(message) > 100
+
+        action_kws = ["clone", "push", "pull", "install", "run ", "実行して", "削除して", "作成して", "検索して"]
+        is_action = any(kw in content_lower for kw in action_kws)
+
+        qa_kws = ["とは", "って何", "ですか", "what is", "what's", "how does", "explain"]
+        is_simple_qa = any(kw in content_lower for kw in qa_kws) and not is_action
+
+        jp_kws = ["日本語で書いて", "日本語で回答", "和訳", "添削", "校正", "翻訳", "ビジネスメール", "敬語で"]
+        is_japanese = any(kw in message for kw in jp_kws)
+
+        conf_kws = ["機密", "秘密", "confidential", "private", "オフライン", "社外秘", "外部送信禁止"]
+        is_confidential = any(kw in content_lower or kw in message for kw in conf_kws)
+
+        has_vision = bool(state.get("attachments"))
+
         return {
-            "is_multi_step": is_multi_step,
-            "is_action_task": is_action_task,
-            "is_simple_qa": is_simple_qa,
-            "is_japanese_priority": is_japanese_priority,
-            "is_confidential": is_confidential,
             "complexity": complexity,
-            "confidence": analysis.confidence,
-            "status": "analyzed",
+            "is_multi_step": is_multi,
+            "is_action_task": is_action,
+            "is_simple_qa": is_simple_qa,
+            "is_japanese_priority": is_japanese,
+            "is_confidential": is_confidential,
+            "attachments": state.get("attachments", []),
+            "forced_role": state.get("forced_role") or ("kengyo" if has_vision else None),
         }
 
-    def _detect_action_task(self, content: str) -> bool:
-        """単一アクションタスク (git push など) を検出."""
-        content_lower = content.lower()
-        action_patterns = [
-            "clone ", "クローン", "git clone",
-            "push ", "プッシュ", "git push",
-            "pull ", "プル", "git pull",
-            "install ", "インストール", "npm install", "pip install",
-            "run ", "実行して", "execute",
-            "delete ", "削除して",
-            "create ", "作成して",
-            "search ", "検索して", "調べて",
-        ]
-        for pattern in action_patterns:
-            if pattern in content_lower:
-                action_count = sum(1 for p in action_patterns if p in content_lower)
-                if action_count <= 2:  # 単純アクション (2つ以内)
-                    return True
-        return False
-
-    def _detect_simple_qa(self, content: str) -> bool:
-        """シンプルな Q&A タスクを検出."""
-        content_lower = content.lower()
-        qa_patterns = [
-            "とは", "って何", "ですか", "でしょうか", "教えて", "説明", "意味",
-            "what is", "what's", "how does", "explain", "tell me",
-        ]
-        for pattern in qa_patterns:
-            if pattern in content_lower:
-                return True
-        # アクションキーワードなしの短文
-        if len(content) < 80:
-            action_kws = ["clone", "push", "pull", "create", "delete", "edit", "install", "deploy"]
-            if not any(kw in content_lower for kw in action_kws):
-                return True
-        return False
-
-    def _detect_japanese_priority(self, content: str) -> bool:
-        """
-        日本語特化タスクを検出 → ELYZA ルート候補。
-
-        「全体が日本語」ではなく「日本語品質が重要なタスク」を対象にする。
-        単なる問い合わせ (ですか / とは) は groq_qa で十分。
-        """
-        japanese_quality_patterns = [
-            # 日本語生成・ライティング
-            "日本語で書いて", "日本語で回答", "日本語で作成",
-            "和文", "日本語テキスト", "日本語文章",
-            # 翻訳
-            "日本語に翻訳", "和訳", "translate.*japanese", "japanese.*translat",
-            # 校正・添削
-            "添削", "校正", "文法チェック", "文章を直して",
-            # 創作
-            "小説", "俳句", "短歌", "詩を書", "物語を書",
-            # メール・ビジネス文書
-            "ビジネスメール", "敬語で", "丁寧な日本語",
-        ]
-        content_lower = content.lower()
-        for pattern in japanese_quality_patterns:
-            if pattern in content_lower or pattern in content:
-                return True
-        return False
-
-    def _detect_confidential(self, content: str) -> bool:
-        """機密・ローカル処理タスクを検出 → Nemotron ルート。"""
-        confidential_patterns = [
-            "機密", "秘密", "confidential", "private", "internal",
-            "オフライン", "offline", "local only", "api送信不可",
-            "社外秘", "外部送信禁止",
-        ]
-        content_lower = content.lower()
-        return any(p in content_lower or p in content for p in confidential_patterns)
-
-    def _assess_complexity(self, content: str) -> str:
-        """タスク複雑度をヒューリスティックで判定."""
-        strategic_kws = [
-            "設計", "アーキテクチャ", "システム全体", "戦略", "提案",
-            "design", "architecture", "strategy", "roadmap", "full system",
-        ]
-        complex_kws = [
-            "実装して", "作って", "修正して", "リファクタ", "テスト",
-            "implement", "build", "refactor", "fix", "debug",
-        ]
-        if any(kw in content.lower() for kw in strategic_kws) or len(content) > 800:
-            return "strategic"
-        if any(kw in content.lower() for kw in complex_kws) or len(content) > 300:
-            return "complex"
-        if len(content) < 60:
-            return "simple"
-        return "medium"
-
     # =========================================================================
-    # Node: fetch_context — MCP ツール + Notion コンテキスト取得 (v11.5 新規)
+    # ノード: notion_retrieve — Notion RAG 検索
     # =========================================================================
 
-    async def _fetch_context(self, state: TaskState) -> dict:
-        """
-        MCP ツール一覧と Notion コンテキストを並列取得。
-
-        ルーター判断に必要な外部情報をここで一括収集することで、
-        route_decision ノードが全情報を持った状態で動作できる。
-        """
-        logger.info("🔍 [fetch_context] MCP ツール + Notion コンテキスト取得中...")
-
-        mcp_result, notion_result = await asyncio.gather(
-            self._get_mcp_tool_info(),
-            self._get_notion_context(),
-            return_exceptions=True,
-        )
-
-        available_tools: list = []
-        tool_schemas: dict = {}
-        if isinstance(mcp_result, dict):
-            tool_schemas = mcp_result
-            for tools in mcp_result.values():
-                available_tools.extend(tools)
-
-        notion_context: str = ""
-        if isinstance(notion_result, str):
-            notion_context = notion_result
-
-        logger.info(
-            "🔍 取得完了: tools=%d種類, notion=%d文字",
-            len(available_tools), len(notion_context),
-        )
-        return {
-            "available_tools": available_tools,
-            "tool_schemas":    tool_schemas,
-            "notion_context":  notion_context,
-        }
-
-    async def _get_mcp_tool_info(self) -> dict:
-        """
-        MCP Bridge (langchain-mcp-adapters) からツールスキーマ一覧を取得。
-        Bridge 未使用時は旧 MCPManager にフォールバック。
-        """
+    async def _notion_retrieve(self, state: BushidanState) -> dict:
+        message = state.get("message", "")
+        if not message.strip():
+            return {"notion_chunks": []}
         try:
-            bridge = getattr(self.orchestrator, "_mcp_bridge", None)
-            if bridge and bridge.is_available():
-                return bridge.get_tool_schemas()
-
-            # フォールバック: 旧 MCPManager
-            mcp_manager = getattr(self.orchestrator, "mcp_manager", None)
-            if mcp_manager and hasattr(mcp_manager, "list_tools"):
-                return mcp_manager.list_tools()
-            return {}
+            from integrations.notion.retrieval import retrieve
+            chunks = await retrieve(message, top_k=4)
+            logger.info("🔍 [notion_retrieve] %d件取得", len(chunks))
+            return {"notion_chunks": chunks}
         except Exception as e:
-            logger.debug("MCP ツール取得スキップ: %s", e)
-            return {}
-
-    async def _get_notion_context(self) -> str:
-        """Notion から家訓と直近タスク要約を取得してルーター用テキストを生成."""
-        try:
-            notion: Optional["NotionIntegration"] = getattr(
-                self.orchestrator, "notion", None
-            )
-            if notion and hasattr(notion, "get_routing_context"):
-                return await notion.get_routing_context()
-            return ""
-        except Exception as e:
-            logger.debug("Notion コンテキスト取得スキップ: %s", e)
-            return ""
+            logger.debug("[notion_retrieve] スキップ: %s", e)
+            return {"notion_chunks": []}
 
     # =========================================================================
-    # Routing Decision — ツール認識 + Notion 参照 (v11.5 強化)
+    # ルーティング判断 (ヘルスチェック統合)
     # =========================================================================
 
-    def _route_decision(self, state: TaskState) -> str:
-        """
-        v12 ルーティング判断 (10役職対応)。
-
-        優先度:
-          0. 強制ルーティング (@メンション時)
-          1. 機密タスク → onmitsu_local (隠密 Nemotron)
-          2. 日本語清書タスク → yuhitsu_jp (右筆 ELYZA)
-          3. 戦略/複雑 → gunshi_pdca (軍師 o3-mini PDCA)
-          4. ツール連携アクション → taisho_mcp (参謀 + MCP tools)
-          5. 外部/RAG/マルチステップ → gaiji_rag (外事 Command R+)
-          6. シンプル Q&A / 高速 → groq_qa (斥候 Llama 3.3)
-          7. デフォルト → karo_default (受付 Command R)
-        """
-        content         = state["content"]
-        tools           = state.get("available_tools", [])
-        complexity      = state.get("complexity", "medium")
-        is_multi        = state.get("is_multi_step", False)
-        is_action       = state.get("is_action_task", False)
-        is_simple_qa    = state.get("is_simple_qa", False)
-        is_japanese     = state.get("is_japanese_priority", False)
-        is_confidential = state.get("is_confidential", False)
-
-        # ── 強制ルーティング (特定エージェントへの直接メンション時) ─────────
-        _valid_routes = {
+    def _route_decision(self, state: BushidanState) -> str:
+        """v14 ルーティング — ヘルスチェックフォールバック付き"""
+        forced = state.get("forced_role")
+        _valid = {
             "groq_qa", "gunshi_pdca", "gaiji_rag", "taisho_mcp",
             "yuhitsu_jp", "karo_default", "onmitsu_local",
-            # 後方互換 (旧ノード名)
-            "gemini_autonomous",
+            "shogun_direct", "daigensui_direct", "kengyo_vision",
         }
-        forced_route = state.get("context", {}).get("forced_route")
-        if forced_route in _valid_routes:
-            # 旧名 gemini_autonomous → gaiji_rag に透過的にリダイレクト
-            if forced_route == "gemini_autonomous":
-                forced_route = "gaiji_rag"
-            logger.info("🎯 Route: %s (強制ルーティング)", forced_route)
-            return forced_route
+        _role_to_node = {
+            "seppou": "groq_qa", "gunshi": "gunshi_pdca", "gaiji": "gaiji_rag",
+            "sanbo": "taisho_mcp", "yuhitsu": "yuhitsu_jp", "uketuke": "karo_default",
+            "onmitsu": "onmitsu_local", "shogun": "shogun_direct",
+            "daigensui": "daigensui_direct", "kengyo": "kengyo_vision",
+        }
+        _node_to_role = {
+            "groq_qa": "seppou", "gunshi_pdca": "gunshi", "gaiji_rag": "gaiji",
+            "taisho_mcp": "sanbo", "yuhitsu_jp": "yuhitsu", "karo_default": "uketuke",
+            "onmitsu_local": "onmitsu", "shogun_direct": "shogun",
+            "daigensui_direct": "daigensui", "kengyo_vision": "kengyo",
+        }
 
-        # ── 1. 機密タスク → 隠密 (Nemotron ローカル処理) ────────────────────
-        if is_confidential:
-            logger.info("🥷 Route: onmitsu_local (機密 → 隠密 Nemotron)")
-            return "onmitsu_local"
+        def _check_health(node: str) -> str:
+            """ヘルスチェック — unhealthy なら _FALLBACK_MAP で代替"""
+            role = _node_to_role.get(node)
+            if not role:
+                return node
+            try:
+                from utils.client_registry import ClientRegistry
+                registry = ClientRegistry.get()
+                if registry.is_healthy_cached(role):
+                    return node
+                fallback = _FALLBACK_MAP.get(node)
+                if fallback and fallback != node:
+                    logger.warning("⚠️ %s unhealthy → fallback: %s", node, fallback)
+                    return fallback
+            except Exception:
+                pass
+            return node
 
-        # ── 2. 日本語清書タスク → 右筆 (ELYZA) ──────────────────────────────
-        if is_japanese:
-            logger.info("🖊️ Route: yuhitsu_jp (日本語清書 → 右筆 ELYZA)")
-            return "yuhitsu_jp"
+        if forced:
+            node = _role_to_node.get(forced, forced)
+            if node in _valid:
+                logger.info("🎯 Route: %s (forced_role=%s)", node, forced)
+                return _check_health(node)
 
-        # ── 3. 戦略的 / 複雑タスク → 軍師 PDCA ─────────────────────────────
+        if state.get("is_confidential"):
+            logger.info("🥷 Route: onmitsu_local")
+            return _check_health("onmitsu_local")
+
+        if state.get("is_japanese_priority"):
+            logger.info("🖊️ Route: yuhitsu_jp")
+            return _check_health("yuhitsu_jp")
+
+        complexity = state.get("complexity", "medium")
+        is_multi   = state.get("is_multi_step", False)
+        is_action  = state.get("is_action_task", False)
+        is_simple  = state.get("is_simple_qa", False)
+
         if complexity in ("strategic", "complex") or (is_multi and complexity != "simple"):
-            logger.info(
-                "🧠 Route: gunshi_pdca (complexity=%s, multi=%s)", complexity, is_multi
-            )
-            return "gunshi_pdca"
+            logger.info("🧠 Route: gunshi_pdca (complexity=%s)", complexity)
+            return _check_health("gunshi_pdca")
 
-        # ── 4. ツール特化アクション → taisho_mcp ─────────────────────────────
-        if is_action and tools:
-            content_lower = content.lower()
-            tool_routes = {
-                "github":     ["git", "github", "commit", "push", "pull", "pr", "issue"],
-                "filesystem": ["ファイル", "file", "read", "write", "directory"],
-                "tavily":     ["search", "検索", "web", "調べ"],
-                "exa":        ["semantic", "意味検索"],
-                "playwright": ["browser", "ブラウザ", "screenshot", "スクリーン"],
-                "mattermost": ["mattermost", "channel", "チャンネル", "投稿"],
-            }
-            for tool_name, keywords in tool_routes.items():
-                if tool_name in tools and any(kw in content_lower for kw in keywords):
-                    logger.info("🔧 Route: taisho_mcp (tool=%s)", tool_name)
-                    return "taisho_mcp"
+        if is_action and state.get("available_tools"):
+            logger.info("🔧 Route: taisho_mcp")
+            return _check_health("taisho_mcp")
 
-        # ── 5. マルチステップ / 外部情報収集 → 外事 (Command R+) ────────────
         if is_multi or is_action:
-            logger.info("🌐 Route: gaiji_rag (外部/RAG → 外事 Command R+)")
-            return "gaiji_rag"
+            logger.info("🌐 Route: gaiji_rag")
+            return _check_health("gaiji_rag")
 
-        # ── 6. シンプル Q&A → 斥候 Groq (即応・無料) ────────────────────────
-        if is_simple_qa and complexity == "simple":
-            logger.info("⚡ Route: groq_qa (simple Q&A → 斥候 Llama 3.3)")
-            return "groq_qa"
+        if is_simple and complexity == "simple":
+            logger.info("⚡ Route: groq_qa")
+            return _check_health("groq_qa")
 
-        # ── 7. デフォルト → 受付 (Command R) ────────────────────────────────
-        logger.info("🏯 Route: karo_default (受付 Command R)")
+        logger.info("🏯 Route: karo_default")
         return "karo_default"
 
     # =========================================================================
-    # Execution Nodes
+    # ノード: 実行ノード生成ファクトリ (タイムアウト付き)
     # =========================================================================
 
-    async def _execute_groq_qa(self, state: TaskState) -> dict:
-        """Simple Q&A を家老-B Groq (Llama 3.3 70B) で即時処理."""
-        start = time.time()
-        try:
-            groq_client = self.orchestrator.get_client("groq")
-            if not groq_client:
-                return await self._execute_karo_default(state)
+    def _exec_node(self, role_key: str, node_name: str):
+        """指定ロールの execute() をタイムアウト付きで呼ぶノード関数を返す。"""
+        timeout = NODE_TIMEOUTS.get(node_name, 120)
 
-            # Notion コンテキストをシステムプロンプトに注入
-            system_prompt = "あなたは簡潔で正確な回答を提供するアシスタントです。"
-            if state.get("notion_context"):
-                system_prompt += f"\n\n【参照知識】\n{state['notion_context'][:500]}"
+        async def _node(state: BushidanState) -> dict:
+            role = self._roles.get(role_key)
+            if not role:
+                logger.error("ロール未ロード: %s", role_key)
+                return {
+                    "response": f"❌ ロール {role_key} 未初期化",
+                    "handled_by": node_name, "agent_role": role_key,
+                    "execution_time": 0.0, "error": "role not loaded",
+                    "routed_to": node_name, "mcp_tools_used": [],
+                }
 
-            response = await groq_client.generate(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user",   "content": state["content"]},
-                ],
-                max_tokens=512,
-            )
-            return {
-                "result": {"response": response, "status": "completed"},
-                "status": "completed",
-                "handled_by": "groq_qa",
-                "agent_role": "家老-B",
-                "execution_time": time.time() - start,
-                "route": "groq_qa",
-                "mcp_tools_used": [],
-            }
-        except Exception as e:
-            logger.error("❌ Groq 実行失敗: %s", e)
-            return {
-                "status": "failed", "error": str(e),
-                "handled_by": "groq_qa", "agent_role": "家老-B",
-                "execution_time": time.time() - start, "mcp_tools_used": [],
-            }
+            # MCPツール注入
+            try:
+                from core.mcp_sdk import MCPToolRegistry
+                registry = MCPToolRegistry.get()
+                tools = registry.get_tools_for_role(role_key)
+                if tools:
+                    state_tools = [t.name for t in tools]
+                else:
+                    state_tools = state.get("available_tools", [])
+            except Exception:
+                state_tools = state.get("available_tools", [])
 
-    async def _execute_gunshi_pdca(self, state: TaskState) -> dict:
-        """Complex/Strategic タスクを軍師 (o3-mini) PDCA → 参謀A/B に委譲 (v11.5 新規)."""
-        start = time.time()
-        try:
-            gunshi = getattr(self.orchestrator, "gunshi", None)
-            if not gunshi:
-                logger.warning("⚠️ 軍師未初期化 → karo_default にフォールバック")
-                return await self._execute_karo_default(state)
-
-            # Notion コンテキストをタスクに追加
-            task_content = state["content"]
-            if state.get("notion_context"):
-                task_content = (
-                    f"{task_content}\n\n"
-                    f"【Notion 知識ベース参照】\n{state['notion_context'][:800]}"
+            start = time.time()
+            try:
+                result = await asyncio.wait_for(
+                    role.execute(state), timeout=timeout
                 )
+            except asyncio.TimeoutError:
+                elapsed = time.time() - start
+                logger.warning("⏱️ %s タイムアウト (%ds)", node_name, timeout)
+                return {
+                    "response": f"⏱️ {role_key} タイムアウト ({timeout}秒)",
+                    "handled_by": node_name, "agent_role": role_key,
+                    "execution_time": elapsed, "error": f"timeout after {timeout}s",
+                    "routed_to": node_name, "mcp_tools_used": [],
+                    "requires_followup": False,
+                    "conversation_history": [
+                        {"role": "user", "content": state.get("message", "")},
+                        {"role": "assistant", "content": f"⏱️ タイムアウト ({timeout}秒)"},
+                    ],
+                }
 
-            context = {
-                **state.get("context", {}),
-                "available_tools": state.get("available_tools", []),
-                "langgraph_route": "gunshi_pdca",
-            }
-
-            result = await gunshi.process_task(task_content, context)
-
+            new_history = [
+                {"role": "user",      "content": state.get("message", "")},
+                {"role": "assistant", "content": result.response},
+            ]
             return {
-                "result": result,
-                "status": result.get("status", "completed"),
-                "handled_by": "gunshi_pdca",
-                "agent_role": "軍師",
-                "execution_time": time.time() - start,
-                "route": "gunshi_pdca",
-                "mcp_tools_used": result.get("mcp_tools_used", []),
-            }
-        except Exception as e:
-            logger.error("❌ 軍師 PDCA 実行失敗: %s", e)
-            return {
-                "status": "failed", "error": str(e),
-                "handled_by": "gunshi_pdca", "agent_role": "軍師",
-                "execution_time": time.time() - start, "mcp_tools_used": [],
+                "response":       result.response,
+                "handled_by":     result.handled_by,
+                "agent_role":     result.agent_role,
+                "execution_time": result.execution_time,
+                "error":          result.error,
+                "mcp_tools_used": result.mcp_tools_used,
+                "requires_followup": result.requires_followup,
+                "routed_to":      node_name,
+                "available_tools": state_tools,
+                "conversation_history": new_history,
             }
 
-    async def _execute_gemini_autonomous(self, state: TaskState) -> dict:
-        """マルチステップタスクを Gemini Flash 自律実行器で処理."""
-        start = time.time()
-        try:
-            karo = getattr(self.orchestrator, "karo", None)
-            if not karo or not getattr(karo, "gemini_autonomous_executor", None):
-                return await self._execute_karo_default(state)
-
-            executor = karo.gemini_autonomous_executor
-            exec_result = await executor.execute_autonomous_task(
-                task_content=state["content"],
-                max_iterations=5,
-            )
-
-            if exec_result.status == "failed":
-                return await self._execute_taisho_mcp(state)
-
-            return {
-                "result": {
-                    "response": exec_result.final_result,
-                    "status": "completed",
-                    "steps_executed": exec_result.steps_executed,
-                    "tool_calls": len(exec_result.outputs),
-                },
-                "status": "completed",
-                "handled_by": "gemini_autonomous",
-                "agent_role": "家老-A",
-                "execution_time": time.time() - start,
-                "route": "gemini_autonomous",
-                "mcp_tools_used": exec_result.tool_calls_made or [],
-            }
-        except Exception as e:
-            logger.error("❌ Gemini 自律実行失敗: %s", e)
-            return {
-                "status": "failed", "error": str(e),
-                "handled_by": "gemini_autonomous", "agent_role": "家老-A",
-                "execution_time": time.time() - start, "mcp_tools_used": [],
-            }
+        _node.__name__ = f"exec_{node_name}"
+        return _node
 
     # =========================================================================
-    # Node: gaiji_rag — 外事 Command R+ (外部ツール・RAG) v12 新規
+    # ノード: check_followup — 3分岐 (human / loop / done)
     # =========================================================================
 
-    async def _execute_gaiji_rag(self, state: TaskState) -> dict:
-        """
-        外事 (Command R+) による外部情報収集・RAG・マルチステップ処理。
+    def _check_followup(self, state: BushidanState) -> dict:
+        iteration = state.get("iteration", 0) + 1
+        max_iter  = state.get("max_iterations", 3)
+        followup  = state.get("requires_followup", False)
 
-        Command R+ はグラウンディング・RAG 特化モデルなので、
-        Web 検索 / 外部ドキュメント参照タスクに最適。
-        未設定時は groq_qa にフォールバック。
-        """
-        start = time.time()
-        try:
-            from utils.cohere_client import create_gaiji_client
+        if followup and iteration < max_iter:
+            logger.info("🔄 自律ループ継続 (%d/%d)", iteration, max_iter)
+            return {"iteration": iteration, "requires_followup": True}
 
-            client = create_gaiji_client()
-            if not client:
-                logger.warning("⚠️ 外事クライアント未設定 → groq_qa フォールバック")
-                return await self._execute_groq_qa(state)
+        if followup and iteration >= max_iter:
+            logger.info("⚠️ 最大反復回数到達 (%d) — 強制終了", max_iter)
 
-            notion_ctx = state.get("notion_context", "")
-            system_prompt = (
-                "あなたは外事担当 (Command R+)。外部情報収集・RAG・マルチステップ処理の専門家です。"
-                "正確で包括的な回答を日本語で提供してください。"
-            )
-            if notion_ctx:
-                system_prompt += f"\n\n【Notion 知識】\n{notion_ctx[:600]}"
+        return {"iteration": iteration, "requires_followup": False}
 
-            response = await client.generate(
-                messages=[{"role": "user", "content": state["content"]}],
-                max_tokens=2048,
-                system_prompt=system_prompt,
-            )
-            return {
-                "result": {"response": response, "status": "completed"},
-                "status": "completed",
-                "handled_by": "gaiji_rag",
-                "agent_role": "外事",
-                "execution_time": time.time() - start,
-                "route": "gaiji_rag",
-                "mcp_tools_used": [],
-            }
-        except Exception as e:
-            logger.error("❌ 外事 (Command R+) 実行失敗: %s", e)
-            return {
-                "status": "failed", "error": str(e),
-                "handled_by": "gaiji_rag", "agent_role": "外事",
-                "execution_time": time.time() - start, "mcp_tools_used": [],
-            }
-
-    async def _execute_taisho_mcp(self, state: TaskState) -> dict:
-        """MCP ツールを活用したアクションタスクを Taisho + ツールで実行 (v11.5 新規)."""
-        start = time.time()
-        used_tools: list = []
-        try:
-            karo = getattr(self.orchestrator, "karo", None)
-            if not karo:
-                return await self._execute_karo_default(state)
-
-            from core.shogun import Task, TaskComplexity
-            task = Task(
-                content=state["content"],
-                complexity=TaskComplexity.MEDIUM,
-                context={
-                    **state.get("context", {}),
-                    "available_tools": state.get("available_tools", []),
-                    "tool_schemas":    state.get("tool_schemas", {}),
-                },
-                priority=state.get("priority", 1),
-            )
-
-            result = await karo._execute_with_taisho(task, None)
-            used_tools = result.get("mcp_tools_used", [])
-
-            return {
-                "result": result,
-                "status": result.get("status", "completed"),
-                "handled_by": "taisho_mcp",
-                "agent_role": "大将",
-                "execution_time": time.time() - start,
-                "route": "taisho_mcp",
-                "mcp_tools_used": used_tools,
-            }
-        except Exception as e:
-            logger.error("❌ Taisho MCP 実行失敗: %s", e)
-            return {
-                "status": "failed", "error": str(e),
-                "handled_by": "taisho_mcp", "agent_role": "大将",
-                "execution_time": time.time() - start, "mcp_tools_used": used_tools,
-            }
-
-    async def _execute_karo_default(self, state: TaskState) -> dict:
-        """デフォルト家老ルーティング (既存ロジックへのフォールバック)."""
-        start = time.time()
-        try:
-            karo = getattr(self.orchestrator, "karo", None)
-            if not karo:
-                return {"status": "failed", "error": "家老未初期化",
-                        "handled_by": "karo_default", "execution_time": time.time() - start,
-                        "mcp_tools_used": []}
-
-            from core.shogun import Task, TaskComplexity
-            task = Task(
-                content=state["content"],
-                complexity=TaskComplexity.MEDIUM,
-                context=state.get("context", {}),
-                priority=state.get("priority", 1),
-            )
-            result = await karo.execute_task_with_routing(task, None)
-            return {
-                "result": result,
-                "status": result.get("status", "completed"),
-                "handled_by": "karo_default",
-                "agent_role": "家老",
-                "execution_time": time.time() - start,
-                "route": "karo_default",
-                "mcp_tools_used": [],
-            }
-        except Exception as e:
-            logger.error("❌ 家老デフォルト実行失敗: %s", e)
-            return {
-                "status": "failed", "error": str(e),
-                "handled_by": "karo_default", "agent_role": "家老",
-                "execution_time": time.time() - start, "mcp_tools_used": [],
-            }
+    def _followup_decision(self, state: BushidanState) -> Literal["human", "loop", "done"]:
+        # HITL 判定: awaiting_human_input フラグが立っている場合
+        if state.get("awaiting_human_input", False):
+            return "human"
+        if state.get("requires_followup", False):
+            return "loop"
+        return "done"
 
     # =========================================================================
-    # Node: yuhitsu_jp — 右筆 ELYZA (日本語清書) v12 新規
+    # ノード: human_interrupt — HITL 中断
     # =========================================================================
 
-    async def _execute_yuhitsu_jp(self, state: TaskState) -> dict:
+    async def _human_interrupt(self, state: BushidanState) -> dict:
         """
-        右筆 (ELYZA) による日本語清書・翻訳・添削処理。
-
-        日本語品質が重要なタスク専用ノード。
-        ELYZA 未起動時は Nemotron フォールバック → groq_qa フォールバック。
+        Human-in-the-loop: 人間の応答を待つ。
+        Mattermost Bot 側が human_response を設定して再開する。
         """
-        start = time.time()
-        notion_ctx = state.get("notion_context", "")
-        try:
-            from utils.local_model_manager import get_local_model_manager
-
-            manager = get_local_model_manager()
-            elyza = await manager.get_japanese_client()
-
-            if elyza:
-                logger.info("🖊️ 右筆 ELYZA: 日本語清書タスク処理")
-                result_text = await elyza.generate_japanese(
-                    state["content"], context=notion_ctx
-                )
-                agent_role = "右筆-ELYZA"
-                handled_by = "yuhitsu_elyza"
-            else:
-                # ELYZA 未起動 → Nemotron フォールバック
-                logger.info("🥷 ELYZA未起動 → 右筆 Nemotron フォールバック")
-                from utils.nemotron_llamacpp_client import NemotronLlamaCppClient
-                client = NemotronLlamaCppClient()
-                system = (
-                    "あなたは日本語テキスト清書アシスタント (右筆) です。"
-                    "自然で流暢な日本語で回答してください。"
-                )
-                result_text = await client.generate([
-                    {"role": "system", "content": system},
-                    {"role": "user",   "content": state["content"]},
-                ])
-                agent_role = "右筆-Nemotron"
-                handled_by = "yuhitsu_nemotron"
-
-            return {
-                "result": {"response": result_text, "status": "completed"},
-                "status": "completed",
-                "handled_by": handled_by,
-                "agent_role": agent_role,
-                "execution_time": time.time() - start,
-                "route": "yuhitsu_jp",
-                "mcp_tools_used": [],
-            }
-        except Exception as e:
-            logger.error("❌ 右筆 (ELYZA) 実行失敗: %s → groq_qa フォールバック", e)
-            return await self._execute_groq_qa(state)
+        question = state.get("human_question", "")
+        logger.info("🙋 HITL: 人間の入力を待機中 — %s", question[:60])
+        return {
+            "dialog_status": "waiting_for_human",
+            "awaiting_human_input": False,  # 中断後にリセット
+        }
 
     # =========================================================================
-    # Node: onmitsu_local — 隠密 Nemotron (機密専用) v12: 日本語は yuhitsu_jp へ
+    # ノード: notion_store — Notion に結果を非同期保存
     # =========================================================================
 
-    async def _execute_onmitsu_local(self, state: TaskState) -> dict:
-        """
-        隠密 (Nemotron) — 機密・完全ローカル処理専用 v12
-
-        v12 変更: 日本語特化は yuhitsu_jp ノードに移管。
-        このノードは機密データ処理のみ担当 (API 送信不可)。
-        """
-        start = time.time()
-        notion_ctx = state.get("notion_context", "")
-
-        try:
-            from utils.nemotron_llamacpp_client import NemotronLlamaCppClient
-
-            logger.info("🥷 隠密 Nemotron: 機密タスク処理 (完全ローカル)")
-            client = NemotronLlamaCppClient()
-            result_text = await client.process_confidential(
-                state["content"], task_type="confidential"
-            )
-            agent_role = "隠密-Nemotron"
-            handled_by = "onmitsu_nemotron"
-
-            return {
-                "result": {"response": result_text, "status": "completed"},
-                "status": "completed",
-                "handled_by": handled_by,
-                "agent_role": agent_role,
-                "execution_time": time.time() - start,
-                "route": "onmitsu_local",
-                "mcp_tools_used": [],
-            }
-
-        except Exception as e:
-            logger.error("❌ onmitsu_local 実行失敗: %s", e)
-            return {
-                "status": "failed", "error": str(e),
-                "handled_by": "onmitsu_local", "agent_role": "隠密",
-                "execution_time": time.time() - start, "mcp_tools_used": [],
-            }
-
-    # =========================================================================
-    # Node: persist_notion — 自動 Notion 永続化 (v11.5 新規)
-    # =========================================================================
-
-    async def _persist_notion(self, state: TaskState) -> dict:
-        """
-        タスク完了後に Notion へ結果を自動保存 (fire-and-forget)。
-
-        応答遅延を避けるため、保存処理は非同期バックグラウンドタスクとして
-        起動してすぐに制御を返す。Notion 保存の成否は応答に影響しない。
-        """
-        if not self._auto_save_notion:
+    async def _notion_store(self, state: BushidanState) -> dict:
+        if not state.get("should_save", True):
             return {"notion_page_id": None}
-
-        notion = getattr(self.orchestrator, "notion", None)
-        if not notion or not hasattr(notion, "auto_save_task_result"):
-            return {"notion_page_id": None}
-
-        # fire-and-forget: Notion 保存を非同期で開始して即座に返す
-        asyncio.create_task(
-            self._save_to_notion_bg(state, notion),
-            name=f"notion_save_{state.get('content', '')[:30]}",
-        )
-        return {"notion_page_id": "pending"}
-
-    async def _save_to_notion_bg(
-        self,
-        state: TaskState,
-        notion: Any,
-    ) -> None:
-        """バックグラウンドで Notion に保存."""
         try:
-            result_dict = state.get("result") or {}
-            content_str = ""
-            if isinstance(result_dict, dict):
-                content_str = result_dict.get("response", result_dict.get("result", ""))
-            else:
-                content_str = str(result_dict)
-
-            page_id = await notion.auto_save_task_result(
-                task=state["content"],
-                result=content_str,
-                metadata={
-                    "route":          state.get("route", ""),
-                    "agent_role":     state.get("agent_role", ""),
-                    "handled_by":     state.get("handled_by", ""),
-                    "complexity":     state.get("complexity", ""),
-                    "execution_time": state.get("execution_time", 0),
-                    "mcp_tools_used": state.get("mcp_tools_used", []),
-                    "source":         state.get("source", ""),
-                },
+            from integrations.notion.storage import save_task_result_bg
+            asyncio.create_task(
+                save_task_result_bg(dict(state)),
+                name=f"notion_store_{state.get('thread_id', '')[:8]}",
             )
-            logger.debug("✅ Notion 保存完了: page_id=%s", page_id)
+            return {"notion_page_id": "pending"}
         except Exception as e:
-            logger.debug("Notion バックグラウンド保存失敗 (無視): %s", e)
+            logger.debug("[notion_store] スキップ: %s", e)
+            return {"notion_page_id": None}
 
     # =========================================================================
     # Public API
     # =========================================================================
 
-    async def process_task(
+    async def process_message(
         self,
-        content: str,
-        context: dict = None,
-        priority: int = 1,
+        message: str,
+        thread_id: str = "",
+        channel_id: str = "",
+        user_id: str = "",
         source: str = "api",
+        forced_role: Optional[str] = None,
+        attachments: Optional[list] = None,
+        available_tools: Optional[list] = None,
     ) -> dict:
-        """
-        タスクを v11.5 LangGraph ルーターで処理。
-
-        Args:
-            content:  タスク説明
-            context:  コンテキスト辞書 (source, mode など)
-            priority: タスク優先度 1-5
-            source:   呼び出し元 (discord, mattermost, api など)
-
-        Returns:
-            status, result, handled_by, route, execution_time などを含む辞書
-        """
+        """メッセージを v14 LangGraph ルーターで処理。"""
         if not self._compiled:
             await self.initialize()
 
-        initial_state: TaskState = {
-            "content":           content,
-            "context":           context or {},
-            "priority":          priority,
-            "source":            source,
-            # 分析結果 (analyze ノードで設定)
-            "is_multi_step":     False,
-            "is_action_task":    False,
-            "is_simple_qa":      False,
-            "complexity":        "medium",
-            "confidence":        0.0,
-            # コンテキスト (fetch_context ノードで設定)
-            "available_tools":   [],
-            "tool_schemas":      {},
-            "notion_context":    "",
-            # ルーティング・実行
-            "route":             "",
-            "result":            None,
-            "status":            "pending",
-            "handled_by":        "",
-            "agent_role":        "",
-            "execution_time":    0.0,
-            "error":             None,
-            "mcp_tools_used":    [],
-            # Notion
-            "notion_page_id":    None,
+        initial: BushidanState = {
+            "thread_id":   thread_id or "default",
+            "channel_id":  channel_id,
+            "user_id":     user_id,
+            "source":      source,
+            "message":     message,
+            "attachments": attachments or [],
+            "conversation_history": [],
+            "notion_chunks": [],
+            "complexity":          "medium",
+            "is_multi_step":       False,
+            "is_action_task":      False,
+            "is_simple_qa":        False,
+            "is_japanese_priority": False,
+            "is_confidential":     False,
+            "forced_role": forced_role,
+            "routed_to":   None,
+            "available_tools": available_tools or [],
+            "tool_schemas":    {},
+            "response":       None,
+            "handled_by":     None,
+            "agent_role":     None,
+            "execution_time": 0.0,
+            "error":          None,
+            "mcp_tools_used": [],
+            "requires_followup": False,
+            "iteration":         0,
+            "max_iterations":    3,
+            "should_save":    True,
+            "notion_page_id": None,
+            # v14: HITL
+            "dialog_status":       "active",
+            "awaiting_human_input": False,
+            "human_question":      "",
+            "human_response":      "",
+            # v14: context summary
+            "context_summary":     "",
         }
 
-        logger.info("🔗 LangGraph v11.5: タスク処理開始 (%s...)", content[:60])
+        config = {"configurable": {"thread_id": thread_id or "default"}}
+        logger.info("🔗 LangGraph v14: 処理開始 thread=%s '%s'...",
+                     thread_id[:8] if thread_id else "new", message[:60])
         start = time.time()
 
         try:
-            final_state = await self._compiled.ainvoke(initial_state)
-            total_time = time.time() - start
-
+            final = await self._compiled.ainvoke(initial, config=config)
+            total = time.time() - start
             logger.info(
-                "✅ LangGraph v11.5: 完了 route=%s agent=%s time=%.2fs tools=%s",
-                final_state.get("route"),
-                final_state.get("agent_role"),
-                total_time,
-                final_state.get("mcp_tools_used", []),
+                "✅ LangGraph v14: 完了 route=%s agent=%s time=%.2fs",
+                final.get("routed_to"), final.get("agent_role"), total
             )
-
-            result = final_state.get("result") or {}
-            if isinstance(result, dict):
-                response = result.get("response", result.get("result", ""))
-            else:
-                response = str(result)
-
             return {
-                "status":         final_state.get("status", "completed"),
-                "result":         response,
-                "response":       response,
-                "handled_by":     final_state.get("handled_by", "unknown"),
-                "agent_role":     final_state.get("agent_role", ""),
-                "route":          final_state.get("route", "unknown"),
-                "complexity":     final_state.get("complexity", ""),
-                "available_tools": final_state.get("available_tools", []),
-                "mcp_tools_used": final_state.get("mcp_tools_used", []),
-                "notion_page_id": final_state.get("notion_page_id"),
-                "execution_time": total_time,
+                "status":         "completed" if not final.get("error") else "failed",
+                "response":       final.get("response", ""),
+                "result":         final.get("response", ""),
+                "handled_by":     final.get("handled_by", "unknown"),
+                "agent_role":     final.get("agent_role", ""),
+                "route":          final.get("routed_to", ""),
+                "complexity":     final.get("complexity", ""),
+                "mcp_tools_used": final.get("mcp_tools_used", []),
+                "notion_page_id": final.get("notion_page_id"),
+                "dialog_status":  final.get("dialog_status", "completed"),
+                "human_question": final.get("human_question", ""),
+                "execution_time": total,
                 "langgraph":      True,
-                "version":        "11.5",
+                "version":        "14",
             }
-
         except Exception as e:
-            logger.exception("❌ LangGraph v11.5 処理失敗: %s", e)
+            logger.exception("❌ LangGraph v14 処理失敗: %s", e)
             return {
                 "status":         "failed",
                 "error":          str(e),
+                "response":       f"❌ 処理失敗: {e}",
+                "result":         f"❌ 処理失敗: {e}",
                 "handled_by":     "langgraph_router",
                 "execution_time": time.time() - start,
             }
+
+    # 後方互換
+    async def process_task(self, content: str, context: dict = None,
+                           priority: int = 1, source: str = "api") -> dict:
+        ctx = context or {}
+        return await self.process_message(
+            message=content,
+            thread_id=ctx.get("root_id", ctx.get("thread_id", "")),
+            channel_id=ctx.get("channel_id", ""),
+            user_id=ctx.get("user_id", ""),
+            source=ctx.get("source", source),
+            forced_role=ctx.get("forced_route") or ctx.get("forced_agent"),
+        )
