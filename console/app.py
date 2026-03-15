@@ -136,17 +136,17 @@ async def models():
     from utils.client_registry import ClientRegistry
     registry = ClientRegistry.get()
     model_list = [
-        {"key": "auto", "name": "自動ルーティング", "emoji": "🔀"},
-        {"key": "daigensui", "name": "大元帥 (Claude Opus 4.6)", "emoji": "⚔️"},
-        {"key": "shogun", "name": "将軍 (Claude Sonnet 4.6)", "emoji": "🏯"},
-        {"key": "gunshi", "name": "軍師 (o3-mini)", "emoji": "📜"},
-        {"key": "sanbo", "name": "参謀 (Mistral Large 3)", "emoji": "🗡️"},
-        {"key": "gaiji", "name": "外事 (Command R+)", "emoji": "🌐"},
-        {"key": "uketuke", "name": "受付 (Command R)", "emoji": "🚪"},
-        {"key": "seppou", "name": "斥候 (Llama 3.3 Groq)", "emoji": "🏹"},
-        {"key": "kengyo", "name": "検校 (Gemini Vision)", "emoji": "👁️"},
-        {"key": "yuhitsu", "name": "右筆 (ELYZA)", "emoji": "🖊️"},
-        {"key": "onmitsu", "name": "隠密 (Nemotron Local)", "emoji": "🥷"},
+        {"key": "auto", "name": "🔀 自動ルーティング", "emoji": "🔀"},
+        {"key": "daigensui", "name": "👑 大元帥 (Claude Opus 4.6)", "emoji": "👑"},
+        {"key": "shogun", "name": "🎌 将軍 (Claude Sonnet 4.6)", "emoji": "🎌"},
+        {"key": "gunshi", "name": "🧠 軍師 (Mistral Large 3)", "emoji": "🧠"},
+        {"key": "sanbo", "name": "📋 参謀 (Mistral Large 3)", "emoji": "📋"},
+        {"key": "gaiji", "name": "🌏 外事 (Command A 03-2025)", "emoji": "🌏"},
+        {"key": "uketuke", "name": "🚪 受付 (Command R7B-12-2024)", "emoji": "🚪"},
+        {"key": "seppou", "name": "⚡ 斥候 (Llama 3.3 Groq)", "emoji": "⚡"},
+        {"key": "kengyo", "name": "👁️ 検校 (Gemini 3 Vision)", "emoji": "👁️"},
+        {"key": "yuhitsu", "name": "✍️ 右筆 (ELYZA Local)", "emoji": "✍️"},
+        {"key": "onmitsu", "name": "🥷 隠密 (Nemotron Local)", "emoji": "🥷"},
     ]
     return {"models": model_list}
 
