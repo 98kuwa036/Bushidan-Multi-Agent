@@ -25,7 +25,7 @@ def print_banner() -> None:
 ║  10役職:                                                      ║
 ║    大元帥  - Claude Opus 4.6    最高難度・戦略設計             ║
 ║    将軍    - Claude Sonnet 4.6  メインワーカー                 ║
-║    軍師    - o3-mini (high)     深層推論・PDCA                 ║
+║    軍師    - Mistral Large 3     深層推論・PDCA                 ║
 ║    参謀    - Mistral Large 3    汎用コーディング               ║
 ║    外事    - Command R+         RAG・外部情報                  ║
 ║    受付    - Command R          フォールバック                  ║

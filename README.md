@@ -56,7 +56,7 @@
 ║                                                              ║
 ║  👑 大元帥  - Claude Opus 4.6    最高難度・戦略設計            ║
 ║  🎌 将軍    - Claude Sonnet 4.6  メインワーカー                ║
-║  🧠 軍師    - o3-mini (high)     深層推論・PDCA                ║
+║  🧠 軍師    - Mistral Large 3 (high)     深層推論・PDCA                ║
 ║  📋 参謀    - Mistral Large 3    汎用コーディング              ║
 ║  🌏 外事    - Command R+         RAG・外部情報収集             ║
 ║  🔔 受付    - Command R          フォールバック処理            ║
@@ -74,7 +74,7 @@
 |---|---|---|---|---|---|
 | 👑 大元帥 | `daigensui` | Claude Opus 4.6 | Anthropic | 最高難度・戦略設計・最終エスカレーション | ¥10-50/req |
 | 🎌 将軍 | `shogun` | Claude Sonnet 4.6 | Anthropic | メインワーカー・高難度コーディング | ¥0-5/req |
-| 🧠 軍師 | `gunshi` | o3-mini (high) | OpenAI | 深層推論・PDCA エンジン | ¥0.05-0.20/req |
+| 🧠 軍師 | `gunshi` | Mistral Large 3 | Mistral AI | 深層推論・PDCA エンジン | ¥0.01-0.10/req |
 | 📋 参謀 | `sanbo` | Mistral Large 3 | Mistral AI | 汎用コーディング・MCP連携 | ¥0.01-0.10/req |
 | 🌏 外事 | `gaiji` | Command R+ | Cohere | RAG・外部情報・Retrieval特化 | ¥0.01/req |
 | 🔔 受付 | `uketuke` | Command R | Cohere | デフォルトフォールバック | ¥0.003/req |
@@ -385,7 +385,7 @@ response = await client.generate(
 |---|---|---|
 | `_CohereAdapter` | 受付・外事 | Command R / Command R+ |
 | `_GroqAdapter` | 斥候 | Llama 3.3 70B |
-| `_O3MiniAdapter` | 軍師 | o3-mini (high) |
+| `_O3MiniAdapter` | 軍師 | Mistral Large 3 (high) |
 | `_MistralAdapter` | 参謀 | Mistral Large 3 |
 | `_ClaudeAdapter` | 将軍・大元帥 | Sonnet 4.6 / Opus 4.6 |
 | `_Gemini3Adapter` | 検校 | Gemini 3 Flash Vision |
@@ -454,7 +454,7 @@ pm2 save
 | Key | 役職 | コスト |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | 大元帥 (Opus 4.6) + 将軍 (Sonnet 4.6) | Pro ¥3,000/月 + API |
-| `OPENAI_API_KEY` | 軍師 (o3-mini high) | ~¥0.05-0.20/req |
+| `OPENAI_API_KEY` | 軍師 (Mistral Large 3 high) | ~¥0.05-0.20/req |
 | `MISTRAL_API_KEY` | 参謀 (Mistral Large 3) | ~¥0.01-0.10/req |
 | `COHERE_API_KEY` | 外事 (Command R+) + 受付 (Command R) | ~¥0.003-0.01/req |
 | `GEMINI_API_KEY` | 検校 (Gemini 3 Flash Vision) | ~¥0.01/req |
@@ -508,7 +508,7 @@ pm2 save
 | **Fallback** | **5-10秒** | 受付 Command R | ¥0.003 |
 | **RAG / 外部情報** | **10-20秒** | 外事 Command R+ | ¥0.01 |
 | **コーディング (MCP)** | **15-30秒** | 参謀 Mistral | ¥0.05 |
-| **複雑推論 (PDCA)** | **30-60秒** | 軍師 o3-mini | ¥0.10-0.30 |
+| **複雑推論 (PDCA)** | **30-60秒** | 軍師 Mistral Large 3 | ¥0.10-0.30 |
 | **メインワーカー** | **15-30秒** | 将軍 Sonnet 4.6 | ¥0-5 |
 | **戦略設計** | **45-90秒** | 大元帥 Opus 4.6 | ¥10-50 |
 | **日本語清書** | **20-40秒** | 右筆 ELYZA Local | ¥0 |
@@ -553,13 +553,12 @@ pm2 save
 |---|---|---|
 | **Claude Pro** | ¥3,000 | Pro CLI + Prompt Caching（大元帥・将軍） |
 | **Claude API** | ¥150 | Prompt Caching 90%削減 |
-| **OpenAI (o3-mini)** | ¥200 | 軍師 PDCA |
-| **Mistral Large 3** | ¥100 | 参謀 コーディング |
+| **Mistral Large 3** | ¥120 | 軍師 PDCA + 参謀 統一 |
 | **Cohere** | ¥50 | 外事 (R+) + 受付 (R) |
 | **Gemini Flash** | ¥80 | 検校 マルチモーダル |
 | **Groq** | ¥0 | 斥候 無料枠内 |
 | **電力** | ¥80 | ローカルLLM 2モデル |
-| **合計** | **¥3,660** | v11.5 比 -¥90（Grok除外・Mistral/Cohere追加） |
+| **合計** | **¥3,590** | v14.1 更新（o3-mini → Mistral統一で効率化） |
 
 ---
 

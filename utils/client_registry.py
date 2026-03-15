@@ -173,7 +173,7 @@ _FACTORIES = {
     "uketuke":   lambda: _CohereAdapter("command-r"),
     "gaiji":     lambda: _CohereAdapter("command-r-plus"),
     "seppou":    lambda: _GroqAdapter(),
-    "gunshi":    lambda: _O3MiniAdapter(),
+    "gunshi":    lambda: _MistralAdapter(),  # v14.1: o3-mini → Mistral Large 3 に統一
     "sanbo":     lambda: _MistralAdapter(),
     "shogun":    lambda: _ClaudeAdapter("claude-sonnet-4-6"),
     "daigensui": lambda: _ClaudeAdapter("claude-opus-4-6"),
