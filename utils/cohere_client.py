@@ -48,6 +48,8 @@ class CohereClient:
     """
 
     def __init__(self, api_key: str, model: str = "command-r"):
+        if not api_key or len(api_key) < 5:
+            raise ValueError("COHERE_API_KEY が未設定または不正です (env変数を確認してください)")
         self.api_key    = api_key
         self.model      = model
         self._requests  = 0

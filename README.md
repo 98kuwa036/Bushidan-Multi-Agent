@@ -22,6 +22,7 @@
 - **🔄 LangGraph HITL**: Human-in-the-Loop 中断ノード（3分岐: human / loop / done）
 - **⏱️ ノードタイムアウト**: 役職別タイムアウト設定 + フォールバックマップ
 - **🔌 MCP SDK**: MCPToolRegistry シングルトン + 役職別アクセス制御（ACL）
+- **💰 Claude Pro CLI 優先戦略**: 大元帥・将軍は Pro CLI (無制限) → API フォールバック
 - **📱 モバイルコンソール**: FastAPI + WebSocket（port 8067）
 - **🔧 ClientRegistry**: シングルトン, role_key → BaseLLMClient 遅延初期化・キャッシュ
 - **🩺 ヘルスチェック統合**: ルーティング判断時にクライアント死活確認 + 自動フォールバック
@@ -36,6 +37,7 @@
 - [HITL（Human-in-the-Loop）](#hitlhuman-in-the-loop)
 - [MCP SDK・権限マトリクス](#mcp-sdk権限マトリクス)
 - [モバイルコンソール](#モバイルコンソール)
+- [Claude Code CLI フォールバック](#claude-code-cli-フォールバック)
 - [ClientRegistry アーキテクチャ](#clientregistry-アーキテクチャ)
 - [インストール](#インストール)
 - [パフォーマンス・タイムアウト設定](#パフォーマンスタイムアウト設定)
@@ -232,6 +234,8 @@ result = await registry.call_tool("github", "create_issue", {...}, role="shogun"
 uvicorn console.app:app --host 0.0.0.0 --port 8067
 ```
 
+ブラウザから `http://192.168.11.230:8067` でアクセス。スマートフォンからも操作可能。
+
 ### エンドポイント
 
 | メソッド | パス | 説明 |
@@ -243,7 +247,119 @@ uvicorn console.app:app --host 0.0.0.0 --port 8067
 | `GET` | `/api/health` | ヘルスチェック |
 | `WS` | `/ws/chat` | WebSocket チャット（HITL対応） |
 
-スマートフォンから `http://192.168.11.230:8067` でアクセス可能。HITL 中断時もモバイルから応答できます。
+---
+
+## 💻 Claude Code CLI フォールバック
+
+### 大元帥・将軍の Proプラン優先戦略
+
+v14 の最大の特徴が、**大元帥（Opus 4.6）** と **将軍（Sonnet 4.6）** が **Claude Code CLI** を使用する仕様です。
+
+```
+Web UI (モバイルコンソール @ port 8067)
+    ↓
+LangGraph Router v14
+    ↓
+大元帥 / 将軍 ロール
+    ↓
+[Claude Code CLI]  (`claude -p` コマンド)
+    ├─ ✅ Pro無制限枠で実行成功
+    │       ↓
+    │   [結果を Web UI に返却]
+    │
+    └─ ❌ CLI失敗 / タイムアウト / エラー
+            ↓
+        [Anthropic API フォールバック]  (有料)
+            ↓
+        [結果を Web UI に返却]
+```
+
+### 実装詳細
+
+#### `utils/claude_cli_client.py`
+
+```python
+# Claude Code CLI を優先実行
+from utils.claude_cli_client import call_claude_with_fallback
+
+result = await call_claude_with_fallback(
+    prompt="複雑なコーディングタスク",
+    model="claude-sonnet-4-6",
+    api_key=ANTHROPIC_API_KEY,  # フォールバック用のみ
+    system="あなたは将軍です"
+)
+```
+
+**フロー:**
+1. `claude -p <prompt>` で Pro CLI を実行（無制限枠）
+2. CLI が成功 → 出力を返却 ✅
+3. CLI が失敗・エラー・タイムアウト → Anthropic API にフォールバック ⚠️
+
+#### 自動フォールバック判定
+
+CLI が以下の場合、自動的に API にフォールバック：
+- `Usage limit reached` — Pro枠超過
+- `Rate limit` — レート制限
+- `authentication failed` — 認証エラー
+- `timeout` — 120秒以上の応答遅延
+- 空応答 — 出力なし
+- 非ゼロ終了コード — CLI異常終了
+
+### コスト最適化
+
+```
+月間シナリオ:
+┌─────────────────────────────────────────────┐
+│ Claude Pro ¥3,000/月                        │
+│  ├─ 無制限使用: 大元帥・将軍 (Pro CLI)      │
+│  └─ テキスト処理: 自由に実行可能             │
+│                                              │
+│ Anthropic API ¥150/月 (予備)                │
+│  ├─ Pro CLI 失敗時のみ発動                   │
+│  └─ Prompt Caching で 90% コスト削減        │
+└─────────────────────────────────────────────┘
+
+結果: Pro CLI 優先 → API フォールバック により、
+      Pro¥3,000枠を最大活用 + API コスト最小化
+```
+
+### Web UI での実行例
+
+モバイルコンソール（port 8067）で大元帥に指示：
+
+```
+【Web UI】
+入力: "複雑なTypeScript型定義を設計して"
+モデル選択: "大元帥 (Claude Opus 4.6)"
+
+【バックエンド処理】
+1. 将軍ロール → claude_cli_client.py
+2. Claude Code CLI実行: claude -p "複雑なTypeScript..."
+3. Pro枠で無制限実行 ✅
+4. 結果を Web UI にリアルタイム返却
+
+【モバイル画面】
+"型定義設計が完了しました。interface User { ... }"
+```
+
+### Pro CLI 必須環境
+
+Claude Code CLI を使うには以下が必須です：
+
+```bash
+# Claude Code CLI のセットアップ
+# https://claude.ai/code から Claude Code をインストール
+# ターミナルで `claude` コマンドが使える状態
+
+# 確認
+$ claude --version
+Claude 0.1.0
+
+# Pro APIキーを設定
+$ claude config set api-key YOUR_ANTHROPIC_API_KEY
+```
+
+---
 
 ---
 

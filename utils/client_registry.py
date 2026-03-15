@@ -28,6 +28,8 @@ class _CohereAdapter(BaseLLMClient):
     def __init__(self, model: str):
         from utils.cohere_client import CohereClient
         api_key = os.environ.get("COHERE_API_KEY", "")
+        if not api_key or len(api_key) < 5:
+            raise RuntimeError(f"COHERE_API_KEY が未設定です (モデル: {model})")
         self._client = CohereClient(api_key=api_key, model=model)
 
     async def generate(self, messages, system="", max_tokens=2048, **kw):
@@ -42,7 +44,10 @@ class _GroqAdapter(BaseLLMClient):
 
     def __init__(self):
         from utils.groq_client import GroqClient
-        self._client = GroqClient(api_key=os.environ.get("GROQ_API_KEY", ""))
+        api_key = os.environ.get("GROQ_API_KEY", "")
+        if not api_key or len(api_key) < 5:
+            raise RuntimeError("GROQ_API_KEY が未設定です (斥候用)")
+        self._client = GroqClient(api_key=api_key)
 
     async def generate(self, messages, system="", max_tokens=1000, **kw):
         if system:
@@ -62,7 +67,10 @@ class _O3MiniAdapter(BaseLLMClient):
 
     def __init__(self):
         from utils.o3mini_client import O3MiniClient
-        self._client = O3MiniClient(api_key=os.environ.get("OPENAI_API_KEY", ""))
+        api_key = os.environ.get("OPENAI_API_KEY", "")
+        if not api_key or len(api_key) < 5:
+            raise RuntimeError("OPENAI_API_KEY が未設定です (軍師用)")
+        self._client = O3MiniClient(api_key=api_key)
 
     async def generate(self, messages, system="", max_tokens=4000, **kw):
         reasoning = kw.pop("reasoning_effort", "high")
@@ -80,7 +88,10 @@ class _MistralAdapter(BaseLLMClient):
 
     def __init__(self):
         from utils.mistral_client import MistralClient
-        self._client = MistralClient(api_key=os.environ.get("MISTRAL_API_KEY", ""))
+        api_key = os.environ.get("MISTRAL_API_KEY", "")
+        if not api_key or len(api_key) < 5:
+            raise RuntimeError("MISTRAL_API_KEY が未設定です (参謀用)")
+        self._client = MistralClient(api_key=api_key)
 
     async def generate(self, messages, system="", max_tokens=4000, **kw):
         return await self._client.generate(
@@ -119,6 +130,8 @@ class _Gemini3Adapter(BaseLLMClient):
     def __init__(self):
         from utils.gemini3_client import Gemini3Client
         api_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GOOGLE_API_KEY", ""))
+        if not api_key or len(api_key) < 5:
+            raise RuntimeError("GEMINI_API_KEY が未設定です (検校用)")
         self._client = Gemini3Client(api_key=api_key)
 
     async def generate(self, messages, system="", max_tokens=2048, **kw):
