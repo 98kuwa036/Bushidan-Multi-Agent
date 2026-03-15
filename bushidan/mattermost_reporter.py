@@ -31,68 +31,69 @@ from mattermostdriver.driver import Driver
 
 logger = logging.getLogger("bushidan.mattermost_reporter")
 
-# ─── エージェント設定 v14 (10役職) ───────────────────────────────────────────
+# ─── エージェント設定 v14.2 (10役職) ───────────────────────────────────────────
 # トークンは環境変数 MM_TOKEN_{KEY} から取得
+# 表示名: [漢字名 | LLM名]
 AGENT_CONFIG: Dict[str, Dict[str, str]] = {
     "uketuke": {
         "token":   os.environ.get("MM_TOKEN_UKETUKE", ""),
-        "display": "受付",
-        "model":   "Command R",
+        "display": "受付 | Command R7B-12-2024",
+        "model":   "Command R7B-12-2024",
         "emoji":   "🚪",
     },
     "gaiji": {
         "token":   os.environ.get("MM_TOKEN_GAIJI", ""),
-        "display": "外事",
-        "model":   "Command R+",
-        "emoji":   "🌐",
+        "display": "外事 | Command A 03-2025",
+        "model":   "Command A 03-2025",
+        "emoji":   "🌏",
     },
     "kengyo": {
         "token":   os.environ.get("MM_TOKEN_KENGYO", ""),
-        "display": "検校",
-        "model":   "Gemini 3 Flash Vision",
+        "display": "検校 | Gemini Vision",
+        "model":   "Gemini Vision",
         "emoji":   "👁️",
     },
     "shogun": {
         "token":   os.environ.get("MM_TOKEN_SHOGUN", ""),
-        "display": "将軍",
+        "display": "将軍 | Claude Sonnet 4.6",
         "model":   "Claude Sonnet 4.6",
-        "emoji":   "🏯",
+        "emoji":   "🎌",
     },
     "gunshi": {
         "token":   os.environ.get("MM_TOKEN_GUNSHI", ""),
-        "display": "軍師",
-        "model":   "o3-mini",
-        "emoji":   "📜",
+        "display": "軍師 | Mistral Large 3",
+        "model":   "Mistral Large 3",
+        "emoji":   "🧠",
     },
     "sanbo": {
         "token":   os.environ.get("MM_TOKEN_SANBO", ""),
-        "display": "参謀",
+        "display": "参謀 | Mistral Large 3",
         "model":   "Mistral Large 3",
-        "emoji":   "🗡️",
+        "emoji":   "📋",
     },
     "yuhitsu": {
         "token":   os.environ.get("MM_TOKEN_YUHITSU", ""),
-        "display": "右筆",
-        "model":   "Llama ELYZA",
-        "emoji":   "🖊️",
+        "display": "右筆 | ELYZA Local",
+        "model":   "ELYZA Local",
+        "emoji":   "✍️",
     },
     "seppou": {
         "token":   os.environ.get("MM_TOKEN_SEPPOU", ""),
-        "display": "斥候",
-        "model":   "Llama 3.3 70B (Groq)",
-        "emoji":   "🏹",
+        "display": "斥候 | Llama 3.3 Groq",
+        "model":   "Llama 3.3 Groq",
+        "emoji":   "⚡",
     },
     "onmitsu": {
         "token":   os.environ.get("MM_TOKEN_ONMITSU", ""),
-        "display": "隠密",
-        "model":   "Nemotron-3-Nano (Local)",
+        "display": "隠密 | Nemotron Local",
+        "model":   "Nemotron Local",
         "emoji":   "🥷",
     },
     "daigensui": {
         "token":   os.environ.get("MM_TOKEN_DAIGENSUI", ""),
-        "display": "大元帥",
+        "display": "大元帥 | Claude Opus 4.6",
         "model":   "Claude Opus 4.6",
-        "emoji":   "⚔️",
+        "emoji":   "👑",
     },
 }
 

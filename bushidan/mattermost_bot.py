@@ -355,6 +355,7 @@ class BushidanMattermostBot:
             message    = post.get("message", "")
             channel_id = post.get("channel_id", "")
             post_id    = post.get("id", "")
+            channel_type = data.get("channel_type", "")  # "O"=open, "P"=private, "D"=direct
             root_id    = post.get("root_id") or post_id
 
             mentions_raw = data.get("mentions", "[]") or "[]"
@@ -367,20 +368,37 @@ class BushidanMattermostBot:
             # 特定エージェントへの直接メンション検出
             mentioned_agent = self._find_mentioned_agent(message, mentions)
 
-            if not is_mentioned_main and not mentioned_agent:
-                # アクティブスレッドへの返信 → MemorySaver が会話履歴を保持しているので
-                # thread_id を渡してそのままルーターに投げるだけでよい
-                actual_root = post.get("root_id", "")
-                if actual_root and actual_root in self._active_thread_ids:
-                    sender = data.get("sender_name", "unknown")
-                    task   = re.sub(r"@\S+", "", message).strip() or message.strip()
-                    logger.info("🧵 スレッド返信 from %s: %s (thread=%s)", sender, task[:80], actual_root[:8])
-                    asyncio.create_task(
-                        self._handle_thread_reply(task, channel_id, actual_root))
-                return
+            # スレッド返信の判定: root_id が存在し、post_id と異なる場合
+            actual_root = post.get("root_id", "")
+            is_thread_reply = bool(actual_root and actual_root != post_id)
+
+            # DM（個別チャット）の判定: Mattermostチャンネルタイプが "D" の場合
+            is_direct_message = (channel_type == "D")
 
             sender = data.get("sender_name", "unknown")
             task   = re.sub(r"@\S+", "", message).strip() or message.strip()
+
+            logger.debug(
+                "📬 イベント: sender=%s channel_type=%s thread=%s task=%s",
+                sender, channel_type, "yes" if is_thread_reply else "no", task[:60]
+            )
+
+            # スレッド返信またはDMの場合は、メンションなしで常に返信
+            if is_thread_reply or is_direct_message:
+                logger.info(
+                    "🧵 スレッド/DM from %s: %s (thread=%s)",
+                    sender, task[:80], actual_root[:8] if actual_root else "DM"
+                )
+                asyncio.create_task(
+                    self._handle_thread_reply(task, channel_id, actual_root or post_id))
+                # アクティブスレッドとして記録
+                self._active_thread_ids.add(actual_root or post_id)
+                return
+
+            # メンション判定
+            if not is_mentioned_main and not mentioned_agent:
+                # メンションなし、スレッドでもDMでもない → スキップ
+                return
 
             if mentioned_agent and not is_mentioned_main:
                 # 特定エージェントへの直接呼び出し
@@ -602,15 +620,22 @@ class BushidanMattermostBot:
         HITL 待機中のスレッドに返信があった場合、
         human_response として設定して処理を再開する。
         """
+        logger.info("📥 スレッド返信処理開始: thread=%s channel=%s", root_id[:8], channel_id[:8])
+
         # HITL 待機中チェック
         hitl_state = self._waiting_for_human.pop(root_id, None)
         if hitl_state:
             logger.info("🙋 HITL 再開: thread=%s response=%s", root_id[:8], message[:60])
 
         try:
+            logger.info("🔄 LangGraph処理開始: %s", message[:80])
             result_dict = await self._process_task_dict(message, channel_id, root_id)
+            logger.info("✅ LangGraph処理完了: result_keys=%s", list(result_dict.keys()))
+
             handled_by  = result_dict.get("handled_by", "unknown")
             result_text = result_dict.get("_formatted", result_dict.get("result", "❌"))
+
+            logger.info("📤 投稿準備: handled_by=%s len=%d", handled_by, len(result_text))
 
             # HITL 待機状態の検出
             if result_dict.get("dialog_status") == "waiting_for_human":
@@ -623,10 +648,15 @@ class BushidanMattermostBot:
                 # 300秒後に自動タイムアウト
                 asyncio.create_task(self._hitl_timeout(root_id, channel_id, 300))
 
+            chunk_count = 0
             for chunk in _split_message(result_text):
+                chunk_count += 1
+                logger.info("📮 チャンク %d 投稿中...", chunk_count)
                 await self._post_with_fallback(handled_by, chunk, channel_id, root_id)
+            logger.info("✅ スレッド返信投稿完了: %d チャンク", chunk_count)
+
         except Exception as e:
-            logger.exception("スレッド返信処理エラー")
+            logger.exception("❌ スレッド返信処理エラー: %s", e)
             await self._post(channel_id, f"❌ エラー: {e}", root_id)
 
     async def _hitl_timeout(self, root_id: str, channel_id: str, timeout: int) -> None:
@@ -665,24 +695,28 @@ class BushidanMattermostBot:
     async def _post_with_fallback(
         self, handled_by: str, chunk: str, channel_id: str, root_id: str
     ) -> None:
-        """エージェント専用アカウントで投稿し、失敗時はメインBotでフォールバック。"""
-        if self._reporter:
-            posted = await self._reporter.post_from_node(
-                handled_by, chunk, root_id=root_id, channel_id=channel_id)
-            if posted is None:
-                # エージェント投稿失敗 → ヘッダー付きでメインBotから代理投稿
-                from bushidan.mattermost_reporter import NODE_TO_AGENT, AGENT_CONFIG
-                ak      = NODE_TO_AGENT.get(handled_by, "shogun")
-                cfg     = AGENT_CONFIG.get(ak, {})
-                emoji   = cfg.get("emoji", "🤖")
-                model_n = cfg.get("model", handled_by)
-                logger.warning("⚠️ [%s] エージェント投稿失敗 → メインBotで代理投稿", ak)
-                await self._post(
-                    channel_id,
-                    f"{emoji} **[{model_n}]** *(代理投稿)*\n\n{chunk}",
-                    root_id)
-        else:
-            await self._post(channel_id, chunk, root_id)
+        """メインBotから投稿（エージェント名を含める）。スレッド投稿の信頼性を優先。"""
+        logger.debug("📝 投稿開始: handled_by=%s channel=%s root=%s",
+                    handled_by[:8], channel_id[:8], root_id[:8] if root_id else "none")
+
+        try:
+            from bushidan.mattermost_reporter import NODE_TO_AGENT, AGENT_CONFIG
+            ak      = NODE_TO_AGENT.get(handled_by, "shogun")
+            cfg     = AGENT_CONFIG.get(ak, {})
+            emoji   = cfg.get("emoji", "🤖")
+            model_n = cfg.get("model", handled_by)
+
+            # メインBotから投稿（確実性が高い）
+            message = f"{emoji} **{model_n}**\n\n{chunk}"
+            logger.info("📮 メインBot投稿: %s", ak)
+            post_id = await self._post(channel_id, message, root_id)
+
+            if post_id:
+                logger.info("✅ 投稿成功: post_id=%s", post_id[:8])
+            else:
+                logger.warning("⚠️ 投稿失敗: post_id=None")
+        except Exception as e:
+            logger.error("❌ 投稿エラー: %s", e)
 
     async def _thread_cleanup_loop(self) -> None:
         """

@@ -37,6 +37,25 @@ _CLI_ERROR_PATTERNS = [
 _CLI_TIMEOUT = 120
 
 
+def _format_messages_to_prompt(messages: list) -> str:
+    """会話履歴を単一プロンプトに変換する（CLI用）"""
+    if not messages:
+        return ""
+
+    lines = []
+    for msg in messages[:-1]:  # 最後のメッセージ以外は履歴として含める
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        prefix = "[ユーザー]" if role == "user" else "[アシスタント]"
+        lines.append(f"{prefix}\n{content}")
+
+    # 最後のメッセージをメインプロンプトとして
+    last_msg = messages[-1]
+    lines.append(f"\n[現在の質問]\n{last_msg.get('content', '')}")
+
+    return "\n".join(lines)
+
+
 async def _try_claude_cli(prompt: str, model: str, system: Optional[str] = None) -> Optional[str]:
     """
     claude CLI でリクエストを試みる。
@@ -143,10 +162,11 @@ async def call_claude_with_history(
     api_key: str,
     system: Optional[str] = None,
     max_tokens: int = 4096,
+    prefer_cli: bool = True,
 ) -> str:
     """
     会話履歴付きで Claude を呼び出す。
-    CLI は単一プロンプトのみ対応のため、API を直接使用する。
+    CLI優先: 会話履歴をプロンプトに変換してから CLI を試す → API フォールバック
 
     Args:
         messages: [{"role": "user"/"assistant", "content": "..."}]
@@ -154,7 +174,17 @@ async def call_claude_with_history(
         api_key:  Anthropic APIキー
         system:   システムプロンプト (省略可)
         max_tokens: 最大トークン数
+        prefer_cli: True (デフォルト) で CLI 優先、False で API 直接
     """
+    # CLI優先の場合: 会話履歴をプロンプトに変換
+    if prefer_cli:
+        prompt = _format_messages_to_prompt(messages)
+        cli_result = await _try_claude_cli(prompt, model, system)
+        if cli_result is not None:
+            return cli_result
+        logger.info("📌 CLI失敗 → API フォールバック (会話履歴 %d件)", len(messages))
+
+    # API フォールバック or prefer_cli=False
     return await _call_anthropic_api_with_messages(messages, model, api_key, system, max_tokens)
 
 

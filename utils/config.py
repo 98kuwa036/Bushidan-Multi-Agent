@@ -70,7 +70,6 @@ def load_config() -> SystemConfig:
         xai_api_key=xai_api_key,
         discord_token=discord_token,
         notion_token=notion_token,
-        litellm_endpoint=litellm_endpoint,
         llamacpp_endpoint=llamacpp_endpoint,
         intelligent_routing_enabled=intelligent_routing,
         prompt_caching_enabled=prompt_caching,
