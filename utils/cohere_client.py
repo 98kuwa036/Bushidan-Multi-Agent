@@ -86,8 +86,9 @@ class CohereClient:
             "max_tokens":  max_tokens,
             "temperature": temperature,
         }
+        # Cohere Chat API v2: system_prompt は "preamble" キーで渡す
         if system_prompt:
-            body["system"] = system_prompt
+            body["preamble"] = system_prompt
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
