@@ -36,52 +36,52 @@ except ImportError:
 AGENT_PROFILES = {
     "uketuke-bot": {
         "token": os.environ.get("MM_TOKEN_UKETUKE", ""),
-        "display_name": "受付 | Command R7B-12-2024",
+        "display_name": "受付 - Command R7B-12-2024",
         "position": "Reception / Fallback",
     },
     "gaiji-bot": {
         "token": os.environ.get("MM_TOKEN_GAIJI", ""),
-        "display_name": "外事 | Command A 03-2025",
+        "display_name": "外事 - Command A 03-2025",
         "position": "External Affairs / RAG",
     },
     "kengyo-bot": {
         "token": os.environ.get("MM_TOKEN_KENGYO", ""),
-        "display_name": "検校 | Gemini Vision",
+        "display_name": "検校 - Gemini Vision",
         "position": "Inspector / Vision",
     },
     "shogun-bot": {
         "token": os.environ.get("MM_TOKEN_SHOGUN", ""),
-        "display_name": "将軍 | Claude Sonnet 4.6",
+        "display_name": "将軍 - Claude Sonnet 4.6",
         "position": "Shogun / Main Worker",
     },
     "gunshi-bot": {
         "token": os.environ.get("MM_TOKEN_GUNSHI", ""),
-        "display_name": "軍師 | Mistral Large 3",
+        "display_name": "軍師 - Mistral Large 3",
         "position": "Military Strategist / PDCA",
     },
     "sanbo-a-bot": {  # 旧アカウント名
         "token": os.environ.get("MM_TOKEN_SANBO", ""),
-        "display_name": "参謀 | Mistral Large 3",
+        "display_name": "参謀 - Mistral Large 3",
         "position": "Staff Officer / Tools",
     },
     "yuhitsu-bot": {
         "token": os.environ.get("MM_TOKEN_YUHITSU", ""),
-        "display_name": "右筆 | ELYZA Local",
+        "display_name": "右筆 - ELYZA Local",
         "position": "Secretary / Japanese Cleanup",
     },
     "seppou-bot": {
         "token": os.environ.get("MM_TOKEN_SEPPOU", ""),
-        "display_name": "斥候 | Llama 3.3 Groq",
+        "display_name": "斥候 - Llama 3.3 Groq",
         "position": "Scout / Fast Q&A",
     },
     "onmitsu-bot": {
         "token": os.environ.get("MM_TOKEN_ONMITSU", ""),
-        "display_name": "隠密 | Nemotron Local",
+        "display_name": "隠密 - Nemotron Local",
         "position": "Secret Agent / Local",
     },
     "daigensui-bot": {
         "token": os.environ.get("MM_TOKEN_DAIGENSUI", ""),
-        "display_name": "大元帥 | Claude Opus 4.6",
+        "display_name": "大元帥 - Claude Opus 4.6",
         "position": "Commander-in-Chief",
     },
 }
