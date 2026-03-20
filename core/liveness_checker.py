@@ -60,10 +60,20 @@ class LLMAvailabilityChecker:
         name = "Claude Pro CLI"
 
         try:
-            # パス確認
-            cli_path = "/home/claude/.npm-global/bin/claude"
-            if not os.path.exists(cli_path):
-                return LLMStatus(name, False, f"Claude CLI not found at {cli_path}")
+            # パス確認（複数の候補をチェック）
+            possible_paths = [
+                "/home/claude/.local/bin/claude",
+                "/home/claude/.npm-global/bin/claude",
+                os.path.expanduser("~/.local/bin/claude"),
+            ]
+            cli_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    cli_path = path
+                    break
+
+            if not cli_path:
+                return LLMStatus(name, False, f"Claude CLI not found (tried: {', '.join(possible_paths)})")
 
             # バージョン確認コマンド
             result = subprocess.run(
@@ -145,10 +155,11 @@ class LLMAvailabilityChecker:
         name = "Local Qwen3 (llama.cpp)"
 
         try:
-            # localhost:8000 接続確認
+            # llama.cpp エンドポイント接続確認（環境変数から取得）
             import aiohttp
 
-            url = "http://localhost:8000/v1/completions"
+            llamacpp_host = os.getenv("LLAMACPP_ENDPOINT", "http://192.168.11.239:8080")
+            url = f"{llamacpp_host}/v1/completions"
             headers = {"Content-Type": "application/json"}
             payload = {
                 "prompt": "test",
@@ -179,8 +190,9 @@ class LLMAvailabilityChecker:
 
         except asyncio.TimeoutError:
             return LLMStatus(name, False, "Connection timeout (10s)")
-        except aiohttp.ClientConnectorError:
-            return LLMStatus(name, False, "Cannot connect to localhost:8000")
+        except aiohttp.ClientConnectorError as e:
+            llamacpp_host = os.getenv("LLAMACPP_ENDPOINT", "http://192.168.11.239:8080")
+            return LLMStatus(name, False, f"Cannot connect to {llamacpp_host}")
         except Exception as e:
             elapsed = (time.time() - start) * 1000
             return LLMStatus(
@@ -198,10 +210,10 @@ class LLMAvailabilityChecker:
         name = "Gemini 3.0 Flash"
 
         try:
-            # Google API キー確認
-            api_key = os.getenv("GOOGLE_API_KEY")
+            # Google API キー確認（GOOGLE_API_KEY または GEMINI_API_KEY）
+            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
             if not api_key:
-                return LLMStatus(name, False, "GOOGLE_API_KEY not set")
+                return LLMStatus(name, False, "GOOGLE_API_KEY or GEMINI_API_KEY not set")
 
             # 軽量リクエスト送信
             import google.generativeai as genai
