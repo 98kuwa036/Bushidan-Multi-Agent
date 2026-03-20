@@ -38,6 +38,8 @@ class LLMAvailabilityChecker:
             self.check_anthropic_api(),
             self.check_gemini_flash(),
             self.check_groq(),
+            self.check_mistral(),
+            self.check_cohere(),
         ]
 
         results = await asyncio.gather(*checks, return_exceptions=True)
@@ -221,6 +223,100 @@ class LLMAvailabilityChecker:
                 f"Model: {response.model}",
                 response_time_ms=elapsed,
             )
+
+        except Exception as e:
+            elapsed = (time.time() - start) * 1000
+            return LLMStatus(
+                name,
+                False,
+                str(e)[:100],
+                response_time_ms=elapsed,
+            )
+
+    async def check_mistral(self) -> LLMStatus:
+        """Mistral AI が使用可能か"""
+        import time
+
+        start = time.time()
+        name = "Mistral AI"
+
+        try:
+            api_key = os.getenv("MISTRAL_API_KEY")
+            if not api_key:
+                return LLMStatus(name, False, "MISTRAL_API_KEY not set")
+
+            # mistralai ライブラリでAPIテスト
+            from mistralai import Mistral
+
+            client = Mistral(api_key=api_key)
+            response = client.chat(
+                model="mistral-large-latest",
+                messages=[{"role": "user", "content": "test"}],
+                max_tokens=1,
+            )
+
+            elapsed = (time.time() - start) * 1000
+
+            return LLMStatus(
+                name,
+                True,
+                f"Model: mistral-large-latest",
+                response_time_ms=elapsed,
+            )
+
+        except Exception as e:
+            elapsed = (time.time() - start) * 1000
+            return LLMStatus(
+                name,
+                False,
+                str(e)[:100],
+                response_time_ms=elapsed,
+            )
+
+    async def check_cohere(self) -> LLMStatus:
+        """Cohere が使用可能か"""
+        import time
+
+        start = time.time()
+        name = "Cohere"
+
+        try:
+            api_key = os.getenv("COHERE_API_KEY")
+            if not api_key:
+                return LLMStatus(name, False, "COHERE_API_KEY not set")
+
+            # Cohere API テスト（v2 API）
+            import httpx
+
+            url = "https://api.cohere.com/v2/chat"
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": "command-r",
+                "messages": [{"role": "user", "content": "test"}],
+                "max_tokens": 1,
+            }
+
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
+                elapsed = (time.time() - start) * 1000
+
+                if response.status_code == 200:
+                    return LLMStatus(
+                        name,
+                        True,
+                        "command-r responding",
+                        response_time_ms=elapsed,
+                    )
+                else:
+                    return LLMStatus(
+                        name,
+                        False,
+                        f"HTTP {response.status_code}",
+                        response_time_ms=elapsed,
+                    )
 
         except Exception as e:
             elapsed = (time.time() - start) * 1000

@@ -515,18 +515,18 @@ class BushidanMattermostBot:
         # health_status から各エージェントの利用可能性を判定
         health = self._orchestrator.health_status
 
-        # エージェント別 API マッピング
+        # エージェント別 API マッピング (実装に基づく)
         agent_apis = {
-            "daigensui": "Anthropic API",    # Claude Opus
-            "shogun": "Anthropic API",       # Claude Sonnet
-            "gunshi": "OpenAI",              # o3-mini
+            "daigensui": "Claude Pro CLI",   # Claude Opus (CLI優先 → API FB)
+            "shogun": "Claude Pro CLI",      # Claude Sonnet (CLI優先 → API FB)
+            "gunshi": "Mistral AI",          # Mistral Large 3
             "sanbo": "Mistral AI",           # Mistral Large 3
-            "kengyo": "Gemini 3.0 Flash",    # Gemini Vision
-            "gaiji": "Cohere",               # Command R+
+            "kengyo": "Gemini 3.0 Flash",    # Gemini 3 Flash Vision
+            "gaiji": "Cohere",               # Command A (03-2025)
             "uketuke": "Cohere",             # Command R
-            "yuhitsu": "Claude Pro CLI",     # ELYZA (Local)
-            "seppou": "Groq",                # Llama 3.3
-            "onmitsu": "Claude Pro CLI",     # Nemotron (Local)
+            "yuhitsu": "Claude Pro CLI",     # Llama ELYZA (Local)
+            "seppou": "Groq",                # Llama 3.3 70B (Groq)
+            "onmitsu": "Claude Pro CLI",     # Nemotron-3-Nano (Local)
         }
 
         def get_agent_status(agent_key: str) -> str:
@@ -534,8 +534,11 @@ class BushidanMattermostBot:
             api_name = agent_apis.get(agent_key, "Unknown")
             if api_name in health:
                 return "✅" if health[api_name] else "❌"
+            # 表示対象外のローカルサービス: ⚠️ (常に動作可能と仮定)
+            if api_name == "Claude Pro CLI" and agent_key in ["yuhitsu", "onmitsu"]:
+                return "✅"  # ローカル処理は常に利用可能
             # チェックされていないAPIはステータス不明
-            return "❓" if api_name in ["OpenAI", "Mistral AI", "Cohere", "Nemotron"] else "❌"
+            return "❓" if api_name in ["Mistral AI", "Cohere"] else "❌"
 
         pending = self._approval_mgr.get_pending_count() if self._approval_mgr else 0
 
