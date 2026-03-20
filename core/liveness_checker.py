@@ -246,10 +246,10 @@ class LLMAvailabilityChecker:
                 return LLMStatus(name, False, "MISTRAL_API_KEY not set")
 
             # mistralai ライブラリでAPIテスト
-            from mistralai import Mistral
+            from mistralai.client import Mistral
 
             client = Mistral(api_key=api_key)
-            response = client.chat(
+            response = client.chat.complete(
                 model="mistral-large-latest",
                 messages=[{"role": "user", "content": "test"}],
                 max_tokens=1,
@@ -266,10 +266,14 @@ class LLMAvailabilityChecker:
 
         except Exception as e:
             elapsed = (time.time() - start) * 1000
+            error_msg = str(e)
+            # 401 Unauthorized の場合は API キーの問題を明示
+            if "401" in error_msg or "Unauthorized" in error_msg:
+                error_msg = "Invalid API key or Unauthorized"
             return LLMStatus(
                 name,
                 False,
-                str(e)[:100],
+                error_msg[:100],
                 response_time_ms=elapsed,
             )
 
