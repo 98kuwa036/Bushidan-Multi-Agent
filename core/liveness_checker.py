@@ -36,7 +36,6 @@ class LLMAvailabilityChecker:
         checks = [
             self.check_claude_pro_cli(),
             self.check_anthropic_api(),
-            self.check_local_qwen3(),
             self.check_gemini_flash(),
             self.check_groq(),
         ]
@@ -144,61 +143,6 @@ class LLMAvailabilityChecker:
                 name,
                 False,
                 f"{str(e)[:100]}",
-                response_time_ms=elapsed,
-            )
-
-    async def check_local_qwen3(self) -> LLMStatus:
-        """ローカル Qwen3 (llama.cpp) が使用可能か"""
-        import time
-
-        start = time.time()
-        name = "Local Qwen3 (llama.cpp)"
-
-        try:
-            # llama.cpp エンドポイント接続確認（環境変数から取得）
-            import aiohttp
-
-            llamacpp_host = os.getenv("LLAMACPP_ENDPOINT", "http://192.168.11.239:8080")
-            url = f"{llamacpp_host}/v1/completions"
-            headers = {"Content-Type": "application/json"}
-            payload = {
-                "prompt": "test",
-                "max_tokens": 1,
-                "temperature": 0.7,
-            }
-
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=10)
-                ) as response:
-                    elapsed = (time.time() - start) * 1000
-
-                    if response.status == 200:
-                        return LLMStatus(
-                            name,
-                            True,
-                            "llama.cpp server responding",
-                            response_time_ms=elapsed,
-                        )
-                    else:
-                        return LLMStatus(
-                            name,
-                            False,
-                            f"HTTP {response.status}",
-                            response_time_ms=elapsed,
-                        )
-
-        except asyncio.TimeoutError:
-            return LLMStatus(name, False, "Connection timeout (10s)")
-        except aiohttp.ClientConnectorError as e:
-            llamacpp_host = os.getenv("LLAMACPP_ENDPOINT", "http://192.168.11.239:8080")
-            return LLMStatus(name, False, f"Cannot connect to {llamacpp_host}")
-        except Exception as e:
-            elapsed = (time.time() - start) * 1000
-            return LLMStatus(
-                name,
-                False,
-                str(e)[:100],
                 response_time_ms=elapsed,
             )
 
