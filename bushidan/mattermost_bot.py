@@ -420,7 +420,8 @@ class BushidanMattermostBot:
             await self._post(channel_id, "はい、何かご用でしょうか？", root_id)
             return
 
-        if task.startswith(self._cmd_prefix):
+        # コマンド判定: ! プレフィックスまたはスラッシュで始まる
+        if task.startswith(self._cmd_prefix) or task.startswith("/"):
             await self._handle_command(task, channel_id, root_id)
             return
 
@@ -453,7 +454,12 @@ class BushidanMattermostBot:
 
     async def _handle_command(self, cmd_str: str, channel_id: str, root_id: str) -> None:
         parts = cmd_str.split()
-        cmd   = parts[0].lstrip(self._cmd_prefix).lower()
+        cmd_raw = parts[0]
+        # ! または / の両方に対応
+        if cmd_raw.startswith("/"):
+            cmd = cmd_raw.lstrip("/").lower()
+        else:
+            cmd = cmd_raw.lstrip(self._cmd_prefix).lower()
         args  = parts[1:]
         p     = self._cmd_prefix
 
@@ -464,11 +470,13 @@ class BushidanMattermostBot:
         elif cmd == "help":
             await self._post(channel_id, (
                 "**🏯 武士団 Mattermost Bot コマンド**\n\n"
-                "`@bushidan-bot <タスク>` — タスク投入\n"
-                "`/bushidan <タスク>` — スラッシュコマンド\n\n"
-                f"`{p}mode [battalion|company|platoon]` — モード確認・切り替え\n"
-                f"`{p}status` — 9層システム状態\n"
-                f"`{p}help` — このヘルプ\n\n"
+                "**タスク投入:**\n"
+                "`@bushidan-bot <タスク>` — メンション投入\n"
+                "`/bushidan <タスク>` — スラッシュコマンド投入\n\n"
+                "**管理コマンド:** (`/` または `!` で開始)\n"
+                f"`/status` または `{p}status` — システム状態確認\n"
+                f"`/mode [battalion|company|platoon]` — モード切り替え\n"
+                f"`/help` または `{p}help` — このヘルプ\n\n"
                 "**承認フロー:**\n"
                 "重要操作時に [✅ 承認] [❌ 却下] [✏️ 修正指示] ボタンが表示されます。"
             ), root_id)
@@ -482,7 +490,7 @@ class BushidanMattermostBot:
             desc = MODE_DESCRIPTIONS.get(self._current_mode, "不明")
             await self._post(channel_id,
                 f"**現在のモード:** `{self._current_mode}`\n\n{desc}\n\n"
-                f"`{p}mode battalion|company|platoon` で切り替え", root_id)
+                f"切り替え: `/mode battalion|company|platoon` または `{p}mode battalion|company|platoon`", root_id)
             return
         new_mode = args[0].lower()
         if new_mode not in MODE_DESCRIPTIONS:
