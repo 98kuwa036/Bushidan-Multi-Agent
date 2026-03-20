@@ -112,7 +112,7 @@ class SystemOrchestrator:
 
         try:
             from mcp_servers.filesystem_mcp import FilesystemMCP
-            self.mcps["filesystem"] = FilesystemMCP()
+            self.mcps["filesystem"] = FilesystemMCP("/home/claude/Bushidan")
         except Exception as e:
             logger.warning("⚠️ Filesystem MCP: %s", e)
 
@@ -141,8 +141,12 @@ class SystemOrchestrator:
         try:
             from core.liveness_checker import LLMAvailabilityChecker
             checker = LLMAvailabilityChecker()
-            await checker.check_all()
+            statuses = await checker.check_all()
             logger.info(checker.print_summary())
+            # LLM可用性をhealth_statusに保存
+            self.health_status.update({
+                name: status.available for name, status in statuses.items()
+            })
         except Exception as e:
             logger.warning("⚠️ LLM 可用性確認スキップ: %s", e)
 

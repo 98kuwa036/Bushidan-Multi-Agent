@@ -511,21 +511,42 @@ class BushidanMattermostBot:
             await self._post(channel_id,
                 f"⚠️ システム未初期化\n`{self._init_error or '不明'}`", root_id)
             return
-        def chk(a): return "✅" if getattr(self._orchestrator, a, None) else "❌"
-        llamacpp = self._orchestrator.health_status.get("llamacpp", False)
-        kengyo   = getattr(self._orchestrator, "kengyo", None)
-        kengyo_ok = bool(kengyo and (
-            not hasattr(kengyo, "is_available") or kengyo.is_available()))
+
+        # health_status から各エージェントの利用可能性を判定
+        health = self._orchestrator.health_status
+
+        # エージェント別 API マッピング
+        agent_apis = {
+            "daigensui": "Anthropic API",    # Claude Opus
+            "shogun": "Anthropic API",       # Claude Sonnet
+            "gunshi": "OpenAI",              # o3-mini
+            "sanbo": "Mistral AI",           # Mistral Large 3
+            "kengyo": "Gemini 3.0 Flash",    # Gemini Vision
+            "gaiji": "Cohere",               # Command R+
+            "uketuke": "Cohere",             # Command R
+            "yuhitsu": "Claude Pro CLI",     # ELYZA (Local)
+            "seppou": "Groq",                # Llama 3.3
+            "onmitsu": "Claude Pro CLI",     # Nemotron (Local)
+        }
+
+        def get_agent_status(agent_key: str) -> str:
+            """エージェントの利用可能性を取得"""
+            api_name = agent_apis.get(agent_key, "Unknown")
+            if api_name in health:
+                return "✅" if health[api_name] else "❌"
+            # チェックされていないAPIはステータス不明
+            return "❓" if api_name in ["OpenAI", "Mistral AI", "Cohere", "Nemotron"] else "❌"
+
         pending = self._approval_mgr.get_pending_count() if self._approval_mgr else 0
 
         await self._post(channel_id, (
             f"**🏯 武士団 v{self._orchestrator.VERSION}** | "
             f"モード: `{self._current_mode}` | 承認待ち: {pending}件\n\n"
-            f"👑 大元帥 {chk('daigensui')} | 🎌 将軍 {chk('shogun')} | "
-            f"🧠 軍師 {chk('gunshi')}\n"
-            f"⚔️ 参謀 {chk('sanbo')} | 👔 家老 {chk('karo')} | "
-            f"👁️ 検校 {'✅' if kengyo_ok else '❌'} | "
-            f"🥷 隠密 {'✅' if llamacpp else '⚠️'}\n\n"
+            f"👑 大元帥 {get_agent_status('daigensui')} | 🎌 将軍 {get_agent_status('shogun')} | "
+            f"🧠 軍師 {get_agent_status('gunshi')}\n"
+            f"⚔️ 参謀 {get_agent_status('sanbo')} | "
+            f"👁️ 検校 {get_agent_status('kengyo')} | "
+            f"🥷 隠密 {get_agent_status('onmitsu')}\n\n"
             f"🌐 コールバック: `{self._callback_base}`"
         ), root_id)
 
