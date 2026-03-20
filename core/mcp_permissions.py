@@ -60,6 +60,7 @@ class MCPPermissionManager:
             return False
 
     def _load_default_permissions(self) -> None:
+        # filesystem は全ロール /home/claude/Bushidan への readonly アクセスを持つ
         self.permissions = {
             "daigensui": {
                 "graph_memory": {"level": "exclusive", "priority": 1},
@@ -94,6 +95,11 @@ class MCPPermissionManager:
                 "filesystem": {"level": "delegated"},
                 "git": {"level": "delegated"},
             },
+            # 以下ロールも Bushidan への書き込みアクセスを付与
+            "gaiji":    {"filesystem": {"level": "primary"}},
+            "uketuke":  {"filesystem": {"level": "primary"}},
+            "seppou":   {"filesystem": {"level": "primary"}},
+            "yuhitsu":  {"filesystem": {"level": "primary"}},
         }
         self._loaded = True
         logger.info("デフォルトMCP権限設定を使用")

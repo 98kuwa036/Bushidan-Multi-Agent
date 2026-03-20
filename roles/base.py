@@ -62,11 +62,13 @@ class BaseRole(ABC):
         """
 
     def _build_system_prompt(self, state: dict, base_prompt: str = "") -> str:
-        """Notion RAGコンテキストをシステムプロンプトに注入する共通ヘルパー"""
+        """Notion RAG + Bushidanファイルコンテキストをシステムプロンプトに注入する共通ヘルパー"""
         prompt = base_prompt or (
             f"あなたは{self.role_name}（{self.model_name}）、武士団マルチエージェントシステムの"
             f"{self.role_key}担当です。明確・実用的な日本語で回答してください。"
         )
+
+        # Notion RAG コンテキスト注入
         notion_chunks = state.get("notion_chunks", [])
         if notion_chunks:
             kb_lines = []
@@ -77,6 +79,17 @@ class BaseRole(ABC):
                     kb_lines.append(f"【{title}】\n{content}")
             if kb_lines:
                 prompt += "\n\n---\n【関連ナレッジ】\n" + "\n\n".join(kb_lines)
+
+        # Bushidan ファイルコンテキスト注入
+        try:
+            from utils.bushidan_files import build_file_context
+            message = state.get("message", "")
+            file_ctx = build_file_context(message)
+            if file_ctx:
+                prompt += "\n\n---\n" + file_ctx
+        except Exception as e:
+            self.logger.debug("Bushidanファイルコンテキスト取得スキップ: %s", e)
+
         return prompt
 
     def _format_messages(self, state: dict) -> list:
@@ -90,6 +103,21 @@ class BaseRole(ABC):
         if message:
             messages.append({"role": "user", "content": message})
         return messages
+
+    def _save_response_files(self, response: str) -> list[str]:
+        """
+        LLMレスポンスから [FILE:xxx]...[/FILE] ブロックを検出して保存する。
+        保存したファイルパスのリストを返す。
+        """
+        try:
+            from utils.bushidan_files import extract_and_save_files
+            saved = extract_and_save_files(response)
+            if saved:
+                self.logger.info("📁 Bushidan保存: %s", saved)
+            return saved
+        except Exception as e:
+            self.logger.warning("Bushidanファイル保存失敗: %s", e)
+            return []
 
     def _needs_followup(self, response: str, state: dict) -> bool:
         """

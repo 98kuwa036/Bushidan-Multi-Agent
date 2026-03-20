@@ -1,8 +1,8 @@
 """
-Claude CLI クライアント — Proプラン優先 → API フォールバック
+Claude CLI クライアント — リモート API優先 → ローカル CLI → API フォールバック
 
-Claude Code CLI (claude -p) を使ってProプラン枠でリクエストし、
-失敗した場合のみ Anthropic API (有料) にフォールバックする。
+Proプラン優先 → API フォールバック でClaudeを呼び出す。
+リモート Claude API Server が利用可能な場合はそれを優先利用。
 
 使い方:
     from utils.claude_cli_client import call_claude_with_fallback
@@ -18,9 +18,13 @@ Claude Code CLI (claude -p) を使ってProプラン枠でリクエストし、
 import asyncio
 import logging
 import os
+import shutil
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# リモート Claude API Server の設定（オプション）
+REMOTE_CLAUDE_API_URL = os.environ.get("CLAUDE_API_SERVER_URL")
 
 # CLI出力でエラーと判断するキーワード
 _CLI_ERROR_PATTERNS = [
@@ -34,7 +38,69 @@ _CLI_ERROR_PATTERNS = [
 ]
 
 # CLIのデフォルトタイムアウト (秒)
-_CLI_TIMEOUT = 120
+# LangGraphノードタイムアウト (shogun:200s, daigensui:280s) より短く設定し、
+# CLIタイムアウト後にAPIフォールバックが発動できる余裕を確保する
+_CLI_TIMEOUT = 60
+
+# ネイティブインストールの claude バイナリパス
+_CLAUDE_BIN = shutil.which("claude") or "claude"
+
+
+# ── リモート Claude API Server 関数 ────────────────────────────────
+
+async def _try_remote_claude_api(
+    prompt: str,
+    model: Optional[str] = None,
+    system: Optional[str] = None,
+    max_tokens: int = 4096,
+) -> Optional[str]:
+    """
+    リモート Claude API Server (claude-dedicated LXC) で実行を試みる。
+    成功時は応答文字列を返す。失敗時は None を返す。
+    """
+    if not REMOTE_CLAUDE_API_URL:
+        return None
+
+    try:
+        import httpx
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{REMOTE_CLAUDE_API_URL}/api/claude",
+                json={
+                    "prompt": prompt,
+                    "system": system,
+                    "model": model,
+                    "max_tokens": max_tokens,
+                },
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                if not data.get("error"):
+                    logger.info(
+                        "✅ リモート Claude API 成功 "
+                        "(source=%s, model=%s)",
+                        data.get("source"),
+                        data.get("model"),
+                    )
+                    return data["content"]
+                else:
+                    logger.warning(
+                        "⚠️ リモート Claude API エラー: %s → フォールバック",
+                        data["error"][:100],
+                    )
+                    return None
+            else:
+                logger.warning(
+                    "⚠️ リモート Claude API HTTP %d → フォールバック",
+                    response.status_code,
+                )
+                return None
+
+    except Exception as e:
+        logger.warning("⚠️ リモート Claude API 接続失敗: %s → フォールバック", e)
+        return None
 
 
 def _format_messages_to_prompt(messages: list) -> str:
@@ -60,8 +126,9 @@ async def _try_claude_cli(prompt: str, model: str, system: Optional[str] = None)
     """
     claude CLI でリクエストを試みる。
     成功時は出力文字列を返す。失敗・エラー時は None を返す。
+    ネイティブインストール対応: --no-session-persistence でセッションファイル生成を抑制
     """
-    cmd = ["claude", "--model", model, "-p", prompt]
+    cmd = [_CLAUDE_BIN, "--model", model, "--no-session-persistence", "-p", prompt]
     if system:
         cmd += ["--append-system-prompt", system]
 
@@ -166,7 +233,7 @@ async def call_claude_with_history(
 ) -> str:
     """
     会話履歴付きで Claude を呼び出す。
-    CLI優先: 会話履歴をプロンプトに変換してから CLI を試す → API フォールバック
+    リモート API優先 → CLI → API フォールバック
 
     Args:
         messages: [{"role": "user"/"assistant", "content": "..."}]
@@ -176,15 +243,22 @@ async def call_claude_with_history(
         max_tokens: 最大トークン数
         prefer_cli: True (デフォルト) で CLI 優先、False で API 直接
     """
-    # CLI優先の場合: 会話履歴をプロンプトに変換
+    # 会話履歴をプロンプトに変換
+    prompt = _format_messages_to_prompt(messages)
+
+    # 1. リモート Claude API Server を試す
+    remote_result = await _try_remote_claude_api(prompt, model, system, max_tokens)
+    if remote_result is not None:
+        return remote_result
+
+    # 2. CLI優先の場合: ローカル CLI を試す
     if prefer_cli:
-        prompt = _format_messages_to_prompt(messages)
         cli_result = await _try_claude_cli(prompt, model, system)
         if cli_result is not None:
             return cli_result
-        logger.info("📌 CLI失敗 → API フォールバック (会話履歴 %d件)", len(messages))
+        logger.info("📌 リモートAPI・CLI失敗 → API フォールバック (会話履歴 %d件)", len(messages))
 
-    # API フォールバック or prefer_cli=False
+    # 3. API フォールバック
     return await _call_anthropic_api_with_messages(messages, model, api_key, system, max_tokens)
 
 
@@ -197,7 +271,7 @@ async def call_claude_with_fallback(
     skip_cli: bool = False,
 ) -> str:
     """
-    Proプラン優先 → API フォールバック でClaudeを呼び出す。
+    リモート API優先 → ローカル CLI → Anthropic API フォールバック
 
     Args:
         prompt:     ユーザーメッセージ
@@ -205,15 +279,27 @@ async def call_claude_with_fallback(
         api_key:    Anthropic APIキー (フォールバック用)
         system:     システムプロンプト (省略可)
         max_tokens: 最大トークン数 (API呼び出し時のみ適用)
-        skip_cli:   True にするとCLIをスキップしてAPI直接呼び出し
+        skip_cli:   True にするとローカルCLIをスキップ
 
     Returns:
         モデルの応答テキスト
+
+    優先順位:
+        1. リモート Claude API Server (利用可能な場合)
+        2. ローカル Claude Pro CLI (skip_cli=False かつ利用可能な場合)
+        3. Anthropic API (有料フォールバック)
     """
+    # 1. リモート Claude API Server を試す
+    remote_result = await _try_remote_claude_api(prompt, model, system, max_tokens)
+    if remote_result is not None:
+        return remote_result
+
+    # 2. ローカル Claude CLI を試す
     if not skip_cli:
         cli_result = await _try_claude_cli(prompt, model, system)
         if cli_result is not None:
             return cli_result
 
-    # CLIが失敗 or スキップ → API
+    # 3. Anthropic API フォールバック
+    logger.info("📌 リモートAPI・CLI失敗 → Anthropic API フォールバック")
     return await _call_anthropic_api(prompt, model, api_key, system, max_tokens)

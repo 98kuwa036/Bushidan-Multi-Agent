@@ -50,9 +50,11 @@ NODE_TIMEOUTS = {
     "kengyo_vision":    60,
     "gunshi_pdca":      90,
     "yuhitsu_jp":       90,
-    "shogun_direct":   120,
     "onmitsu_local":   120,
-    "daigensui_direct":180,
+    # Claude CLI (60s) + API フォールバック (140s) = 200s
+    "shogun_direct":   200,
+    # Claude CLI (60s) + API フォールバック (220s) = 280s
+    "daigensui_direct":280,
 }
 
 # ── フォールバックマップ (障害時の代替ルート) ────────────────────────────────
@@ -409,6 +411,16 @@ class LangGraphRouter:
                     ],
                 }
 
+            # Bushidan ファイル書き込み (LLMレスポンスに [FILE:xxx]...[/FILE] があれば保存)
+            saved_files: list = []
+            try:
+                from utils.bushidan_files import extract_and_save_files
+                saved_files = extract_and_save_files(result.response)
+                if saved_files:
+                    logger.info("📁 Bushidan保存 [%s]: %s", node_name, saved_files)
+            except Exception as _fe:
+                logger.debug("Bushidanファイル保存スキップ: %s", _fe)
+
             new_history = [
                 {"role": "user",      "content": state.get("message", "")},
                 {"role": "assistant", "content": result.response},
@@ -419,7 +431,7 @@ class LangGraphRouter:
                 "agent_role":     result.agent_role,
                 "execution_time": result.execution_time,
                 "error":          result.error,
-                "mcp_tools_used": result.mcp_tools_used,
+                "mcp_tools_used": result.mcp_tools_used + saved_files,
                 "requires_followup": result.requires_followup,
                 "routed_to":      node_name,
                 "available_tools": state_tools,

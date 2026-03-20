@@ -28,7 +28,7 @@ class FilesystemMCP:
     - Path validation and sandboxing
     """
     
-    def __init__(self, base_path: str = "."):
+    def __init__(self, base_path: str = "/home/claude/Bushidan"):
         self.base_path = Path(base_path).resolve()
         self.initialized = False
         
