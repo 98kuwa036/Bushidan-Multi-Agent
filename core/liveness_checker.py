@@ -298,7 +298,7 @@ class LLMAvailabilityChecker:
                 "Content-Type": "application/json",
             }
             payload = {
-                "model": "command-r",
+                "model": "command-a-vision-07-2025",
                 "messages": [{"role": "user", "content": "test"}],
                 "max_tokens": 1,
             }
