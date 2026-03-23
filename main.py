@@ -21,21 +21,27 @@ def print_banner() -> None:
 ╔══════════════════════════════════════════════════════════════╗
 ║     武士団マルチエージェントシステム v{VERSION}                    ║
 ║     "10役職体制 + LangGraph v14 + HITL + MCP SDK"           ║
+║     + 分散Claude処理 (Claude API Server)                    ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  10役職:                                                      ║
-║    大元帥  - Claude Opus 4.6    最高難度・戦略設計             ║
-║    将軍    - Claude Sonnet 4.6  メインワーカー                 ║
-║    軍師    - Mistral Large 3     深層推論・PDCA                 ║
-║    参謀    - Mistral Large 3    汎用コーディング               ║
-║    外事    - Command A (03-25)         RAG・外部情報                  ║
-║    受付    - Command R7B (12-24)         フォールバック                  ║
-║    斥候    - Llama 3.3 (Groq)   高速Q&A                       ║
-║    検校    - Gemini Vision      マルチモーダル                 ║
-║    右筆    - ELYZA (Local)      日本語清書                     ║
-║    隠密    - Nemotron (Local)   機密・ローカル                 ║
+║    大元帥  - Claude Pro CLI優先    最高難度・戦略設計         ║
+║    将軍    - Claude Pro CLI優先    メインワーカー             ║
+║    軍師    - Mistral Large 3        深層推論・PDCA             ║
+║    参謀    - Mistral Large 3       汎用コーディング            ║
+║    外事    - Command R                RAG・外部情報             ║
+║    受付    - Command R              フォールバック             ║
+║    斥候    - Llama 3.3 (Groq)      高速Q&A                    ║
+║    検校    - Gemini Vision         マルチモーダル              ║
+║    右筆    - ELYZA (Local)         日本語清書                  ║
+║    隠密    - Nemotron (Local)      機密・ローカル              ║
 ╠══════════════════════════════════════════════════════════════╣
-║  v14: ノードタイムアウト / ヘルスチェック統合 / HITL            ║
-║       MCP SDK / ClientRegistry / モバイルコンソール            ║
+║  v14 更新: 分散Claude処理アーキテクチャ                        ║
+║    ✓ Claude API Server (192.168.11.237:8070)                ║
+║    ✓ Claude Pro CLI優先 → Anthropic API フォールバック       ║
+║    ✓ バインドマウント経由でプロジェクトコンテキスト共有       ║
+║    ✓ メモリ圧力低減 (bushidan-honjin)                        ║
+║    ✓ ノードタイムアウト / ヘルスチェック統合 / HITL           ║
+║    ✓ MCP SDK / ClientRegistry / モバイルコンソール           ║
 ╚══════════════════════════════════════════════════════════════╝
 """
     print(banner)
@@ -51,12 +57,22 @@ async def main() -> None:
     try:
         config = load_config()
 
+        # Claude API Server への接続確認
+        import os
+        claude_api_server = os.environ.get("CLAUDE_API_SERVER_URL", "http://192.168.11.237:8070")
+        logger.info("Claude API Server: %s", claude_api_server)
+
         from core.system_orchestrator import SystemOrchestrator
         orchestrator = SystemOrchestrator(config)
         await orchestrator.initialize()
 
         logger.info("v%s Ready for commands", VERSION)
-        logger.info("-" * 60)
+        logger.info("=" * 60)
+        logger.info("Claude処理チェーン:")
+        logger.info("  1. リモート Claude API Server (192.168.11.237:8070)")
+        logger.info("  2. Claude Pro CLI (優先)")
+        logger.info("  3. Anthropic API (フォールバック)")
+        logger.info("=" * 60)
 
         # Keep running
         while True:
