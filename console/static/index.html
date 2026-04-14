@@ -3,237 +3,1805 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>武士団コンソール v14</title>
+<title>🏯 武士団 v18 ダッシュボード</title>
 <link rel="stylesheet" href="/static/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 </head>
 <body>
 
-<!-- Login Screen -->
-<div id="login-screen" class="screen">
+<!-- ═══════════════════ LOGIN ═══════════════════ -->
+<div id="login-screen">
   <div class="login-box">
-    <h1>🏯 武士団</h1>
-    <p>Multi-Agent Console v14</p>
-    <input type="password" id="password-input" placeholder="パスワード" autocomplete="current-password">
-    <button id="login-btn" onclick="doLogin()">ログイン</button>
-    <p id="login-error" class="error"></p>
+    <div class="login-logo">🏯</div>
+    <h1>武士団 <span class="ver">v17</span></h1>
+    <p>マルチエージェント ダッシュボード</p>
+    <input type="password" id="pw-input" placeholder="パスワード" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">ログイン</button>
+    <p id="login-err"></p>
   </div>
 </div>
 
-<!-- Chat Screen -->
-<div id="chat-screen" class="screen hidden">
-  <!-- Header -->
-  <header>
-    <span class="title">🏯 武士団</span>
-    <select id="model-select">
-      <option value="auto">🔀 自動</option>
-    </select>
-    <button class="icon-btn" onclick="newThread()">+</button>
+<!-- ═══════════════════ APP ═════════════════════ -->
+<div id="app" class="hidden">
+
+  <!-- ── ヘッダー ── -->
+  <header class="app-header">
+    <div class="header-left">
+      <span class="logo">🏯</span>
+      <span>武士団 v18</span>
+    </div>
+    <div class="header-status">
+      <div class="status-item">
+        <span class="status-dot ok"></span>
+        <span id="llm-status">Gemma4</span>
+      </div>
+      <div class="status-item">
+        <span class="status-dot ok"></span>
+        <span>DB</span>
+      </div>
+      <div class="status-item">
+        <span class="status-dot ok"></span>
+        <span id="role-count">11ロール</span>
+      </div>
+    </div>
   </header>
 
-  <!-- Messages -->
-  <div id="messages"></div>
+  <!-- ── メインコンテナ ── -->
+  <div class="main-container">
 
-  <!-- Input -->
-  <div class="input-bar">
-    <textarea id="msg-input" placeholder="メッセージを入力..." rows="1"
-              onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
-    <button id="send-btn" onclick="sendMessage()">➤</button>
+    <!-- サイドナビ -->
+    <nav class="side-nav">
+      <div class="side-nav-section">
+        <div class="side-nav-item active" data-page="dashboard" onclick="showPage('dashboard')">
+          <span>💬</span> ダッシュボード
+        </div>
+        <div class="side-nav-item" data-page="individual" onclick="showPage('individual')">
+          <span>🎯</span> 個別チャット
+        </div>
+        <div class="side-nav-item" data-page="history" onclick="showPage('history')">
+          <span>💭</span> チャット履歴
+        </div>
+        <div class="side-nav-item" data-page="settings" onclick="showPage('settings')">
+          <span>🎨</span> UI設定
+        </div>
+        <div class="side-nav-item" data-page="system" onclick="showPage('system')">
+          <span>⚙️</span> システム設定
+        </div>
+      </div>
+
+      <div class="side-nav-section">
+        <div class="side-nav-label">会話履歴</div>
+        <button onclick="createNewThread()" style="width:calc(100% - 16px); padding:8px 16px; background:var(--primary); color:var(--bg); border:none; border-radius:6px; font-weight:600; font-size:12px; cursor:pointer; margin:0 8px">
+          + 新しい会話
+        </button>
+        <div class="side-nav-threads" id="threads-list"></div>
+      </div>
+    </nav>
+
+    <!-- ページコンテンツ -->
+    <div style="display:flex; flex:1; flex-direction:column; overflow:hidden">
+
+      <!-- PAGE 1: ダッシュボード -->
+      <div id="page-dashboard" class="page-content active">
+        <div class="dashboard-main">
+          <!-- ステータスパネル -->
+          <div class="status-panel">
+            <span class="status-label">ロール</span>
+            <div class="role-cards" id="role-cards"></div>
+          </div>
+
+          <!-- 会話エリア -->
+          <div class="conversation-area">
+            <div class="conversation-controls">
+              <select id="role-select" onchange="selectRole()">
+                <option value="auto">🤖 自動ルーティング</option>
+              </select>
+              <select id="role-filter" onchange="applyRoleFilter()">
+                <option value="all">全ロール表示</option>
+              </select>
+              <label>
+                <input type="checkbox" id="parallel-mode" onchange="toggleParallel()">
+                並列実行
+              </label>
+            </div>
+
+            <!-- 処理状態インジケータ -->
+            <div id="processing-indicator" class="processing-indicator hidden">
+              <span class="spinner"></span>
+              <span id="processing-role" class="processing-role">処理中...</span>
+              <span id="processing-time" class="processing-time"></span>
+            </div>
+
+            <!-- メッセージ検索 -->
+            <div class="msg-search-bar">
+              <input type="search" id="msg-search" placeholder="メッセージを検索..." oninput="searchMessages(this.value)">
+              <span id="msg-search-count" class="search-count"></span>
+            </div>
+
+            <!-- メッセージ表示 -->
+            <div class="messages-container" id="messages"></div>
+
+            <!-- 入力 -->
+            <div class="message-input-area">
+              <textarea id="prompt-input" placeholder="メッセージを入力... (Enter送信 / Shift+Enter改行)" onkeydown="onPromptKey(event)"></textarea>
+              <button class="send-btn" onclick="sendMessage()">送信</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE 2: チャット履歴 -->
+      <div id="page-history" class="page-content">
+        <h2>💭 チャット履歴</h2>
+        <div style="padding:16px">
+          <button onclick="createNewThread()" style="width:100%; padding:10px; background:var(--primary); color:var(--bg); border:none; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; margin-bottom:16px">
+            + 新しい会話
+          </button>
+          <input type="search" id="history-search" placeholder="タイトルで検索..." style="width:100%; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; margin-bottom:16px; box-sizing:border-box" oninput="applyHistoryFilters()">
+          <div class="date-filter-row">
+            <input type="date" id="filter-from" onchange="applyHistoryFilters()" style="flex:1; padding:6px 8px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11px;">
+            <span style="color:var(--text-dim); font-size:12px">〜</span>
+            <input type="date" id="filter-to" onchange="applyHistoryFilters()" style="flex:1; padding:6px 8px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11px;">
+            <button onclick="clearDateFilter()" style="padding:4px 8px; background:var(--surface2); border:1px solid var(--border); border-radius:4px; color:var(--text-dim); cursor:pointer; font-size:11px; margin-left:4px">✕</button>
+          </div>
+          <div id="history-list"></div>
+        </div>
+      </div>
+
+      <!-- PAGE 2.5: 個別チャット -->
+      <div id="page-individual" class="page-content">
+        <h2>🎯 個別チャット</h2>
+        <div style="padding:16px; display:flex; flex-direction:column; height:100%; overflow:hidden">
+          <!-- ロール選択 -->
+          <div style="margin-bottom:16px">
+            <label style="display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px">ロール選択</label>
+            <select id="individual-role-select" onchange="loadIndividualChat(this.value)" style="width:100%; padding:10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; cursor:pointer">
+              <option value="">-- ロールを選択してください --</option>
+            </select>
+          </div>
+
+          <!-- チャットエリア -->
+          <div style="flex:1; overflow:hidden; display:flex; flex-direction:column">
+            <!-- メッセージ表示 -->
+            <div id="individual-messages" style="flex:1; overflow-y:auto; margin-bottom:16px; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:12px"></div>
+
+            <!-- メッセージ入力 -->
+            <div style="display:flex; gap:8px">
+              <input type="text" id="individual-input" placeholder="メッセージを入力..." style="flex:1; padding:10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px" onkeydown="if(event.key==='Enter') sendIndividualMessage()">
+              <button onclick="sendIndividualMessage()" style="padding:10px 16px; background:var(--primary); color:var(--bg); border:none; border-radius:6px; font-weight:600; cursor:pointer">送信</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PAGE 3: UI設定 -->
+      <div id="page-settings" class="page-content">
+        <h2>🎨 UI設定</h2>
+
+        <div class="settings-section">
+          <div class="section-title">テーマ</div>
+          <div class="settings-item">
+            <span class="settings-label">ダークモード</span>
+            <div class="settings-value">
+              <div class="toggle-switch active" onclick="toggleTheme(this)"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">フォント</div>
+          <div class="settings-item">
+            <span class="settings-label">サイズ</span>
+            <div class="settings-value">
+              <select id="font-size" onchange="saveSetting('fontSize', this.value)">
+                <option value="12px">小 (12px)</option>
+                <option value="14px" selected>中 (14px)</option>
+                <option value="16px">大 (16px)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">レイアウト</div>
+          <div class="settings-item">
+            <span class="settings-label">コンパクトモード</span>
+            <div class="settings-value">
+              <div class="toggle-switch" id="compact-toggle" onclick="toggleSetting(this, 'compactMode')"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">アクセントカラー</div>
+          <div class="settings-item">
+            <div id="color-swatches" style="display:flex; gap:10px; flex-wrap:wrap; padding:4px 0">
+              <div class="color-swatch" data-name="beige"   data-p="#D4A574" data-d="#A68050" data-g="rgba(212,165,116,0.15)" style="background:#D4A574" title="ベージュ（デフォルト）" onclick="setThemeColor(this)"></div>
+              <div class="color-swatch" data-name="blue"    data-p="#5B8DB8" data-d="#3A6A9E" data-g="rgba(91,141,184,0.15)"  style="background:#5B8DB8" title="侍ブルー"               onclick="setThemeColor(this)"></div>
+              <div class="color-swatch" data-name="green"   data-p="#5A9E6F" data-d="#3A7A50" data-g="rgba(90,158,111,0.15)"  style="background:#5A9E6F" title="竹グリーン"             onclick="setThemeColor(this)"></div>
+              <div class="color-swatch" data-name="purple"  data-p="#9B6EC8" data-d="#7A4DAA" data-g="rgba(155,110,200,0.15)" style="background:#9B6EC8" title="梅パープル"             onclick="setThemeColor(this)"></div>
+              <div class="color-swatch" data-name="red"     data-p="#C8503A" data-d="#A03020" data-g="rgba(200,80,58,0.15)"   style="background:#C8503A" title="緋色"                   onclick="setThemeColor(this)"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">チャット</div>
+          <div class="settings-item">
+            <span class="settings-label">Enter で送信</span>
+            <div class="settings-value">
+              <div class="toggle-switch active" id="enter-send-toggle" onclick="toggleSetting(this, 'enterSend')"></div>
+            </div>
+          </div>
+          <div class="settings-item">
+            <span class="settings-label">タイムスタンプ表示</span>
+            <div class="settings-value">
+              <div class="toggle-switch active" id="timestamp-toggle" onclick="toggleSetting(this, 'showTimestamp')"></div>
+            </div>
+          </div>
+          <div class="settings-item">
+            <span class="settings-label">エージェント名表示</span>
+            <div class="settings-value">
+              <div class="toggle-switch active" id="agentname-toggle" onclick="toggleSetting(this, 'showAgentName')"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">通知</div>
+          <div class="settings-item">
+            <span class="settings-label">応答完了を通知</span>
+            <div class="settings-value">
+              <div class="toggle-switch" id="notif-toggle" onclick="toggleNotification(this)"></div>
+            </div>
+          </div>
+          <div id="notif-status" style="font-size:11px; color:var(--text-dim); padding:2px 0 4px 0"></div>
+        </div>
+      </div>
+
+      <!-- PAGE 4: システム設定 -->
+      <div id="page-system" class="page-content">
+        <h2>⚙️ システム設定</h2>
+
+        <div class="settings-section">
+          <div class="section-title">🔑 API キー</div>
+          <div class="settings-item">
+            <span class="settings-label">Anthropic API Key</span>
+            <div class="settings-value">
+              <input type="password" id="api-anthropic" placeholder="sk-ant-..." onchange="saveSetting('apiAnthropic', this.value)">
+            </div>
+          </div>
+          <div class="settings-item">
+            <span class="settings-label">Gemini API Key</span>
+            <div class="settings-value">
+              <input type="password" id="api-gemini" placeholder="AIza..." onchange="saveSetting('apiGemini', this.value)">
+            </div>
+          </div>
+          <div class="settings-item">
+            <span class="settings-label">Groq API Key</span>
+            <div class="settings-value">
+              <input type="password" id="api-groq" placeholder="gsk_..." onchange="saveSetting('apiGroq', this.value)">
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">🖥️ ローカル LLM</div>
+          <div class="settings-item">
+            <span class="settings-label">LLM サーバー URL</span>
+            <div class="settings-value">
+              <input type="text" id="llm-url" value="http://192.168.11.239:8082" onchange="saveSetting('llmUrl', this.value)">
+            </div>
+          </div>
+          <div class="settings-item">
+            <span class="settings-label">アクティブモデル</span>
+            <div class="settings-value">
+              <button onclick="switchLLMModel('gemma')">Gemma4</button>
+              <button onclick="switchLLMModel('nemotron')">Nemotron</button>
+              <span id="active-model-display" style="font-size:12px; color:var(--primary)">Gemma4</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">🛡️ Claudeインシデント対応</div>
+          <div class="settings-item">
+            <span class="settings-label">フォールバック先</span>
+            <div class="settings-value">
+              <select id="claude-fallback-mode" onchange="setClaudeFallbackMode(this.value)">
+                <option value="gemini">Gemini 3.1 Pro（デフォルト）</option>
+                <option value="bedrock">AWS Bedrock Claude</option>
+              </select>
+            </div>
+          </div>
+          <div class="settings-item" style="font-size:11px; color:var(--text-dim); padding-top:0">
+            Claude API が 529/503/500/401 エラーを返したとき自動切り替え
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">🤖 ロール管理</div>
+          <div id="role-toggles"></div>
+        </div>
+
+        <div class="settings-section">
+          <div class="section-title">🗄️ データ</div>
+          <div class="settings-item">
+            <span class="settings-label">会話履歴を削除</span>
+            <div class="settings-value">
+              <button onclick="clearHistory()" style="background:var(--ng)">クリア</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- v18: スキル自動進化 -->
+        <div class="settings-section">
+          <div class="section-title">🎯 スキル自動進化</div>
+          <div class="settings-item" style="flex-direction:column; align-items:flex-start; gap:8px">
+            <div style="font-size:11px; color:var(--text-dim); line-height:1.5">
+              同じパターンが3回以上出現すると自動的にスキル候補として提案されます。<br>
+              承認するとルーティングヒントとして学習されます。
+            </div>
+            <div style="display:flex; gap:8px; width:100%">
+              <button onclick="loadSkillProposals('pending')" style="flex:1; font-size:12px">
+                💡 提案を見る
+              </button>
+              <button onclick="loadSkillProposals('approved')" style="flex:1; font-size:12px; background:var(--surface2)">
+                ✅ 承認済み
+              </button>
+            </div>
+          </div>
+          <div id="skill-proposals-list" style="padding:0 0 8px 0"></div>
+        </div>
+
+        <!-- v18: YAML 監査ログ -->
+        <div class="settings-section">
+          <div class="section-title">📋 監査ログ (YAML)</div>
+          <div class="settings-item" style="flex-direction:column; align-items:flex-start; gap:8px">
+            <div style="font-size:11px; color:var(--text-dim)">
+              全ロードマップ実行が audit/ に YAML で記録されます。
+            </div>
+            <button onclick="loadAuditLogs()" style="width:100%; font-size:12px">
+              📁 ログ一覧を表示
+            </button>
+          </div>
+          <div id="audit-logs-list" style="max-height:300px; overflow-y:auto; padding:0 0 8px 0"></div>
+        </div>
+      </div>
+
+    </div>
+
   </div>
+
+  <!-- ボトムナビ（モバイル） -->
+  <nav class="bottom-nav">
+    <button class="active" data-page="dashboard" onclick="showPage('dashboard')">
+      <span class="nav-icon">💬</span>
+    </button>
+    <button data-page="history" onclick="showPage('history')">
+      <span class="nav-icon">💭</span>
+    </button>
+    <button data-page="settings" onclick="showPage('settings')">
+      <span class="nav-icon">🎨</span>
+    </button>
+    <button data-page="system" onclick="showPage('system')">
+      <span class="nav-icon">⚙️</span>
+    </button>
+  </nav>
+
 </div>
 
 <script>
-const API = window.location.origin;
-let token = localStorage.getItem('bushidan_token') || '';
-let threadId = '';
-let ws = null;
+// ═══════════════════════════════════════════════════════════════
+// v18 ダッシュボード — グローバル状態
+// ═══════════════════════════════════════════════════════════════
 
-// Auto-resize textarea
-const msgInput = document.getElementById('msg-input');
-msgInput.addEventListener('input', () => {
-  msgInput.style.height = 'auto';
-  msgInput.style.height = Math.min(msgInput.scrollHeight, 120) + 'px';
+const S = {
+  token: localStorage.getItem('token') || '',
+  currentThreadId: null,
+  currentThread: null,
+  threads: [],
+  models: {},
+  currentRole: 'auto',
+  parallelMode: false,
+  roleFilter: 'all',
+  msgSearchQuery: '',
+  ws: null,
+  wsUrl: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`,
+  apiBase: '/api',
+  // 個別チャット用
+  currentIndividualRole: '',
+  individualThreads: {},
+  // ロール改善・体感速度改善用
+  processingStartTime: null,
+  processingTimer: null,
+  // setInterval ID (ログアウト時にクリア)
+  statusInterval: null,
+};
+
+// ─── 初期化 ─────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  if (S.token) {
+    showApp();
+    loadUI();
+  }
 });
 
-// Init
-async function init() {
-  // Try skip login if no password set
-  try {
-    const r = await fetch(API + '/api/health');
-    if (r.ok) {
-      await loadModels();
-      showChat();
-      connectWS();
-      return;
-    }
-  } catch(e) {}
+// ─── ログイン ───────────────────────────────────────────────
+async function doLogin() {
+  const pw = document.getElementById('pw-input').value;
+  if (!pw) return alert('パスワードを入力してください');
 
-  if (token) {
-    showChat();
-    await loadModels();
-    connectWS();
+  try {
+    const res = await fetch(S.apiBase + '/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    if (!res.ok) throw new Error('ログイン失敗');
+    const data = await res.json();
+    S.token = data.token;
+    localStorage.setItem('token', S.token);
+    document.getElementById('pw-input').value = '';
+    showApp();
+    loadUI();
+  } catch (e) {
+    document.getElementById('login-err').textContent = '❌ ' + e.message;
   }
 }
 
-async function doLogin() {
-  const pw = document.getElementById('password-input').value;
-  try {
-    const r = await fetch(API + '/api/login', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({password: pw})
-    });
-    if (!r.ok) {
-      document.getElementById('login-error').textContent = 'パスワードが違います';
-      return;
-    }
-    const d = await r.json();
-    token = d.token;
-    localStorage.setItem('bushidan_token', token);
-    await loadModels();
-    showChat();
-    connectWS();
-  } catch(e) {
-    document.getElementById('login-error').textContent = 'エラー: ' + e.message;
-  }
+function showApp() {
+  document.getElementById('login-screen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+}
+
+// ─── UI 初期化 ───────────────────────────────────────────────
+async function loadUI() {
+  await loadModels();
+  await loadThreads();
+  await loadStatus();
+  loadUISettings();
+  if (S.statusInterval) clearInterval(S.statusInterval);
+  S.statusInterval = setInterval(loadStatus, 30000); // 30秒毎にステータス更新
 }
 
 async function loadModels() {
   try {
-    const r = await fetch(API + '/api/models');
-    const d = await r.json();
-    const sel = document.getElementById('model-select');
-    sel.innerHTML = '';
-    d.models.forEach(m => {
-      const opt = document.createElement('option');
-      opt.value = m.key;
-      opt.textContent = m.emoji + ' ' + m.name;
-      sel.appendChild(opt);
+    const res = await fetch(S.apiBase + '/models', {
+      headers: { 'Authorization': `Bearer ${S.token}` },
     });
-  } catch(e) { console.error(e); }
-}
+    if (!res.ok) return;
+    const data = await res.json();
 
-function showChat() {
-  document.getElementById('login-screen').classList.add('hidden');
-  document.getElementById('chat-screen').classList.remove('hidden');
-  newThread();
-}
+    // API から返される models は配列なので、オブジェクトに変換
+    S.models = {};
+    (data.models || []).forEach(m => {
+      S.models[m.key] = m.name;
+    });
 
-function newThread() {
-  threadId = Math.random().toString(36).substring(2, 10);
-  document.getElementById('messages').innerHTML = '';
-  addSystemMsg('新しい会話を開始しました');
-}
+    // ロール選択ドロップダウン
+    const select = document.getElementById('role-select');
+    select.innerHTML = '<option value="auto">🤖 自動ルーティング</option>' +
+      Object.entries(S.models).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
 
-function connectWS() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(proto + '//' + location.host + '/ws/chat');
-  ws.onmessage = (e) => {
-    const d = JSON.parse(e.data);
-    if (d.type === 'thinking') {
-      showThinking();
-    } else if (d.type === 'response') {
-      hideThinking();
-      addBotMsg(d.response, d.agent_role, d.execution_time);
-    } else if (d.type === 'error') {
-      hideThinking();
-      addSystemMsg('❌ ' + d.message);
-    }
-  };
-  ws.onclose = () => { setTimeout(connectWS, 3000); };
-  ws.onerror = () => {};
-}
+    // ロール管理トグル（バックエンドから有効/無効状態を取得）
+    const toggles = document.getElementById('role-toggles');
+    let roleStates = {};
+    try {
+      const rr = await fetch(`${S.apiBase}/settings/roles`, {
+        headers: { 'Authorization': `Bearer ${S.token}` },
+      });
+      if (rr.ok) roleStates = (await rr.json()).roles || {};
+    } catch (_) {}
+    toggles.innerHTML = Object.entries(S.models)
+      .map(([k, v]) => {
+        const enabled = roleStates[k] !== false;
+        return `
+          <div class="settings-item">
+            <span class="settings-label">${v}</span>
+            <div class="settings-value">
+              <div class="toggle-switch${enabled ? ' active' : ''}" onclick="toggleRole(this, '${k}')"></div>
+            </div>
+          </div>
+        `;
+      }).join('');
 
-function sendMessage() {
-  const input = document.getElementById('msg-input');
-  const msg = input.value.trim();
-  if (!msg) return;
+    // ロール状態カード（稼働中/健全性）
+    const cards = document.getElementById('role-cards');
+    cards.innerHTML = Object.entries(S.models)
+      .map(([k, v]) => `<div class="role-card healthy" id="role-${k}"><div class="role-status ok" title="稼働中"></div><span class="role-name">${v}</span></div>`)
+      .join('');
 
-  addUserMsg(msg);
-  input.value = '';
-  input.style.height = 'auto';
-
-  const model = document.getElementById('model-select').value;
-
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({message: msg, model: model, thread_id: threadId}));
-  } else {
-    // Fallback to REST
-    fetchChat(msg, model);
+    // 個別チャット用ロール選択ドロップダウン
+    initIndividualRoleSelect();
+  } catch (e) {
+    console.error('loadModels error:', e);
   }
 }
 
-async function fetchChat(msg, model) {
-  showThinking();
+async function loadStatus() {
   try {
-    const r = await fetch(API + '/api/chat', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({message: msg, model: model, thread_id: threadId})
+    const res = await fetch(S.apiBase + '/health', {
+      headers: { 'Authorization': `Bearer ${S.token}` },
     });
-    const d = await r.json();
-    hideThinking();
-    addBotMsg(d.response, d.agent_role, d.execution_time);
-  } catch(e) {
-    hideThinking();
-    addSystemMsg('❌ ' + e.message);
+    if (!res.ok) return;
+    const data = await res.json();
+    document.getElementById('role-count').textContent = (data.roles || []).length + 'ロール';
+  } catch (e) {
+    console.error('loadStatus error:', e);
   }
 }
 
-// UI helpers
-function addUserMsg(text) {
-  const div = document.createElement('div');
-  div.className = 'msg user';
-  div.textContent = text;
-  document.getElementById('messages').appendChild(div);
-  scrollBottom();
-}
-
-function addBotMsg(text, role, time) {
-  const div = document.createElement('div');
-  div.className = 'msg bot';
-  const header = document.createElement('div');
-  header.className = 'msg-header';
-  header.textContent = (role || 'AI') + (time ? ' (' + time.toFixed(1) + 's)' : '');
-  div.appendChild(header);
-  const body = document.createElement('div');
-  body.className = 'msg-body';
-  body.textContent = text;
-  div.appendChild(body);
-  document.getElementById('messages').appendChild(div);
-  scrollBottom();
-}
-
-function addSystemMsg(text) {
-  const div = document.createElement('div');
-  div.className = 'msg system';
-  div.textContent = text;
-  document.getElementById('messages').appendChild(div);
-  scrollBottom();
-}
-
-function showThinking() {
-  let el = document.getElementById('thinking');
-  if (!el) {
-    el = document.createElement('div');
-    el.id = 'thinking';
-    el.className = 'msg bot thinking';
-    el.textContent = '考え中...';
-    document.getElementById('messages').appendChild(el);
+async function loadThreads() {
+  try {
+    const res = await fetch(`${S.apiBase}/threads?limit=50`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    S.threads = data.threads || [];
+    renderThreads();
+  } catch (e) {
+    console.error('loadThreads error:', e);
   }
+}
+
+function renderThreads() {
+  const list = document.getElementById('threads-list');
+
+  // 個別チャット（「個別:」で始まるスレッド）を除外
+  const filteredThreads = S.threads.filter(t => !t.title.startsWith('個別:'));
+
+  if (!filteredThreads.length) {
+    list.innerHTML = '<div style="padding:8px 16px; font-size:12px; color:var(--text-dim)">スレッドなし</div>';
+    return;
+  }
+  list.innerHTML = filteredThreads.map(t => `
+    <div class="side-nav-item thread" onclick="loadThread('${t.id}')" title="${t.title}">
+      ${t.title.substring(0, 18)}${t.title.length > 18 ? '...' : ''}
+    </div>
+  `).join('');
+}
+
+async function createNewThread() {
+  try {
+    const res = await fetch(S.apiBase + '/threads', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: '新しい会話' }),
+    });
+    if (!res.ok) throw new Error('スレッド作成失敗');
+    const data = await res.json();
+    S.currentThreadId = data.thread_id;
+    S.currentThread = { id: data.thread_id, title: data.title, messages: [] };
+    document.getElementById('messages').innerHTML = '<div class="msg system" style="text-align:center">新しい会話を開始しました</div>';
+    loadThreads();
+  } catch (e) {
+    alert('スレッド作成失敗: ' + e.message);
+  }
+}
+
+async function loadThread(threadId) {
+  try {
+    const res = await fetch(`${S.apiBase}/threads/${threadId}/messages`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (!res.ok) throw new Error('メッセージロード失敗');
+    const data = await res.json();
+
+    const thread = S.threads.find(t => t.id === threadId);
+    S.currentThreadId = threadId;
+    S.currentThread = { id: threadId, title: thread?.title || '会話', messages: data.messages || [] };
+
+    // ロールフィルタドロップダウン更新
+    const roles = [...new Set(S.currentThread.messages.filter(m => m.agent_role).map(m => m.agent_role))];
+    const filter = document.getElementById('role-filter');
+    filter.innerHTML = '<option value="all">全ロール表示</option>' +
+      roles.map(r => `<option value="${r}">${r}</option>`).join('');
+    S.roleFilter = 'all';
+    S.msgSearchQuery = '';
+    document.getElementById('msg-search').value = '';
+
+    renderMessages();
+    showPage('dashboard');
+  } catch (e) {
+    console.error('loadThread error:', e);
+  }
+}
+
+// ─── メッセージ管理 ─────────────────────────────────────────
+function renderMessages(messages = S.currentThread?.messages) {
+  const container = document.getElementById('messages');
+  if (!messages?.length) {
+    container.innerHTML = '<div class="msg system" style="text-align:center">メッセージがありません</div>';
+    return;
+  }
+
+  // ロール別フィルタ適用
+  let filtered = messages;
+  if (S.roleFilter !== 'all') {
+    filtered = messages.filter(m => m.role === 'user' || m.agent_role === S.roleFilter);
+  }
+
+  const uiCfg = JSON.parse(localStorage.getItem('uiSettings') || '{}');
+  const showAgent = uiCfg.showAgentName !== false;
+  const showTime  = uiCfg.showTimestamp !== false;
+
+  container.innerHTML = filtered.map(msg => {
+    const content = msg.role === 'assistant'
+      ? renderMarkdown(msg.content)
+      : highlightText(msg.content, S.msgSearchQuery);
+    const agentLabel = showAgent
+      ? (msg.agent_role || (msg.role === 'user' ? 'あなた' : 'アシスタント'))
+      : '';
+    const timeLabel = showTime && msg.execution_time
+      ? msg.execution_time.toFixed(0) + 'ms'
+      : '';
+    const showHeader = msg.role !== 'system' && (agentLabel || timeLabel);
+    return `
+      <div class="msg ${msg.role === 'user' ? 'user' : msg.role === 'assistant' ? 'assistant' : 'system'}">
+        ${showHeader ? `<div class="msg-header"><span class="msg-role">${agentLabel}</span><span class="msg-time">${timeLabel}</span></div>` : ''}
+        <div class="msg-content${msg.role === 'assistant' ? ' md-content' : ''}">${content}</div>
+      </div>
+    `;
+  }).join('');
+
   scrollBottom();
 }
 
-function hideThinking() {
-  const el = document.getElementById('thinking');
-  if (el) el.remove();
+function addMessage(role, content, agentRole = null, model = null, executionTime = null) {
+  if (!S.currentThread) return;
+  S.currentThread.messages.push({
+    role, content, agent_role: agentRole, model, execution_time: executionTime,
+  });
+  renderMessages();
 }
 
 function scrollBottom() {
-  const m = document.getElementById('messages');
-  m.scrollTop = m.scrollHeight;
+  setTimeout(() => {
+    const container = document.getElementById('messages');
+    container?.scrollTo(0, container.scrollHeight);
+  }, 50);
 }
 
-init();
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// ─── ユーティリティ関数 ─────────────────────────────────────────
+function renderMarkdown(text) {
+  if (!text) return '';
+  const raw = marked.parse(text, { breaks: true, gfm: true });
+  // DOMPurify で XSS を防止
+  return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(raw) : raw;
+}
+
+function highlightText(text, query) {
+  if (!query) return escapeHtml(text);
+  const escaped = escapeHtml(text);
+  const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escaped.replace(new RegExp(q, 'gi'), m => `<mark class="search-highlight">${m}</mark>`);
+}
+
+function parseTags(json) {
+  try {
+    return JSON.parse(json || '[]');
+  } catch {
+    return [];
+  }
+}
+
+// ─── ロードマップ表示 ─────────────────────────────────────────
+function renderRoadmap(roadmap) {
+  const el = document.createElement('div');
+  el.className = 'roadmap-container';
+  el.id = 'roadmap-display';
+  el.innerHTML = `
+    <div class="roadmap-title">📋 ${escapeHtml(roadmap.goal)}</div>
+    ${roadmap.steps.map(s => `
+      <div class="roadmap-step" id="rm-step-${s.id}" data-status="pending">
+        <span class="step-status-icon">⏳</span>
+        <span class="step-id-label">Step ${s.id}</span>
+        <span class="step-task-label">${escapeHtml(s.task)}</span>
+        <span class="step-role-label">${s.assigned_role}</span>
+        ${s.can_parallel ? '<span class="step-parallel">⚡並列</span>' : ''}
+      </div>
+    `).join('')}
+  `;
+  document.getElementById('messages').appendChild(el);
+  scrollBottom();
+}
+
+function updateStep(stepId, status, summary = null) {
+  const el = document.getElementById(`rm-step-${stepId}`);
+  if (!el) return;
+  const icons = { active: '🔄', done: '✅', error: '❌' };
+  el.dataset.status = status;
+  el.querySelector('.step-status-icon').textContent = icons[status] || '⏳';
+  if (status === 'done' && summary) {
+    el.querySelector('.step-summary')?.remove();
+    const s = document.createElement('div');
+    s.className = 'step-summary';
+    s.textContent = '→ ' + summary;
+    el.appendChild(s);
+  }
+}
+
+function appendParallelCard(data) {
+  let grid = document.getElementById('parallel-results');
+  if (!grid) {
+    grid = document.createElement('div');
+    grid.id = 'parallel-results';
+    grid.className = 'parallel-grid';
+    document.getElementById('messages').appendChild(grid);
+  }
+
+  const card = document.createElement('div');
+  card.className = 'parallel-card';
+  card.innerHTML = `
+    <div class="pc-header">
+      <span class="pc-role">${data.agent_role || data.route || '?'}</span>
+      <span class="pc-time">${data.execution_time ? data.execution_time.toFixed(1) + 's' : ''}</span>
+    </div>
+    <div class="pc-content">${escapeHtml((data.response || '').substring(0, 300))}</div>
+  `;
+  grid.appendChild(card);
+  scrollBottom();
+}
+
+// ─── メッセージ送信 ─────────────────────────────────────────
+async function sendMessage() {
+  const input = document.getElementById('prompt-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  if (!S.currentThread) {
+    await createNewThread();
+  }
+
+  input.value = '';
+
+  // ユーザーメッセージを追加
+  addMessage('user', msg);
+
+  // DB に保存
+  try {
+    await fetch(`${S.apiBase}/threads/${S.currentThreadId}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'user', content: msg }),
+    });
+  } catch (e) {
+    console.error('Failed to save user message:', e);
+  }
+
+  // スレッドタイトル自動生成（初回メッセージ）
+  if (S.currentThread.messages.length === 1) {
+    const title = msg.substring(0, 30);
+    try {
+      await fetch(`${S.apiBase}/threads/${S.currentThreadId}`, {
+        method: 'PUT',
+        headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      S.currentThread.title = title;
+      loadThreads();
+    } catch (e) {
+      console.error('Failed to update title:', e);
+    }
+  }
+
+  // WebSocket で送信
+  try {
+    if (!S.ws || S.ws.readyState !== WebSocket.OPEN) {
+      await connectWS();
+    }
+
+    if (S.parallelMode) {
+      addMessage('system', '⚡ 全ロールに並列送信中...');
+      showProcessingIndicator('broadcast');
+      S.ws.send(JSON.stringify({
+        type: 'message',
+        message: msg,
+        model: 'broadcast',
+        thread_id: S.currentThreadId,
+      }));
+    } else {
+      const roleKey = S.currentRole || 'auto';
+      addMessage('assistant', '⏳ 処理中...');
+      showProcessingIndicator(roleKey);
+      S.ws.send(JSON.stringify({
+        type: 'message',
+        message: msg,
+        model: roleKey,
+        thread_id: S.currentThreadId,
+      }));
+    }
+  } catch (e) {
+    hideProcessingIndicator();
+    addMessage('system', '❌ エラー: ' + e.message);
+  }
+}
+
+async function connectWS() {
+  return new Promise((resolve, reject) => {
+    try {
+      S.ws = new WebSocket(S.wsUrl);
+      S.ws.onopen = () => {
+        console.log('✅ WebSocket connected');
+        resolve();
+      };
+      S.ws.onmessage = (evt) => handleWSMessage(JSON.parse(evt.data));
+      S.ws.onerror = (e) => {
+        console.error('❌ WebSocket error:', e);
+        reject(e);
+      };
+      S.ws.onclose = () => console.log('WebSocket closed');
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function handleWSMessage(data) {
+  const type = data.type || '';
+
+  switch (type) {
+    case 'token':
+      // 通常のチャット
+      if (S.currentThread?.messages?.length > 0) {
+        const lastMsg = S.currentThread.messages[S.currentThread.messages.length - 1];
+        if (lastMsg.role === 'assistant') {
+          if (lastMsg.content === '⏳ 処理中...') {
+            lastMsg.content = data.token || '';
+          } else {
+            lastMsg.content += data.token || '';
+          }
+          renderMessages();
+          scrollBottom();
+        }
+      }
+      // 個別チャット
+      if (S.currentIndividualRole && S.individualThreads[S.currentIndividualRole]?.messages?.length > 0) {
+        const thread = S.individualThreads[S.currentIndividualRole];
+        const lastMsg = thread.messages[thread.messages.length - 1];
+        if (lastMsg.role === 'system' || lastMsg.role === 'assistant') {
+          const systemMsgIndex = thread.messages.findIndex(m => m.role === 'system' && m.content.includes('応答待機中'));
+          if (systemMsgIndex !== -1) {
+            thread.messages.splice(systemMsgIndex, 1);
+          }
+          if (lastMsg.role === 'system') {
+            thread.messages.pop();
+            thread.messages.push({
+              role: 'assistant',
+              content: data.token || '',
+              agent_role: S.currentIndividualRole,
+              model: S.models[S.currentIndividualRole],
+              execution_time: null,
+              created_at: new Date().toISOString(),
+            });
+          } else if (lastMsg.role === 'assistant') {
+            lastMsg.content += data.token || '';
+          }
+          renderIndividualMessages();
+        }
+      }
+      break;
+
+    case 'done':
+      // 処理インジケータを非表示
+      hideProcessingIndicator();
+
+      // DB に保存
+      if (S.currentThreadId && S.currentThread?.messages?.length > 0) {
+        const lastMsg = S.currentThread.messages[S.currentThread.messages.length - 1];
+        if (lastMsg.role === 'assistant' && lastMsg.content !== '⏳ 処理中...') {
+          try {
+            await fetch(`${S.apiBase}/threads/${S.currentThreadId}/messages`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: 'assistant',
+                content: lastMsg.content,
+                agent_role: data.agent_role || '',
+                model: data.model || '',
+                execution_time: data.execution_time || null,
+              }),
+            });
+            console.log('✅ Message saved to DB');
+          } catch (e) {
+            console.error('Failed to save assistant message:', e);
+          }
+        }
+      }
+      // 個別チャット用: アシスタント応答を DB に保存
+      if (S.currentIndividualRole && S.individualThreads[S.currentIndividualRole]?.messages?.length > 0) {
+        const thread = S.individualThreads[S.currentIndividualRole];
+        const lastMsg = thread.messages[thread.messages.length - 1];
+        if (lastMsg.role === 'assistant' && lastMsg.content) {
+          try {
+            await fetch(`${S.apiBase}/threads/${thread.id}/messages`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                role: 'assistant',
+                content: lastMsg.content,
+                agent_role: S.currentIndividualRole,
+                model: S.models[S.currentIndividualRole] || '',
+                execution_time: data.execution_time || null,
+              }),
+            });
+          } catch (e) {
+            console.error('Failed to save individual message:', e);
+          }
+        }
+      }
+
+      // Markdown レンダリング + シンタックスハイライト
+      renderMessages();
+      setTimeout(() => hljs.highlightAll(), 50);
+
+      // ブラウザ通知
+      _maybeNotify(data.agent_role || 'アシスタント');
+      break;
+
+    case 'roadmap_created':
+      renderRoadmap(data.roadmap);
+      break;
+
+    case 'step_start':
+      updateStep(data.step_id, 'active');
+      break;
+
+    case 'step_done':
+      updateStep(data.step_id, 'done', data.summary);
+      break;
+
+    case 'response':
+      if (S.parallelMode) {
+        appendParallelCard(data);
+      } else {
+        const lastMsg = S.currentThread?.messages?.at(-1);
+        if (lastMsg?.role === 'assistant') {
+          if (lastMsg.content === '⏳ 処理中...') {
+            lastMsg.content = data.response || '';
+          } else {
+            lastMsg.content += data.response || '';
+          }
+          renderMessages();
+          scrollBottom();
+        }
+      }
+      break;
+
+    case 'error':
+      hideProcessingIndicator();
+      addMessage('system', '❌ エラー: ' + (data.message || data.error || 'Unknown'));
+      break;
+  }
+}
+
+// ─── チャット履歴ページ ───────────────────────────────────
+function renderHistoryList(threads = S.threads) {
+  const list = document.getElementById('history-list');
+
+  // 個別チャット（"個別:" で始まるスレッド）を除外
+  const filteredThreads = threads.filter(t => {
+    // title が "個別:" で始まる場合は除外
+    if (t.title && t.title.startsWith('個別:')) {
+      return false;
+    }
+    // または #individual タグが含まれている場合も除外
+    try {
+      const tags = JSON.parse(t.tags || '[]');
+      return !tags.includes('#individual');
+    } catch {
+      return true;
+    }
+  });
+
+  if (!filteredThreads.length) {
+    list.innerHTML = '<div style="text-align:center; color:var(--text-dim); padding:20px">スレッドがありません</div>';
+    return;
+  }
+
+  list.innerHTML = filteredThreads.map(t => `
+    <div style="background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:8px">
+      <div style="display:flex; justify-content:space-between; align-items:start; gap:12px">
+        <div style="flex:1; cursor:pointer" onclick="loadThread('${t.id}')">
+          <div style="font-weight:600; color:var(--text); font-size:13px">${escapeHtml(t.title)}</div>
+          <div style="font-size:11px; color:var(--text-dim); margin-top:4px">${new Date(t.created_at).toLocaleDateString('ja-JP')}</div>
+          <div class="thread-tags">${parseTags(t.tags).map(tag => `<span class="tag-badge" onclick="filterHistoryByTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</span>`).join('')}</div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end">
+          <button onclick="editTags('${t.id}', \`${escapeHtml(t.tags || '[]')}\`)" class="tag-edit-btn" title="タグ編集" style="padding:4px 8px; background:var(--primary-glow); border:1px solid var(--primary); border-radius:4px; color:var(--primary); font-size:12px; cursor:pointer; white-space:nowrap">🏷 タグ編集</button>
+          <button onclick="deleteThread('${t.id}')" style="padding:4px 8px; background:var(--ng); color:white; border:none; border-radius:4px; font-size:11px; cursor:pointer; white-space:nowrap">🗑 削除</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function deleteThread(threadId) {
+  if (!confirm('このスレッドを削除しますか？')) return;
+  try {
+    await fetch(`${S.apiBase}/threads/${threadId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    loadThreads();
+  } catch (e) {
+    console.error('削除失敗:', e);
+  }
+}
+
+// ─── 機能 2: ロール別フィルタリング ─────────────────────────
+function applyRoleFilter() {
+  S.roleFilter = document.getElementById('role-filter').value;
+  renderMessages();
+}
+
+// ─── 機能 3: メッセージ内検索 ─────────────────────────────────
+function searchMessages(query) {
+  S.msgSearchQuery = query.toLowerCase();
+  renderMessages();
+  const count = document.getElementById('msg-search-count');
+  if (S.msgSearchQuery) {
+    const matches = (S.currentThread?.messages || []).filter(m =>
+      m.content.toLowerCase().includes(S.msgSearchQuery)).length;
+    count.textContent = `${matches}件`;
+  } else {
+    count.textContent = '';
+  }
+}
+
+// ─── 機能 4: スレッドタグ・カテゴリー管理 ──────────────────────
+function editTags(threadId, currentTagsJson) {
+  const current = parseTags(currentTagsJson).join(', ');
+  const input = prompt('タグをカンマ区切りで入力 (例: React, 進行中):', current);
+  if (input === null) return;
+  const tags = input.split(',').map(t => t.trim()).filter(Boolean)
+    .map(t => t.startsWith('#') ? t : '#' + t);
+  saveThreadTags(threadId, tags);
+}
+
+async function saveThreadTags(threadId, tags) {
+  try {
+    await fetch(`${S.apiBase}/threads/${threadId}`, {
+      method: 'PUT',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tags: JSON.stringify(tags) }),
+    });
+    loadThreads();
+  } catch (e) {
+    console.error('saveThreadTags error:', e);
+  }
+}
+
+function filterHistoryByTag(tag) {
+  const filtered = S.threads.filter(t => parseTags(t.tags).includes(tag));
+  renderHistoryList(filtered);
+}
+
+// ─── 機能 5: 日時範囲フィルタリング ───────────────────────────
+function applyHistoryFilters() {
+  const query = (document.getElementById('history-search')?.value || '').toLowerCase();
+  const from = document.getElementById('filter-from')?.value;
+  const to = document.getElementById('filter-to')?.value;
+
+  let filtered = S.threads;
+  if (query) {
+    filtered = filtered.filter(t => t.title.toLowerCase().includes(query));
+  }
+  if (from) {
+    filtered = filtered.filter(t => new Date(t.created_at) >= new Date(from));
+  }
+  if (to) {
+    const toEnd = new Date(to);
+    toEnd.setDate(toEnd.getDate() + 1);
+    filtered = filtered.filter(t => new Date(t.created_at) < toEnd);
+  }
+  renderHistoryList(filtered);
+}
+
+function clearDateFilter() {
+  document.getElementById('filter-from').value = '';
+  document.getElementById('filter-to').value = '';
+  applyHistoryFilters();
+}
+
+// ─── 個別チャット ──────────────────────────────────────────────
+function initIndividualRoleSelect() {
+  const select = document.getElementById('individual-role-select');
+  select.innerHTML = '<option value="">-- ロールを選択してください --</option>' +
+    Object.entries(S.models).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+}
+
+async function loadIndividualChat(roleKey) {
+  if (!roleKey) {
+    S.currentIndividualRole = '';
+    document.getElementById('individual-messages').innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:20px">ロールを選択してください</div>';
+    return;
+  }
+
+  S.currentIndividualRole = roleKey;
+
+  // ロール用の個別スレッドを検索
+  let thread = S.threads.find(t => {
+    try {
+      const tags = JSON.parse(t.tags || '[]');
+      return tags.includes('#individual') && tags.includes(`#${roleKey}`);
+    } catch {
+      return false;
+    }
+  });
+
+  if (!thread) {
+    // 新規スレッド作成
+    try {
+      const createRes = await fetch(`${S.apiBase}/threads?title=${encodeURIComponent(`個別: ${S.models[roleKey]}`)}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      });
+      const createData = await createRes.json();
+      const newThreadId = createData.thread_id || createData.id;
+
+      if (newThreadId) {
+        // タグを設定
+        await fetch(`${S.apiBase}/threads/${newThreadId}`, {
+          method: 'PUT',
+          headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tags: JSON.stringify(['#individual', `#${roleKey}`]) }),
+        });
+
+        thread = { id: newThreadId, title: `個別: ${S.models[roleKey]}`, messages: [], tags: JSON.stringify(['#individual', `#${roleKey}`]) };
+        S.threads.push(thread);
+      }
+    } catch (e) {
+      console.error('Thread creation error:', e);
+    }
+  }
+
+  if (thread && !thread.messages) {
+    thread.messages = [];
+  }
+
+  S.individualThreads[roleKey] = thread;
+
+  // スレッドが存在する場合、メッセージをロード
+  if (thread && thread.id) {
+    try {
+      const res = await fetch(`${S.apiBase}/threads/${thread.id}/messages`, {
+        headers: { 'Authorization': `Bearer ${S.token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        thread.messages = data.messages || [];
+        console.log(`✅ Loaded ${thread.messages.length} messages for ${roleKey}`);
+      } else {
+        console.error('Message load failed:', res.status);
+        thread.messages = [];
+      }
+    } catch (e) {
+      console.error('Load individual messages error:', e);
+      thread.messages = [];
+    }
+  } else {
+    // thread が作成されなかった場合
+    if (!thread) {
+      thread = { id: '', title: '', messages: [], tags: '[]' };
+      S.individualThreads[roleKey] = thread;
+    }
+  }
+
+  renderIndividualMessages();
+}
+
+function renderIndividualMessages() {
+  if (!S.currentIndividualRole) return;
+  const thread = S.individualThreads[S.currentIndividualRole];
+  if (!thread) return;
+
+  const messagesDiv = document.getElementById('individual-messages');
+  if (!thread.messages || !thread.messages.length) {
+    messagesDiv.innerHTML = '<div style="color:var(--text-dim); text-align:center; padding:20px">まだメッセージがありません</div>';
+    return;
+  }
+
+  messagesDiv.innerHTML = thread.messages.map(msg => `
+    <div style="margin-bottom:12px; padding:10px; background:${msg.role === 'user' ? 'var(--primary-glow)' : 'var(--surface2)'}; border-radius:6px; color:var(--text); font-size:12px">
+      <div style="font-weight:600; font-size:11px; color:var(--text-dim); margin-bottom:4px">${msg.role === 'user' ? 'あなた' : S.models[S.currentIndividualRole]}</div>
+      <div>${escapeHtml(msg.content)}</div>
+    </div>
+  `).join('');
+
+  // スクロール最下部へ
+  setTimeout(() => {
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }, 50);
+}
+
+async function sendIndividualMessage() {
+  if (!S.currentIndividualRole) {
+    alert('ロールを選択してください');
+    return;
+  }
+
+  const input = document.getElementById('individual-input');
+  const message = input.value.trim();
+  if (!message) return;
+
+  input.value = '';
+
+  const thread = S.individualThreads[S.currentIndividualRole];
+  if (!thread) return;
+
+  // ユーザーメッセージを追加
+  thread.messages.push({
+    role: 'user',
+    content: message,
+    agent_role: null,
+    model: null,
+    execution_time: null,
+    created_at: new Date().toISOString()
+  });
+  renderIndividualMessages();
+
+  // サーバーにユーザーメッセージを保存
+  try {
+    await fetch(`${S.apiBase}/threads/${thread.id}/messages`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role: 'user', content: message }),
+    });
+
+    // 処理中表示
+    thread.messages.push({
+      role: 'system',
+      content: `${S.models[S.currentIndividualRole]} から応答待機中...`,
+      agent_role: null,
+      model: null,
+      execution_time: null,
+      created_at: new Date().toISOString()
+    });
+    renderIndividualMessages();
+
+    // ロール指定で API に送信 - 処理時間を計測
+    const sendStartTime = Date.now();
+    showProcessingIndicator(S.currentIndividualRole, sendStartTime);
+
+    const chatRes = await fetch(`${S.apiBase}/chat`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, model: S.currentIndividualRole, thread_id: thread.id }),
+    });
+
+    // 処理インジケータを非表示
+    hideProcessingIndicator();
+
+    // 処理中表示を削除
+    thread.messages = thread.messages.filter(m => m.content !== `${S.models[S.currentIndividualRole]} から応答待機中...`);
+
+    if (chatRes.ok) {
+      const chatData = await chatRes.json();
+      const assistantResponse = chatData.response || '(応答なし)';
+
+      // アシスタント応答を追加
+      thread.messages.push({
+        role: 'assistant',
+        content: assistantResponse,
+        agent_role: S.currentIndividualRole,
+        model: S.models[S.currentIndividualRole],
+        execution_time: chatData.execution_time || 0,
+        created_at: new Date().toISOString(),
+      });
+
+      // サーバーにアシスタント応答を保存
+      await fetch(`${S.apiBase}/threads/${thread.id}/messages`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: 'assistant',
+          content: assistantResponse,
+          agent_role: S.currentIndividualRole,
+          model: S.models[S.currentIndividualRole],
+          execution_time: chatData.execution_time || 0,
+        }),
+      });
+    } else {
+      hideProcessingIndicator();
+      thread.messages.push({
+        role: 'system',
+        content: '❌ 応答に失敗しました',
+        agent_role: null,
+        model: null,
+        execution_time: null,
+        created_at: new Date().toISOString()
+      });
+    }
+    renderIndividualMessages();
+  } catch (e) {
+    hideProcessingIndicator();
+    console.error('sendIndividualMessage error:', e);
+    thread.messages.push({
+      role: 'system',
+      content: `❌ エラー: ${e.message}`,
+      agent_role: null,
+      model: null,
+      execution_time: null,
+      created_at: new Date().toISOString()
+    });
+    renderIndividualMessages();
+  }
+}
+
+// ─── UI 制御 ─────────────────────────────────────────────────
+function showPage(page) {
+  document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+
+  document.querySelectorAll('[data-page]').forEach(btn => btn.classList.remove('active'));
+  document.querySelectorAll(`[data-page="${page}"]`).forEach(btn => btn.classList.add('active'));
+
+  // 履歴ページを表示する時に一覧を更新
+  if (page === 'history') {
+    renderHistoryList();
+  }
+  // システム設定ページでフォールバックモードを読み込む
+  if (page === 'system') {
+    loadClaudeFallbackMode();
+  }
+}
+
+function selectRole() {
+  S.currentRole = document.getElementById('role-select').value;
+  // ロール選択フィードバックを表示
+  const selectedRoleName = S.models[S.currentRole] || (S.currentRole === 'auto' ? '🤖 自動ルーティング' : '?');
+  console.log(`✨ Role selected: ${selectedRoleName}`);
+
+  // ロールカードのビジュアル更新
+  document.querySelectorAll('.role-card').forEach(card => {
+    card.classList.remove('processing');
+  });
+}
+
+// ─── ロール改善・体感速度改善: 処理インジケータ ──────────────────
+function showProcessingIndicator(roleKey, startTime = null) {
+  const indicator = document.getElementById('processing-indicator');
+  const roleEl = document.getElementById('processing-role');
+  const timeEl = document.getElementById('processing-time');
+
+  // ロール名を取得（キーによる）
+  let roleName;
+  if (roleKey === 'auto') {
+    roleName = '🤖 自動ルーティング';
+  } else if (roleKey === 'broadcast') {
+    roleName = '🏯 全員会議';
+  } else {
+    roleName = S.models[roleKey] || '?';
+  }
+
+  roleEl.textContent = `${roleName} が処理中...`;
+
+  if (startTime) {
+    S.processingStartTime = startTime;
+  } else {
+    S.processingStartTime = Date.now();
+  }
+
+  // 処理時間を更新するインターバル
+  if (S.processingTimer) clearInterval(S.processingTimer);
+  S.processingTimer = setInterval(() => {
+    if (indicator.classList.contains('hidden')) {
+      clearInterval(S.processingTimer);
+      return;
+    }
+    const elapsed = (Date.now() - S.processingStartTime) / 1000;
+    timeEl.textContent = `${elapsed.toFixed(1)}s`;
+  }, 100);
+
+  indicator.classList.remove('hidden');
+
+  // ロールカードをハイライト（キーが auto でない場合）
+  if (roleKey !== 'auto' && roleKey !== 'broadcast') {
+    const roleCards = document.querySelectorAll('.role-card');
+    roleCards.forEach(card => {
+      card.classList.remove('processing');
+      if (card.id === `role-${roleKey}`) {
+        card.classList.add('processing');
+      }
+    });
+  }
+}
+
+function hideProcessingIndicator() {
+  const indicator = document.getElementById('processing-indicator');
+  indicator.classList.add('hidden');
+
+  if (S.processingTimer) {
+    clearInterval(S.processingTimer);
+    S.processingTimer = null;
+  }
+
+  // ロールカードのハイライトを削除
+  document.querySelectorAll('.role-card').forEach(card => {
+    card.classList.remove('processing');
+  });
+}
+
+function toggleParallel() {
+  S.parallelMode = document.getElementById('parallel-mode').checked;
+}
+
+async function toggleRole(el, role) {
+  el.classList.toggle('active');
+  const enabled = el.classList.contains('active');
+  try {
+    await fetch(`${S.apiBase}/settings/roles/${role}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+  } catch (e) {
+    console.error('ロール設定変更失敗:', e);
+  }
+}
+
+async function setClaudeFallbackMode(mode) {
+  try {
+    const res = await fetch(`${S.apiBase}/settings/claude-fallback`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      console.log('✅ フォールバックモード変更:', data.message);
+    }
+  } catch (e) {
+    console.error('❌ フォールバックモード変更失敗:', e);
+  }
+}
+
+async function loadClaudeFallbackMode() {
+  try {
+    const res = await fetch(`${S.apiBase}/settings/claude-fallback`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const sel = document.getElementById('claude-fallback-mode');
+      if (sel) sel.value = data.mode;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function switchLLMModel(model) {
+  try {
+    const res = await fetch(`${S.apiBase}/llm/switch/${model}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (res.ok) {
+      document.getElementById('active-model-display').textContent = model === 'gemma' ? 'Gemma4' : 'Nemotron';
+      alert('✅ LLM モデル切り替え完了');
+    }
+  } catch (e) {
+    alert('❌ エラー: ' + e.message);
+  }
+}
+
+async function clearHistory() {
+  if (!confirm('すべての会話履歴を削除しますか？（元に戻せません）')) return;
+  try {
+    const res = await fetch(`${S.apiBase}/threads/all`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    const data = await res.json();
+    if (data.deleted !== undefined) {
+      S.threads = [];
+      S.currentThread = null;
+      S.currentThreadId = null;
+      renderThreads();
+      const msgs = document.getElementById('messages');
+      if (msgs) msgs.innerHTML = '<div class="msg system" style="text-align:center">メッセージがありません</div>';
+      alert(`✅ ${data.deleted}件の会話履歴を削除しました`);
+    } else {
+      alert('❌ 削除に失敗しました: ' + (data.error || '不明なエラー'));
+    }
+  } catch (e) {
+    alert('❌ エラー: ' + e.message);
+  }
+}
+
+// ─── v18: スキル提案 ────────────────────────────────────────────
+
+let _skillStatus = 'pending';
+
+async function loadSkillProposals(status = 'pending') {
+  _skillStatus = status;
+  const el = document.getElementById('skill-proposals-list');
+  if (!el) return;
+  el.innerHTML = '<p style="color:var(--text-dim);font-size:12px;padding:8px">読み込み中...</p>';
+  try {
+    const res = await fetch(`${S.apiBase}/skill-proposals?status=${status}`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    const data = await res.json();
+    if (!data.proposals || data.proposals.length === 0) {
+      el.innerHTML = `<p style="color:var(--text-dim);font-size:12px;padding:8px">${status === 'pending' ? '現在提案はありません' : '承認済みスキルなし'}</p>`;
+      return;
+    }
+    el.innerHTML = data.proposals.map(p => `
+      <div style="background:var(--surface2);border-radius:6px;padding:10px;margin:4px 0;font-size:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <strong>${p.skill_name || '未命名'}</strong>
+          <span style="color:var(--text-dim)">${p.occurrence_count}回出現</span>
+        </div>
+        <div style="color:var(--text-dim);margin-bottom:6px">
+          キーワード: ${(p.keywords || []).slice(0,5).join(', ')}
+        </div>
+        <div style="color:var(--text-dim);margin-bottom:8px;font-size:11px">
+          推奨ロール: <span style="color:var(--primary)">${p.typical_role || '?'}</span>
+        </div>
+        ${(p.sample_messages || []).slice(0,2).map(m =>
+          `<div style="background:var(--surface);padding:4px 8px;border-radius:4px;margin-bottom:4px;font-size:11px;color:var(--text-dim)">"${m.slice(0,80)}${m.length>80?'…':''}"</div>`
+        ).join('')}
+        ${status === 'pending' ? `
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button onclick="approveSkill('${p.id}', event)" style="flex:1;font-size:11px;background:var(--ok)">✅ 承認</button>
+          <button onclick="dismissSkill('${p.id}')" style="flex:1;font-size:11px;background:var(--surface)">❌ 却下</button>
+        </div>` : `<div style="color:var(--ok);font-size:11px">✅ ${p.skill_name} (${p.skill_file ? '保存済' : ''})</div>`}
+      </div>
+    `).join('');
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--ng);font-size:12px;padding:8px">エラー: ${e.message}</p>`;
+  }
+}
+
+async function approveSkill(proposalId, evt) {
+  const skillName = prompt('スキル名を入力してください:', '');
+  if (!skillName) return;
+  const routeHint = prompt('推奨ルーティング先ロールキー (例: gunshi, sanbo):', 'gunshi');
+  if (!routeHint) return;
+  try {
+    const res = await fetch(`${S.apiBase}/skill-proposals/${proposalId}/approve`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ skill_name: skillName, route_hint: routeHint, system_prompt_hint: '' }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      alert(`✅ スキル「${skillName}」を承認しました`);
+      loadSkillProposals(_skillStatus);
+    } else {
+      alert('❌ エラー: ' + data.error);
+    }
+  } catch (e) {
+    alert('❌ エラー: ' + e.message);
+  }
+}
+
+async function dismissSkill(proposalId) {
+  if (!confirm('このスキル候補を却下しますか？')) return;
+  try {
+    await fetch(`${S.apiBase}/skill-proposals/${proposalId}/dismiss`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    loadSkillProposals(_skillStatus);
+  } catch (e) {
+    alert('❌ エラー: ' + e.message);
+  }
+}
+
+// ─── v18: YAML 監査ログ ─────────────────────────────────────────
+
+async function loadAuditLogs() {
+  const el = document.getElementById('audit-logs-list');
+  if (!el) return;
+  el.innerHTML = '<p style="color:var(--text-dim);font-size:12px;padding:8px">読み込み中...</p>';
+  try {
+    const res = await fetch(`${S.apiBase}/audit-logs?days=7`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    const data = await res.json();
+    if (!data.logs || data.logs.length === 0) {
+      el.innerHTML = '<p style="color:var(--text-dim);font-size:12px;padding:8px">監査ログなし（ロードマップ実行後に生成されます）</p>';
+      return;
+    }
+    el.innerHTML = data.logs.map(l => `
+      <div style="background:var(--surface2);border-radius:6px;padding:8px;margin:4px 0;font-size:11px;cursor:pointer"
+           onclick="viewAuditLog('${l.path}', this)">
+        <div style="display:flex;justify-content:space-between">
+          <span>${l.is_done ? '✅' : '⏳'} ${l.filename.replace(/^rm-|\.yaml$/g,'')}</span>
+          <span style="color:var(--text-dim)">${l.date} · ${(l.size/1024).toFixed(1)}KB</span>
+        </div>
+      </div>
+    `).join('');
+  } catch (e) {
+    el.innerHTML = `<p style="color:var(--ng);font-size:12px;padding:8px">エラー: ${e.message}</p>`;
+  }
+}
+
+async function viewAuditLog(path, el) {
+  // 既に展開中なら閉じる
+  const existing = el.querySelector('.audit-content');
+  if (existing) { existing.remove(); return; }
+  try {
+    const res = await fetch(`${S.apiBase}/audit-logs/content?path=${encodeURIComponent(path)}`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    const data = await res.json();
+    const div = document.createElement('div');
+    div.className = 'audit-content';
+    div.style.cssText = 'margin-top:8px;background:var(--surface);border-radius:4px;padding:8px;white-space:pre-wrap;font-size:10px;color:var(--text-dim);max-height:200px;overflow-y:auto;font-family:monospace';
+    div.textContent = data.content || '(空)';
+    el.appendChild(div);
+  } catch (e) {
+    el.insertAdjacentHTML('beforeend', `<div style="color:var(--ng);font-size:11px;margin-top:4px">エラー: ${e.message}</div>`);
+  }
+}
+
+// ─── 設定管理 ───────────────────────────────────────────────
+function loadUISettings() {
+  const saved = JSON.parse(localStorage.getItem('uiSettings') || '{}');
+
+  // フォントサイズ
+  if (saved.fontSize) {
+    _applyFontSize(saved.fontSize);
+    const el = document.getElementById('font-size');
+    if (el) el.value = saved.fontSize;
+  }
+
+  // コンパクトモード
+  if (saved.compactMode) {
+    document.getElementById('compact-toggle')?.classList.add('active');
+    document.body.classList.add('compact');
+  }
+
+  // ダークモード
+  if (saved.darkMode) {
+    document.body.classList.add('dark');
+    document.querySelector('[onclick="toggleTheme(this)"]')?.classList.add('active');
+  }
+
+  // テーマカラー
+  if (saved.themeColor && saved.themeColor !== 'beige') {
+    const sw = document.querySelector(`.color-swatch[data-name="${saved.themeColor}"]`);
+    if (sw) applyThemeColor(sw);
+  } else {
+    document.querySelector('.color-swatch[data-name="beige"]')?.classList.add('active');
+  }
+
+  // チャット設定
+  if (saved.enterSend === false) {
+    document.getElementById('enter-send-toggle')?.classList.remove('active');
+  }
+  if (saved.showTimestamp === false) {
+    document.getElementById('timestamp-toggle')?.classList.remove('active');
+  }
+  if (saved.showAgentName === false) {
+    document.getElementById('agentname-toggle')?.classList.remove('active');
+  }
+
+  // ブラウザ通知
+  if (saved.browserNotif && Notification.permission === 'granted') {
+    document.getElementById('notif-toggle')?.classList.add('active');
+    const st = document.getElementById('notif-status');
+    if (st) st.textContent = '✅ 通知が許可されています';
+  }
+}
+
+function applyThemeColor(swatchEl) {
+  const root = document.documentElement;
+  root.style.setProperty('--primary',      swatchEl.dataset.p);
+  root.style.setProperty('--primary-dim',  swatchEl.dataset.d);
+  root.style.setProperty('--primary-glow', swatchEl.dataset.g);
+  document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+  swatchEl.classList.add('active');
+}
+
+function setThemeColor(el) {
+  applyThemeColor(el);
+  saveSetting('themeColor', el.dataset.name);
+  // primary-glow はカスタムプロパティなので別途保存
+  saveSetting('themeP', el.dataset.p);
+  saveSetting('themeD', el.dataset.d);
+  saveSetting('themeG', el.dataset.g);
+}
+
+async function toggleNotification(el) {
+  if (el.classList.contains('active')) {
+    el.classList.remove('active');
+    saveSetting('browserNotif', false);
+    const st = document.getElementById('notif-status');
+    if (st) st.textContent = '';
+    return;
+  }
+  if (!('Notification' in window)) {
+    alert('このブラウザはデスクトップ通知に対応していません');
+    return;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') {
+    el.classList.add('active');
+    saveSetting('browserNotif', true);
+    const st = document.getElementById('notif-status');
+    if (st) st.textContent = '✅ 通知が許可されました';
+  } else {
+    const st = document.getElementById('notif-status');
+    if (st) st.textContent = '❌ ブラウザで通知を許可してください';
+  }
+}
+
+function _maybeNotify(agentName) {
+  const s = JSON.parse(localStorage.getItem('uiSettings') || '{}');
+  if (s.browserNotif && Notification.permission === 'granted' && document.hidden) {
+    new Notification(`${agentName} から応答があります`, { body: '武士団', icon: '/favicon.ico' });
+  }
+}
+
+function saveSetting(key, value) {
+  const settings = JSON.parse(localStorage.getItem('uiSettings') || '{}');
+  settings[key] = value;
+  localStorage.setItem('uiSettings', JSON.stringify(settings));
+
+  if (key === 'fontSize') {
+    _applyFontSize(value);
+  } else if (key === 'compactMode') {
+    document.body.classList.toggle('compact', !!value);
+  }
+}
+
+function _applyFontSize(size) {
+  // 基準サイズからスケール計算して CSS 変数を全て更新
+  const base = { '12px': 12, '14px': 14, '16px': 16 }[size] || 14;
+  const s = base / 14; // スケール比
+  const root = document.documentElement;
+  root.style.setProperty('--fs-xs',   Math.round(11 * s) + 'px');
+  root.style.setProperty('--fs-sm',   Math.round(12 * s) + 'px');
+  root.style.setProperty('--fs-md',   Math.round(13 * s) + 'px');
+  root.style.setProperty('--fs-base', Math.round(14 * s) + 'px');
+  root.style.setProperty('--fs-lg',   Math.round(16 * s) + 'px');
+}
+
+function toggleSetting(el, key) {
+  el.classList.toggle('active');
+  const value = el.classList.contains('active');
+  saveSetting(key, value);
+}
+
+function toggleTheme(el) {
+  el.classList.toggle('active');
+  const isDark = el.classList.contains('active');
+  if (isDark) {
+    document.body.classList.add('dark');
+  } else {
+    document.body.classList.remove('dark');
+  }
+  saveSetting('darkMode', isDark);
+}
+
+function onPromptKey(e) {
+  const cfg = JSON.parse(localStorage.getItem('uiSettings') || '{}');
+  const enterSend = cfg.enterSend !== false; // デフォルト: true
+  if (e.key === 'Enter') {
+    if (enterSend && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    } else if (!enterSend && e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+}
 </script>
+
 </body>
 </html>

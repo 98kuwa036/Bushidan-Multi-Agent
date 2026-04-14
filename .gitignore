@@ -38,3 +38,6 @@ test_api_keys.py
 
 # Embedded git repos (separate projects)
 codings/
+.claude/settings.local.json
+*.local.json
+.env

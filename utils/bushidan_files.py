@@ -182,23 +182,37 @@ _WRITE_INSTRUCTION = """\
 サブディレクトリも使用可能です (例: [FILE:notes/memo.md])"""
 
 
+# ファイル操作に関連するキーワード (これらがある時のみディレクトリ情報を注入)
+_FILE_TRIGGER_RE = re.compile(
+    r'ファイル|保存|書き込|読み込|ディレクトリ|フォルダ|一覧|'
+    r'file|save|write|read|list|/home/claude|Bushidan/',
+    re.IGNORECASE,
+)
+
+
 def build_file_context(message: str) -> str:
     """
     メッセージを解析し、参照ファイルの内容・ディレクトリ構造・書き込み手順を
     システムプロンプト注入用のテキストとして返す。
+
+    ファイル関連キーワードがない場合は空文字を返す（プロンプト肥大化を防止）。
     """
+    refs = extract_file_refs(message)
+    file_related = bool(refs) or bool(_FILE_TRIGGER_RE.search(message))
+
+    if not file_related:
+        return ""
+
     parts: list[str] = []
 
-    # ディレクトリ構造 (Bushidanにファイルがある場合のみ)
+    # ディレクトリ構造
     listing = get_directory_listing()
     if listing:
         parts.append(f"【Bushidan共有ファイル領域】\n{listing}\n\n{_WRITE_INSTRUCTION}")
     else:
-        # ファイルがなくても書き込み方法は案内する
         parts.append(f"【Bushidan共有ファイル領域】\n📁 /home/claude/Bushidan/ (現在空)\n\n{_WRITE_INSTRUCTION}")
 
     # 明示的に参照されたファイルの内容を注入
-    refs = extract_file_refs(message)
     if refs:
         file_parts: list[str] = []
         for path_str in refs:

@@ -1,12 +1,5 @@
 """
-武士団 BushidanState v14 — LangGraph MemorySaver + HITL 対応
-
-v14 追加フィールド:
-  - context_summary: リレー間コンテキスト要約
-  - dialog_status: 対話状態 ("active" | "waiting_for_human" | "completed")
-  - awaiting_human_input: HITL 中断フラグ
-  - human_question: エージェントから人間への質問
-  - human_response: 人間からの応答
+武士団 BushidanState v15
 """
 
 import operator
@@ -15,7 +8,7 @@ from typing_extensions import TypedDict
 
 
 class BushidanState(TypedDict):
-    """LangGraph v14 ステート — HITL + コンテキスト要約"""
+    """LangGraph v15 ステート — HITL + コンテキスト要約"""
 
     # ── スレッド識別 ──────────────────────────────────────────────────
     thread_id: str
@@ -46,8 +39,9 @@ class BushidanState(TypedDict):
     routed_to: Optional[str]
 
     # ── MCP ──────────────────────────────────────────────────────
-    available_tools: list
+    available_tools: list       # ツール名リスト
     tool_schemas: dict
+    mcp_tools: list             # LangChain BaseTool オブジェクト (ロールが直接実行可)
 
     # ── 実行結果 ─────────────────────────────────────────────────────
     response: Optional[str]
@@ -66,11 +60,31 @@ class BushidanState(TypedDict):
     should_save: bool
     notion_page_id: Optional[str]
 
-    # ── v14: コンテキスト要約 ──────────────────────────────────────────
+    # ── v15
     context_summary: str
 
-    # ── v14: Human-in-the-loop ────────────────────────────────────────
+    # ── v15
     dialog_status: str              # "active" | "waiting_for_human" | "completed"
     awaiting_human_input: bool
     human_question: str             # エージェント → 人間への質問
     human_response: str             # 人間 → エージェントへの応答
+
+    # ── v15: コード検証 (sandbox_verify ノード) ───────────────────────
+    code_verified: bool             # 検証済みフラグ
+    code_verify_result: str         # 実行結果サマリ ("ok" | "error: ..." | "skipped")
+
+    # ── v15: 並列 Groq (parallel_groq ノード) ────────────────────────
+    sub_queries: list               # 分割されたサブクエリリスト
+    sub_responses: list             # 各サブクエリの応答リスト
+
+    # ── v16: 受付 構造化インテント ────────────────────────────────────
+    intent_structured: dict         # {intent_type, domain, required_capabilities, user_goal}
+
+    # ── v16: 将軍ロードマップ実行 ─────────────────────────────────────
+    roadmap: dict                   # {goal, steps:[{id,task,capability,assigned_role,status,result}], needs_audit}
+    roadmap_step: int               # 現在実行中のステップインデックス
+    roadmap_results: Annotated[list, operator.add]  # 各ステップ結果の累積リスト
+    needs_audit: bool               # 大元帥監査フラグ
+
+    # ── v18: ステップ実行コンテキスト ─────────────────────────────────
+    _step_task: str                  # execute_step → 各ロールへの個別タスク指示

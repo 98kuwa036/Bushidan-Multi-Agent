@@ -104,41 +104,57 @@ class ClaudeClient:
     async def _call_cli(
         self, prompt: str, system: Optional[str], max_tokens: int
     ) -> dict:
-        """Claude Pro CLI で実行"""
+        """バインドマウントされたディレクトリからClaude Pro CLIで実行"""
         try:
             if not os.path.exists(self.cli_path):
                 return {"success": False, "error": f"CLI not found at {self.cli_path}"}
 
-            # CLI コマンド構築
-            cmd = [self.cli_path]
-            if system:
-                cmd.extend(["-s", system])
-            cmd.append(prompt)
+            # バインドマウントされたディレクトリを指定
+            mounted_dir = "/mnt/Bushidan-Multi-Agent"
+            if not os.path.exists(mounted_dir):
+                return {"success": False, "error": f"Mounted dir not found: {mounted_dir}"}
 
-            # 実行 (タイムアウト 30秒)
+            # CLI コマンド構築 (-p の直後にプロンプト、--add-dir は後置)
+            cmd = [self.cli_path, "-p", prompt, "--add-dir", mounted_dir]
+            if system:
+                cmd.extend(["--system-prompt", system])
+
+            logger.info(f"🔄 Claude CLI 実行 (バインドマウント {mounted_dir})")
+
+            # 実行 (タイムアウト 60秒)
             result = await asyncio.to_thread(
                 subprocess.run,
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=30,
+                timeout=60,
             )
 
             if result.returncode == 0:
+                # CLIが警告行をstdoutに混入する場合があるため除去
+                _WARN_PREFIXES = ("balance", "credit", "usage limit", "your account")
+                lines = [
+                    l for l in result.stdout.splitlines()
+                    if not any(l.lower().strip().startswith(p) for p in _WARN_PREFIXES)
+                ]
+                content = "\n".join(lines).strip()
                 return {
                     "success": True,
-                    "content": result.stdout.strip(),
+                    "content": content,
                     "model": "claude-pro-cli",
                 }
             else:
+                error_msg = result.stderr[:200] or result.stdout[:200]
+                logger.error(f"CLI error: {error_msg}")
                 return {
                     "success": False,
-                    "error": f"CLI returned {result.returncode}: {result.stderr[:100]}",
+                    "error": f"CLI returned {result.returncode}: {error_msg}",
                 }
 
         except subprocess.TimeoutExpired:
-            return {"success": False, "error": "CLI timeout (30s)"}
+            return {"success": False, "error": "CLI timeout (60s)"}
         except Exception as e:
+            logger.error(f"CLI exception: {e}")
             return {"success": False, "error": str(e)[:100]}
 
     async def _call_api(

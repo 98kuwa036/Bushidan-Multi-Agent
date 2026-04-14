@@ -1,5 +1,5 @@
 """
-utils/base_client.py — LLMクライアント統一インターフェース v14
+utils/base_client.py — LLMクライアント統一インターフェース v15
 
 全クライアントが実装する共通インターフェース。
 ClientRegistry がこのインターフェースを通じてクライアントを管理する。

@@ -1,19 +1,13 @@
 """
-Bushidan Multi-Agent System v14 - System Orchestrator (簡素化)
+Bushidan Multi-Agent System v15 - System Orchestrator (簡素化)
 
-v14: レガシー tier 初期化・クライアント初期化・BDI 統計を全削除。
-残す機能:
-  - MCP サーバー初期化
-  - LangGraph Router 初期化
-  - ヘルスチェック
-  - process_task 委譲
-  - MCP 権限制御 (mcp_permissions.py から)
+MCP サーバー初期化 / LangGraph Router 初期化 / ヘルスチェック / process_task 委譲
 
 10役職体制:
-  受付(Command R) / 外事(Command R+) / 検校(Gemini Vision)
-  将軍(Claude Sonnet) / 軍師(o3-mini) / 参謀(Mistral Large 3)
-  右筆(ELYZA) / 斥候(Llama Groq) / 隠密(Nemotron)
-  大元帥(Claude Opus)
+  受付(Gemini 3.1 Flash-Lite) / 外事(Command A) / 検校(Gemini 3.1 Flash-Image)
+  将軍(Claude Sonnet 4.6) / 軍師(Mistral Large 3) / 参謀(Mistral Large 3)
+  右筆(Gemini 3.1 Flash-Lite) / 斥候(Llama Groq) / 隠密(Gemma3/Nemotron)
+  大元帥(Claude Opus 4.6)
 """
 
 import asyncio
@@ -23,13 +17,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from utils.logger import get_logger
-from core.mcp_permissions import MCPPermissionLevel, MCPPermissionManager
 
 logger = get_logger(__name__)
 
 
 class SystemMode(Enum):
-    """v14 System modes"""
+    """System modes"""
     BATTALION = "battalion"
     COMPANY = "company"
     PLATOON = "platoon"
@@ -37,7 +30,7 @@ class SystemMode(Enum):
 
 @dataclass
 class SystemConfig:
-    """v14 Configuration — 簡素化"""
+    """v15 システム設定"""
     mode: SystemMode
     claude_api_key: str
     gemini_api_key: str
@@ -70,28 +63,26 @@ class SystemConfig:
 
 class SystemOrchestrator:
     """
-    v14 システムオーケストレーター — 簡素化
+    v15 システムオーケストレーター
 
     MCP 管理 + LangGraph Router 初期化 + ヘルスチェック + process_task 委譲
     """
 
-    VERSION = "14"
+    VERSION = "15"
 
     def __init__(self, config: SystemConfig):
         self.config = config
         self.mcps: Dict[str, Any] = {}
         self.initialized = False
-        self.permission_manager = MCPPermissionManager()
         self.health_status: Dict[str, bool] = {}
         self._langgraph_router = None
         self._mcp_bridge = None
 
     async def initialize(self) -> None:
-        """v14 初期化 — MCP + LangGraph Router のみ"""
+        """初期化 — MCP + LangGraph Router"""
         logger.info("🔧 武士団 v%s 初期化開始...", self.VERSION)
 
         try:
-            self.permission_manager.load_permissions()
             await self._initialize_mcps()
             await self._check_health()
             await self._initialize_langgraph()
@@ -161,12 +152,12 @@ class SystemOrchestrator:
                 self.health_status["llamacpp"] = False
 
     async def _initialize_langgraph(self) -> None:
-        """LangGraph Router v14 初期化"""
+        """LangGraph Router 初期化"""
         try:
             from core.langgraph_router import LangGraphRouter
             self._langgraph_router = LangGraphRouter(self)
             await self._langgraph_router.initialize()
-            logger.info("🔗 LangGraph Router v14 初期化完了")
+            logger.info("🔗 LangGraph Router 初期化完了")
         except Exception as e:
             import traceback
             logger.error("❌ LangGraph Router 初期化失敗: %s\n%s", e, traceback.format_exc())
@@ -202,23 +193,6 @@ class SystemOrchestrator:
     def mcp_bridge(self):
         return self._mcp_bridge
 
-    # 後方互換プロパティ
-    @property
-    def shogun(self):
-        return None
-
-    @property
-    def gunshi(self):
-        return None
-
-    @property
-    def karo(self):
-        return None
-
-    @property
-    def kengyo(self):
-        return None
-
     def get_mcp(self, name: str) -> Optional[Any]:
         return self.mcps.get(name)
 
@@ -229,21 +203,6 @@ class SystemOrchestrator:
 
     def get_router(self):
         return self._langgraph_router
-
-    # ── MCP権限制御 ──────────────────────────────────────────────────
-
-    def check_mcp_permission(self, role: str, mcp_name: str) -> MCPPermissionLevel:
-        return self.permission_manager.check_permission(role, mcp_name)
-
-    def request_mcp_access(self, role: str, mcp_name: str, write: bool = False) -> bool:
-        if write:
-            return self.permission_manager.can_write(role, mcp_name)
-        return self.permission_manager.can_access(role, mcp_name)
-
-    def get_mcp_for_role(self, role: str, mcp_name: str) -> Optional[Any]:
-        if not self.request_mcp_access(role, mcp_name):
-            return None
-        return self.mcps.get(mcp_name)
 
     # ── タスク処理 ──────────────────────────────────────────────────
 

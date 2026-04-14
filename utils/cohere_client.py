@@ -1,14 +1,12 @@
 """
-Bushidan Multi-Agent System v12 - Cohere Client
+Bushidan Multi-Agent System v15 - Cohere Client
 
-受付 (Uketuke): Command R  - ルーター・受付・汎用中量タスク
-外事 (Gaiji):   Command R+ - 外部ツール・RAG・外部情報収集
+外事 (Gaiji): Command A 03-2025 - 外部ツール・RAG・外部情報収集
 
 Cohere Chat API v2 (https://api.cohere.com/v2/chat)
 
 モデル:
-  command-r       : 受付 (汎用・コスト効率重視)
-  command-r-plus  : 外事 (高性能・RAG特化)
+  command-a-03-2025 : 外事 (RAG特化)
 
 認証: COHERE_API_KEY 環境変数
 
@@ -43,12 +41,10 @@ except ImportError:
 
 class CohereClient:
     """
-    Cohere API クライアント — 受付 / 外事 共通基盤
-
-    Model: command-r (受付) または command-r-plus (外事)
+    Cohere API クライアント — 外事 (Command A)
     """
 
-    def __init__(self, api_key: str, model: str = "command-r"):
+    def __init__(self, api_key: str, model: str = "command-a-03-2025"):
         if not api_key or len(api_key) < 5:
             raise ValueError("COHERE_API_KEY が未設定または不正です (env変数を確認してください)")
         self.api_key    = api_key
@@ -160,31 +156,16 @@ class CohereClient:
 
 # ─── ファクトリ関数 ───────────────────────────────────────────────────────────
 
-def create_uketuke_client() -> Optional[CohereClient]:
-    """
-    受付 (Command R) クライアントを生成。
-
-    受付は武士団の玄関口: 軽量ルーティング・汎用中量タスクを担当。
-    COHERE_API_KEY が未設定の場合は None を返す。
-    """
-    api_key = os.environ.get("COHERE_API_KEY", "")
-    if not api_key:
-        logger.warning("⚠️ COHERE_API_KEY 未設定 — 受付 (Command R) 無効")
-        return None
-    logger.info("✅ 受付クライアント (Command R) 初期化")
-    return CohereClient(api_key=api_key, model="command-r")
-
-
 def create_gaiji_client() -> Optional[CohereClient]:
     """
-    外事 (Command R+) クライアントを生成。
+    外事 (Command A) クライアントを生成。
 
     外事は外部情報・RAG・ツール連携特化の高性能エンジン。
     COHERE_API_KEY が未設定の場合は None を返す。
     """
     api_key = os.environ.get("COHERE_API_KEY", "")
     if not api_key:
-        logger.warning("⚠️ COHERE_API_KEY 未設定 — 外事 (Command R+) 無効")
+        logger.warning("⚠️ COHERE_API_KEY 未設定 — 外事 (Command A) 無効")
         return None
-    logger.info("✅ 外事クライアント (Command R+) 初期化")
-    return CohereClient(api_key=api_key, model="command-r-plus")
+    logger.info("✅ 外事クライアント (Command A) 初期化")
+    return CohereClient(api_key=api_key, model="command-a-03-2025")

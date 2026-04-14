@@ -21,6 +21,8 @@ mistralai>=1.0.0              # Mistral Large 3 (参謀)
 langgraph>=1.0.0
 langchain-core>=0.3.0
 langchain-mcp-adapters>=0.1.0
+langgraph-checkpoint-postgres>=2.0.0  # PostgresSaver (Phase 1)
+psycopg[binary]>=3.1.0               # PostgreSQL driver (psycopg3)
 
 # Web search
 tavily-python>=0.3.0

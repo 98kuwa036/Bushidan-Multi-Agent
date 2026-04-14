@@ -1,5 +1,5 @@
 """
-utils/client_registry.py — クライアントレジストリ v14
+utils/client_registry.py — クライアントレジストリ v15
 
 role_key → BaseLLMClient のキャッシュ付きシングルトン。
 各ロールが ClientRegistry.get().get_client(role_key) で取得する。
@@ -56,46 +56,32 @@ class _GroqAdapter(BaseLLMClient):
             ]
         else:
             full = messages
-        return await self._client.generate(messages=full, max_tokens=max_tokens, **kw)
+        # GroqClient は (messages, max_tokens, temperature, stream) のみ受け付ける
+        groq_kw = {}
+        if "temperature" in kw:
+            groq_kw["temperature"] = kw["temperature"]
+        return await self._client.generate(messages=full, max_tokens=max_tokens, **groq_kw)
 
     async def health_check(self) -> bool:
         return await self._client.health_check()
 
-
-class _O3MiniAdapter(BaseLLMClient):
-    """O3MiniClient → BaseLLMClient"""
-
-    def __init__(self):
-        from utils.o3mini_client import O3MiniClient
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        if not api_key or len(api_key) < 5:
-            raise RuntimeError("OPENAI_API_KEY が未設定です (軍師用)")
-        self._client = O3MiniClient(api_key=api_key)
-
-    async def generate(self, messages, system="", max_tokens=4000, **kw):
-        reasoning = kw.pop("reasoning_effort", "high")
-        return await self._client.generate(
-            messages=messages, max_tokens=max_tokens,
-            reasoning_effort=reasoning, **kw,
-        )
-
-    async def health_check(self) -> bool:
-        return await self._client.health_check()
 
 
 class _MistralAdapter(BaseLLMClient):
-    """MistralClient → BaseLLMClient"""
+    """MistralClient → BaseLLMClient（モデル指定可能）"""
 
-    def __init__(self):
+    def __init__(self, model: str = "mistral-large-latest"):
         from utils.mistral_client import MistralClient
         api_key = os.environ.get("MISTRAL_API_KEY", "")
         if not api_key or len(api_key) < 5:
-            raise RuntimeError("MISTRAL_API_KEY が未設定です (参謀用)")
+            raise RuntimeError("MISTRAL_API_KEY が未設定です")
         self._client = MistralClient(api_key=api_key)
+        self._model = model
 
     async def generate(self, messages, system="", max_tokens=4000, **kw):
         return await self._client.generate(
-            messages=messages, system=system, max_tokens=max_tokens, **kw,
+            messages=messages, system=system, max_tokens=max_tokens,
+            model=self._model, **kw,
         )
 
 
@@ -125,61 +111,84 @@ class _ClaudeAdapter(BaseLLMClient):
 
 
 class _Gemini3Adapter(BaseLLMClient):
-    """Gemini3Client → BaseLLMClient"""
+    """Gemini3Client → BaseLLMClient（モデル指定可能）"""
 
-    def __init__(self):
+    def __init__(self, model: str = "gemini-2.0-flash"):
         from utils.gemini3_client import Gemini3Client
         api_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GOOGLE_API_KEY", ""))
         if not api_key or len(api_key) < 5:
-            raise RuntimeError("GEMINI_API_KEY が未設定です (検校用)")
-        self._client = Gemini3Client(api_key=api_key)
+            raise RuntimeError("GEMINI_API_KEY が未設定です")
+        self._client = Gemini3Client(api_key=api_key, model=model)
 
     async def generate(self, messages, system="", max_tokens=2048, **kw):
+        # system をメッセージ先頭に挿入して Gemini API に渡す
+        all_msgs = ([{"role": "system", "content": system}] if system else []) + list(messages)
+        # attachments (画像等) を転送 — kengyo (検校) の画像解析に必要
+        attachments = kw.get("attachments")
         return await self._client.generate(
-            messages=messages, system=system, max_tokens=max_tokens, **kw,
+            messages=all_msgs,
+            max_output_tokens=max_tokens,
+            attachments=attachments,
         )
 
+    async def health_check(self) -> bool:
+        try:
+            return await self._client.health_check()
+        except Exception:
+            return False
 
-class _ElyzaAdapter(BaseLLMClient):
-    """ELYZA Local → BaseLLMClient (Nemotron フォールバック付き)"""
+
+class _GemmaLocalAdapter(BaseLLMClient):
+    """Gemma Local (3/4) Japanese → BaseLLMClient（192.168.11.239 経由）"""
 
     async def generate(self, messages, system="", max_tokens=2048, **kw):
-        from utils.local_model_manager import get_local_model_manager
-        manager = get_local_model_manager()
-        elyza = await manager.get_japanese_client()
-        if elyza:
-            prompt = messages[-1]["content"] if messages else ""
-            return await elyza.generate_japanese(prompt, context=system)
-        # Nemotron fallback
-        from utils.nemotron_llamacpp_client import NemotronLlamaCppClient
-        client = NemotronLlamaCppClient()
-        full = ([{"role": "system", "content": system}] if system else []) + messages
-        return await client.generate(full)
+        from utils.local_model_manager import LocalModelManager
+        manager = LocalModelManager.get()
+
+        prompt_parts = []
+        if system:
+            prompt_parts.append(system)
+        for m in messages:
+            role = "ユーザー" if m.get("role") == "user" else "アシスタント"
+            prompt_parts.append(f"{role}: {m.get('content', '')}")
+        prompt_parts.append("アシスタント:")
+        prompt = "\n\n".join(prompt_parts)
+
+        return await manager.generate_gemma(prompt, max_tokens=max_tokens)
+
+    async def health_check(self) -> bool:
+        from utils.local_model_manager import LocalModelManager
+        return await LocalModelManager.get().health_check()
 
 
 class _NemotronAdapter(BaseLLMClient):
-    """Nemotron Local → BaseLLMClient"""
+    """Nemotron Local → BaseLLMClient（192.168.11.239 経由・排他制御は onmitsu.py が担う）"""
 
     async def generate(self, messages, system="", max_tokens=4096, **kw):
-        from utils.nemotron_llamacpp_client import NemotronLlamaCppClient
-        client = NemotronLlamaCppClient()
-        task_type = kw.pop("task_type", "confidential")
+        from utils.local_model_manager import LocalModelManager
+        manager = LocalModelManager.get()
         prompt = messages[-1]["content"] if messages else ""
-        return await client.process_confidential(prompt, task_type=task_type)
+        return await manager.generate_nemotron(prompt, max_tokens=max_tokens)
+
+    async def health_check(self) -> bool:
+        from utils.local_model_manager import LocalModelManager
+        return await LocalModelManager.get().health_check()
 
 
 # ─── ロールキー → アダプタ ファクトリ ─────────────────────────────────────────
 _FACTORIES = {
-    "uketuke":   lambda: _CohereAdapter("command-r7b-12-2024"),   # v14.2: command-r → command-r7b-12-2024 (軽量・安価・高速)
-    "gaiji":     lambda: _CohereAdapter("command-a-03-2025"),     # v14.2: command-r-plus → command-a-03-2025 (最新・RAG特化)
-    "seppou":    lambda: _GroqAdapter(),
-    "gunshi":    lambda: _MistralAdapter(),  # v14.1: o3-mini → Mistral Large 3 に統一
-    "sanbo":     lambda: _MistralAdapter(),
-    "shogun":    lambda: _ClaudeAdapter("claude-sonnet-4-6"),
-    "daigensui": lambda: _ClaudeAdapter("claude-opus-4-6"),
-    "kengyo":    lambda: _Gemini3Adapter(),
-    "yuhitsu":   lambda: _ElyzaAdapter(),
-    "onmitsu":   lambda: _NemotronAdapter(),
+    "uketuke":        lambda: _GemmaLocalAdapter(),                                   # 内部ルーター専用
+    "gaiji":          lambda: _CohereAdapter("command-r-08-2024"),                    # RAG特化: Command R
+    "metsuke":        lambda: _MistralAdapter("mistral-small-latest"),               # 低中難度: Mistral Small
+    "seppou":         lambda: _GroqAdapter(),                                          # 高速Q&A: Llama 3.3
+    "gunshi":         lambda: _CohereAdapter("command-a-03-2025"),                    # 汎用処理: Command A
+    "sanbo":          lambda: _Gemini3Adapter("gemini-3.1-flash-preview"),            # ツール実行: Gemini Flash
+    "shogun":         lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet
+    "daigensui":      lambda: _ClaudeAdapter("claude-opus-4-6"),                      # 最終判断: Opus
+    "kengyo":         lambda: _Gemini3Adapter("gemini-3.1-flash-image-preview"),      # 画像解析
+    "yuhitsu":        lambda: _GemmaLocalAdapter(),                                   # 日本語処理: Gemma4 (統合)
+    "onmitsu":        lambda: _NemotronAdapter(),                                     # 機密: Nemotron Local
+    "claude_fallback":lambda: _Gemini3Adapter("gemini-3.1-pro"),                     # Claude障害時: Gemini Pro
 }
 
 

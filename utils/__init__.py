@@ -1,5 +1,3 @@
 """
-Bushidan Multi-Agent System v10.1 - Utilities Package
-
-Common utilities for the Universal Multi-LLM Framework.
+Bushidan Multi-Agent System v15 - Utilities Package
 """

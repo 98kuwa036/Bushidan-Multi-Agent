@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Gemini 3 Flash Client
+Bushidan Multi-Agent System v15 - Gemini 3.1 Flash Client
 
 Latest Gemini 3 Flash with Pro-level intelligence at Flash speed.
 
@@ -10,11 +10,7 @@ Key Features:
 - Enhanced Japanese language support
 - Cost-effective pricing
 
-Role in v10.1:
-- Final defense line (Tier 4) in 4-tier fallback chain
-- Tactical coordination (家老 role for complex cases)
-- Activates when: Kimi K2.5 fails → Local Qwen3 fails → Cloud Qwen3 fails → Gemini 3
-- Reliable, fast, cost-effective last resort
+v15 役割: 受付(Flash-Lite) / 検校(Flash-Image) / 右筆(Flash-Lite)
 """
 
 import asyncio
@@ -85,7 +81,8 @@ class Gemini3Client:
         messages: Optional[List[Dict[str, str]]] = None,
         max_output_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
-        as_final_defense: bool = False
+        as_final_defense: bool = False,
+        attachments: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         """
         Generate completion using Gemini 3.0 Flash
@@ -120,10 +117,11 @@ class Gemini3Client:
                 formatted_prompt = self._format_messages(messages)
             else:
                 formatted_prompt = prompt
-            
+
             # Make API request
             response_text, input_tokens, output_tokens = await self._make_request(
-                formatted_prompt, max_output_tokens, temperature
+                formatted_prompt, max_output_tokens, temperature,
+                attachments=attachments,
             )
             
             # Update statistics
@@ -167,35 +165,51 @@ class Gemini3Client:
             logger.error(f"❌ Gemini 3 generation failed: {e}")
             raise
     
-    async def _make_request(self, prompt: str, max_output_tokens: int, temperature: float) -> tuple[str, int, int]:
+    async def _make_request(
+        self, prompt: str, max_output_tokens: int, temperature: float,
+        attachments: Optional[List[Dict[str, str]]] = None,
+    ) -> tuple[str, int, int]:
         """
-        Make actual API request to Gemini 3.0 Flash
-        
+        Make actual API request to Gemini Flash
+
         Args:
             prompt: Formatted prompt
             max_output_tokens: Max tokens to generate
             temperature: Sampling temperature
-        
+            attachments: Optional list of image attachments
+                         [{"type": "image_base64", "data": "...", "mime_type": "image/png"}, ...]
+
         Returns:
             Tuple of (response_text, input_tokens, output_tokens)
         """
-        
+
         try:
             import httpx
-            
+
             url = f"{self.base_url}/models/{self.model}:generateContent"
             params = {"key": self.api_key}
-            
+
             headers = {
                 "Content-Type": "application/json"
             }
-            
+
+            # Build parts: text + optional inline images
+            parts: list = [{"text": prompt}]
+            if attachments:
+                for att in attachments:
+                    if att.get("type") == "image_base64" and att.get("data"):
+                        mime = att.get("mime_type", "image/png")
+                        parts.append({
+                            "inline_data": {
+                                "mime_type": mime,
+                                "data": att["data"],
+                            }
+                        })
+
             payload = {
                 "contents": [
                     {
-                        "parts": [
-                            {"text": prompt}
-                        ]
+                        "parts": parts
                     }
                 ],
                 "generationConfig": {

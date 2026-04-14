@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v9.3.2 - Groq Client
+Bushidan Multi-Agent System v15 - Groq Client
 
 Lightning-fast LLM inference via Groq Cloud API.
 Uses Llama 3.3 70B Versatile for instant responses.
@@ -192,7 +192,10 @@ class GroqClient:
                     raise Exception(f"Groq API error {response.status_code}: {error_detail}")
                 
                 result = response.json()
-                response_text = result["choices"][0]["message"]["content"]
+                try:
+                    response_text = result["choices"][0]["message"]["content"]
+                except (KeyError, IndexError, TypeError) as e:
+                    raise RuntimeError(f"Groq API 応答パースエラー: {e} — data={str(result)[:200]}")
                 
                 return response_text
                 

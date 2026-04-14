@@ -1,5 +1,5 @@
 """
-roles/base.py — ロール抽象基底クラス v14
+roles/base.py — ロール抽象基底クラス v15
 
 全ロールが共通で持つ:
   - execute(state) → RoleResult
@@ -10,12 +10,18 @@ roles/base.py — ロール抽象基底クラス v14
   - _call_mcp_tool(name, args) — MCPツール呼び出しヘルパー
 """
 
+import asyncio
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from utils.logger import get_logger
+
+# ── read_graph TTLキャッシュ (30秒、プロセス全体で共有) ───────────────
+_GRAPH_CACHE: Optional[str] = None
+_GRAPH_CACHE_AT: float = 0.0
+_GRAPH_CACHE_TTL: float = 30.0
 
 
 @dataclass
@@ -32,7 +38,7 @@ class RoleResult:
 
 
 class BaseRole(ABC):
-    """武士団ロール基底クラス v14"""
+    """武士団ロール基底クラス v15"""
 
     # サブクラスで定義
     role_key: str = ""
@@ -95,11 +101,25 @@ class BaseRole(ABC):
     def _format_messages(self, state: dict) -> list:
         """
         会話履歴 + 現在のメッセージを messages リスト形式で返す。
-        直近10往復 + 現在のメッセージ。
+        直近10往復 + 現在のメッセージ。履歴が長い場合はサマリで先頭を圧縮。
         """
-        history = state.get("conversation_history", [])[-20:]
+        history = state.get("conversation_history", [])
         message = state.get("message", "")
-        messages = list(history)
+
+        # 既存のサマリ (check_followup で生成) を先頭に付加
+        context_summary = state.get("context_summary", "")
+
+        if len(history) > 20:
+            # 20往復超: 古い部分をトークン節約のため省略し、サマリに委ねる
+            history = history[-20:]
+
+        messages: list = []
+        if context_summary and len(history) <= 20:
+            # サマリを system 代替として先頭 user/assistant ペアで注入
+            messages.append({"role": "user", "content": f"[会話要約]\n{context_summary}"})
+            messages.append({"role": "assistant", "content": "了解しました。"})
+
+        messages.extend(history)
         if message:
             messages.append({"role": "user", "content": message})
         return messages
@@ -147,3 +167,265 @@ class BaseRole(ABC):
         except Exception as e:
             self.logger.warning("MCP tool %s 呼び出し失敗: %s", name, e)
             return None
+
+    # ── MCP 高レベルヘルパー ────────────────────────────────────────────
+
+    _SEARCH_TRIGGERS = frozenset([
+        "最新", "調べて", "検索", "ニュース", "現在", "今日", "いつ", "だれ", "何時",
+        "について教えて", "とは何", "どうなって", "いくら", "何が",
+        "search", "latest", "news", "current", "find out",
+    ])
+
+    def _needs_web_search(self, message: str) -> bool:
+        """メッセージが Web 検索を必要とするか簡易判定"""
+        return any(kw in message for kw in self._SEARCH_TRIGGERS)
+
+    async def _mcp_search(self, query: str, max_results: int = 3) -> str:
+        """Tavily Web検索。結果をテキストで返す。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("tavily_search", {
+                "query": query, "max_results": max_results,
+            })
+            if not result:
+                return ""
+            if isinstance(result, str):
+                return result[:2000]
+            if isinstance(result, list):
+                parts = []
+                for item in result[:max_results]:
+                    if isinstance(item, dict):
+                        title   = item.get("title", "")
+                        url     = item.get("url", "")
+                        content = item.get("content", item.get("snippet", ""))[:400]
+                        parts.append(f"• {title}\n  {url}\n  {content}")
+                    else:
+                        parts.append(str(item)[:200])
+                return "\n\n".join(parts)
+            # ContentBlock (LangChain ToolMessage) の場合
+            if hasattr(result, "content"):
+                return str(result.content)[:2000]
+            return str(result)[:2000]
+        except Exception as e:
+            self.logger.debug("Web検索失敗 (スキップ): %s", e)
+            return ""
+
+    async def _mcp_read_memory(self) -> str:
+        """ナレッジグラフ全体を読んでコンテキスト文字列を返す。30秒TTLキャッシュ付き。"""
+        global _GRAPH_CACHE, _GRAPH_CACHE_AT
+        now = time.monotonic()
+        if _GRAPH_CACHE is not None and (now - _GRAPH_CACHE_AT) < _GRAPH_CACHE_TTL:
+            return _GRAPH_CACHE
+        try:
+            result = await self._call_mcp_tool("read_graph", {})
+            if not result:
+                return ""
+            text = result.content if hasattr(result, "content") else str(result)
+            text = text[:1500]
+            _GRAPH_CACHE = text
+            _GRAPH_CACHE_AT = now
+            return text
+        except Exception as e:
+            self.logger.debug("メモリ読み込み失敗 (スキップ): %s", e)
+            return ""
+
+    async def _mcp_think(self, thought: str) -> str:
+        """Sequential thinking で問題を1ステップ分析。結果文字列を返す。"""
+        try:
+            result = await self._call_mcp_tool("sequentialthinking", {
+                "thought": thought[:800],
+                "thoughtNumber": 1,
+                "totalThoughts": 3,
+                "nextThoughtNeeded": False,
+            })
+            if not result:
+                return ""
+            if hasattr(result, "content"):
+                return str(result.content)[:1500]
+            if isinstance(result, dict):
+                return result.get("thought", result.get("content", str(result)))[:1500]
+            return str(result)[:1500]
+        except Exception as e:
+            self.logger.debug("Sequential thinking 失敗 (スキップ): %s", e)
+            return ""
+
+    async def _mcp_read_file(self, path: str) -> str:
+        """ファイルを読んで内容を返す。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("read_file", {"path": path})
+            if not result:
+                return ""
+            text = result.content if hasattr(result, "content") else str(result)
+            return text[:2000]
+        except Exception as e:
+            self.logger.debug("ファイル読み込み失敗 %s (スキップ): %s", path, e)
+            return ""
+
+    async def _mcp_write_file(self, path: str, content: str) -> bool:
+        """ファイルを書き込む。成功なら True。"""
+        try:
+            await self._call_mcp_tool("write_file", {"path": path, "content": content})
+            return True
+        except Exception as e:
+            self.logger.debug("ファイル書き込み失敗 %s: %s", path, e)
+            return False
+
+    async def _mcp_git_status(self) -> str:
+        """git status を取得。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("git_status", {"repo_path": "/mnt/Bushidan-Multi-Agent"})
+            text = result.content if hasattr(result, "content") else str(result)
+            return text[:1500] if result else ""
+        except Exception as e:
+            self.logger.debug("git_status 失敗 (スキップ): %s", e)
+            return ""
+
+    async def _mcp_git_log(self, max_count: int = 5) -> str:
+        """git log を取得。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("git_log", {
+                "repo_path": "/mnt/Bushidan-Multi-Agent",
+                "max_count": max_count,
+            })
+            text = result.content if hasattr(result, "content") else str(result)
+            return text[:1500] if result else ""
+        except Exception as e:
+            self.logger.debug("git_log 失敗 (スキップ): %s", e)
+            return ""
+
+    async def _mcp_git_diff(self) -> str:
+        """git diff (staged + unstaged) を取得。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("git_diff_unstaged", {"repo_path": "/mnt/Bushidan-Multi-Agent"})
+            text = result.content if hasattr(result, "content") else str(result)
+            return text[:2000] if result else ""
+        except Exception as e:
+            self.logger.debug("git_diff 失敗 (スキップ): %s", e)
+            return ""
+
+    async def _mcp_screenshot(self, url: str) -> str:
+        """URL のスクリーンショットを取得し base64 文字列を返す。失敗時は空文字。"""
+        try:
+            await self._call_mcp_tool("browser_navigate", {"url": url})
+            result = await self._call_mcp_tool("browser_take_screenshot", {})
+            if not result:
+                return ""
+            if isinstance(result, dict):
+                return result.get("data", result.get("base64", ""))
+            if hasattr(result, "content"):
+                return str(result.content)
+            return str(result)
+        except Exception as e:
+            self.logger.debug("スクリーンショット失敗 %s (スキップ): %s", url, e)
+            return ""
+
+    def _extract_file_refs(self, message: str) -> list[str]:
+        """メッセージからファイルパス候補を抽出"""
+        import re
+        return re.findall(r'(?:/[\w./\-]+|[\w\-]+\.(?:py|js|ts|json|yaml|yml|md|txt|sh))', message)
+
+    def _extract_urls(self, message: str) -> list[str]:
+        """メッセージから URL を抽出"""
+        import re
+        return re.findall(r'https?://[^\s<>"\']+', message)
+
+    def _append_mcp_context(self, system: str, label: str, content: str) -> str:
+        """システムプロンプトに MCP コンテキストを追加"""
+        if content:
+            return system + f"\n\n---\n【{label}】\n{content}"
+        return system
+
+    async def _mcp_parallel(self, calls: list) -> list:
+        """複数 MCP ツールを並列呼び出し。read_graph はキャッシュを利用。
+        calls: [(tool_name, args_dict), ...]
+        戻り値: 各結果のリスト (失敗は None)
+        """
+        async def _one(name: str, args: dict):
+            global _GRAPH_CACHE, _GRAPH_CACHE_AT
+            # read_graph はキャッシュヒット時はネットワーク不要
+            if name == "read_graph":
+                now = time.monotonic()
+                if _GRAPH_CACHE is not None and (now - _GRAPH_CACHE_AT) < _GRAPH_CACHE_TTL:
+                    return _GRAPH_CACHE
+            try:
+                result = await self._call_mcp_tool(name, args)
+                # read_graph 結果をキャッシュ
+                if name == "read_graph" and result is not None:
+                    text = result.content if hasattr(result, "content") else str(result)
+                    _GRAPH_CACHE = text[:1500]
+                    _GRAPH_CACHE_AT = time.monotonic()
+                return result
+            except Exception as e:
+                self.logger.debug("並列MCP %s 失敗: %s", name, e)
+                return None
+
+        results = await asyncio.gather(*[_one(n, a) for n, a in calls], return_exceptions=True)
+        # 例外が混入した場合は None に変換 (個別の _one() 内で既にキャッチしているが安全弁)
+        return [r if not isinstance(r, BaseException) else None for r in results]
+
+    async def _delegate_task(
+        self,
+        role_key: str,
+        task: str,
+        context: str = "",
+        priority: int = 0,
+    ) -> bool:
+        """
+        別役職に非同期タスクを委譲する (RabbitMQ 経由)。
+
+        Args:
+            role_key:  委譲先の役職キー (例: "shogun", "gunshi")
+            task:      タスク内容
+            context:   追加コンテキスト (省略可)
+            priority:  メッセージ優先度 0-9
+
+        Returns:
+            送信成功なら True
+        """
+        try:
+            from utils.rabbitmq_client import RabbitMQBus
+            bus = RabbitMQBus.get()
+            if not bus._connected:
+                if not await bus.connect():
+                    self.logger.warning("RabbitMQ 未接続 — 委譲スキップ: %s", role_key)
+                    return False
+
+            payload = {
+                "type": "delegation",
+                "from_role": self.role_key,
+                "task": task,
+                "context": context,
+            }
+            ok = await bus.send_to_role(role_key, payload, priority=priority)
+            if ok:
+                self.logger.info("📨 委譲完了: %s → %s | %s", self.role_key, role_key, task[:60])
+            return ok
+        except Exception as e:
+            self.logger.error("_delegate_task 失敗: %s", e)
+            return False
+
+    async def _broadcast_alert(self, message: str) -> bool:
+        """
+        全役職へアラートをブロードキャスト (RabbitMQ fanout)。
+
+        Args:
+            message: アラートメッセージ
+
+        Returns:
+            送信成功なら True
+        """
+        try:
+            from utils.rabbitmq_client import RabbitMQBus
+            bus = RabbitMQBus.get()
+            if not bus._connected:
+                if not await bus.connect():
+                    return False
+
+            payload = {
+                "type": "alert",
+                "from_role": self.role_key,
+                "message": message,
+            }
+            return await bus.broadcast(payload)
+        except Exception as e:
+            self.logger.error("_broadcast_alert 失敗: %s", e)
+            return False
