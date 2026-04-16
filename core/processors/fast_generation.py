@@ -70,17 +70,35 @@ class FastGenerationPipeline:
     """Gemini 3 Flash → Cerebras gpt-oss-120b → Haiku 3 段階生成パイプライン"""
 
     def __init__(self) -> None:
-        self._gemini_key   = os.getenv("GEMINI_API_KEY", "")
-        self._cerebras_key = os.getenv("CEREBRAS_API_KEY", "")
+        self._gemini_key    = os.getenv("GEMINI_API_KEY", "")
+        self._cerebras_key  = os.getenv("CEREBRAS_API_KEY", "")
         self._anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self._cerebras  = None
-        self._anthropic = None
+        # AsyncCerebras: 接続プールを維持してAPI前後のオーバーヘッドを削減
+        self._cerebras:  Optional[object] = None
+        self._anthropic: Optional[object] = None
+        # httpx: Gemini/Cerebras REST 用の永続接続プール
+        self._http: Optional[object] = None
+
+    def _get_http(self):
+        """永続 httpx.AsyncClient（接続プール維持）"""
+        if self._http is None:
+            try:
+                import httpx
+                # limits で接続プールサイズを制御
+                self._http = httpx.AsyncClient(
+                    timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0),
+                    limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+                )
+            except ImportError:
+                logger.warning("httpx not installed")
+        return self._http
 
     def _get_cerebras(self):
         if self._cerebras is None and self._cerebras_key:
             try:
-                from cerebras.cloud.sdk import Cerebras
-                self._cerebras = Cerebras(api_key=self._cerebras_key)
+                # AsyncCerebras: ネイティブ async + 内部接続プール = run_in_executor 不要
+                from cerebras.cloud.sdk import AsyncCerebras
+                self._cerebras = AsyncCerebras(api_key=self._cerebras_key)
             except ImportError:
                 logger.warning("cerebras SDK not installed")
         return self._cerebras
@@ -94,6 +112,18 @@ class FastGenerationPipeline:
                 logger.warning("anthropic package not installed")
         return self._anthropic
 
+    async def close(self) -> None:
+        """接続プールを明示的に閉じる（アプリ終了時）"""
+        if self._http is not None:
+            await self._http.aclose()
+            self._http = None
+        if self._cerebras is not None:
+            try:
+                await self._cerebras.close()
+            except Exception:
+                pass
+            self._cerebras = None
+
     async def generate_draft(
         self,
         user_input: str,
@@ -105,7 +135,9 @@ class FastGenerationPipeline:
             return None
 
         try:
-            import httpx
+            client = self._get_http()
+            if client is None:
+                return None
 
             prompt = f"[System]: {system_prompt}\n\n[User]: {user_input}"
             payload = {
@@ -125,11 +157,11 @@ class FastGenerationPipeline:
             }
             url = f"{_GEMINI_BASE_URL}/models/{_GEMINI_DRAFT_MODEL}:generateContent"
 
-            async with httpx.AsyncClient(timeout=_GEMINI_TIMEOUT) as client:
-                resp = await asyncio.wait_for(
-                    client.post(url, params={"key": self._gemini_key}, json=payload),
-                    timeout=_GEMINI_TIMEOUT,
-                )
+            # 永続クライアントで接続再利用（毎回 async with で開閉しない）
+            resp = await asyncio.wait_for(
+                client.post(url, params={"key": self._gemini_key}, json=payload),
+                timeout=_GEMINI_TIMEOUT,
+            )
 
             if resp.status_code != 200:
                 logger.warning("FastGen: Gemini draft HTTP %s", resp.status_code)
@@ -160,7 +192,9 @@ class FastGenerationPipeline:
         draft: str,
         user_input: str,
     ) -> Optional[str]:
-        """Stage 2: Cerebras gpt-oss-120b (3,000 tok/s) で爆速整形"""
+        """Stage 2: Cerebras gpt-oss-120b (3,000 tok/s) で爆速整形
+        AsyncCerebras + 永続接続で API 前後オーバーヘッドを最小化
+        """
         cerebras = self._get_cerebras()
         if cerebras is None:
             return None
@@ -168,18 +202,16 @@ class FastGenerationPipeline:
         refine_user = f"ユーザーの質問:\n{user_input}\n\nドラフト回答:\n{draft}"
 
         try:
+            # AsyncCerebras はネイティブ async → run_in_executor 不要
             response = await asyncio.wait_for(
-                asyncio.get_running_loop().run_in_executor(
-                    None,
-                    lambda: cerebras.chat.completions.create(
-                        model=_CEREBRAS_REFINE_MODEL,
-                        messages=[
-                            {"role": "system", "content": _REFINE_SYSTEM},
-                            {"role": "user",   "content": refine_user},
-                        ],
-                        max_tokens=_CEREBRAS_REFINE_MAX_TOKENS,
-                        temperature=0.4,
-                    ),
+                cerebras.chat.completions.create(
+                    model=_CEREBRAS_REFINE_MODEL,
+                    messages=[
+                        {"role": "system", "content": _REFINE_SYSTEM},
+                        {"role": "user",   "content": refine_user},
+                    ],
+                    max_tokens=_CEREBRAS_REFINE_MAX_TOKENS,
+                    temperature=0.4,
                 ),
                 timeout=_CEREBRAS_TIMEOUT,
             )
@@ -347,7 +379,10 @@ class FastGenerationPipeline:
             return
 
         try:
-            import httpx
+            client = self._get_http()
+            if client is None:
+                yield "⚠️ HTTP クライアント初期化失敗"
+                return
 
             prompt = f"[System]: {system_prompt}\n\n[User]: {user_input}"
             payload = {
@@ -359,26 +394,26 @@ class FastGenerationPipeline:
             }
             url = f"{_GEMINI_BASE_URL}/models/{_GEMINI_DRAFT_MODEL}:streamGenerateContent"
 
-            async with httpx.AsyncClient(timeout=_GEMINI_TIMEOUT) as client:
-                async with client.stream(
-                    "POST", url,
-                    params={"key": self._gemini_key, "alt": "sse"},
-                    json=payload,
-                ) as resp:
-                    async for line in resp.aiter_lines():
-                        if line.startswith("data: "):
-                            import json
-                            try:
-                                chunk = json.loads(line[6:])
-                                parts = (
-                                    chunk.get("candidates", [{}])[0]
-                                    .get("content", {})
-                                    .get("parts", [])
-                                )
-                                if parts and "text" in parts[0]:
-                                    yield parts[0]["text"]
-                            except Exception:
-                                pass
+            # 永続クライアントでストリーミング
+            async with client.stream(
+                "POST", url,
+                params={"key": self._gemini_key, "alt": "sse"},
+                json=payload,
+            ) as resp:
+                async for line in resp.aiter_lines():
+                    if line.startswith("data: "):
+                        import json
+                        try:
+                            chunk = json.loads(line[6:])
+                            parts = (
+                                chunk.get("candidates", [{}])[0]
+                                .get("content", {})
+                                .get("parts", [])
+                            )
+                            if parts and "text" in parts[0]:
+                                yield parts[0]["text"]
+                        except Exception:
+                            pass
 
         except asyncio.TimeoutError:
             yield "\n\n⚠️ Gemini タイムアウト"
