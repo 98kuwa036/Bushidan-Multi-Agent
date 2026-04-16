@@ -1,10 +1,10 @@
 """
 武士団 v18 — Phase 2 高速筆耕ライン
-Groq → Cerebras → Haiku 3 段階生成
+Cerebras → Groq → Haiku 3 段階生成
 
-Stage 1: Groq で高速ドラフト生成
-Stage 2: Cerebras で中間処理・最適化
-Stage 3: Haiku でリファイン・整形
+Stage 1: Cerebras (gemma2-9b-it) で日本語荒削りドラフト生成 (~80%完成)
+Stage 2: Groq (llama-3.2-3b) で超軽量・爆速整形
+Stage 3: Haiku で最終清書・品質仕上げ
 """
 from __future__ import annotations
 
@@ -18,30 +18,28 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 # モデル設定
-_GROQ_DRAFT_MODEL = "llama-3.3-70b-versatile"
-_CEREBRAS_MODEL = "llama-3.1-8b"
-_HAIKU_POLISH_MODEL = "claude-haiku-4-5-20251001"
+_CEREBRAS_DRAFT_MODEL = "gemma2-9b-it"          # Stage 1: 日本語対応 9B 荒削り
+_GROQ_REFINE_MODEL    = "llama-3.2-3b-preview"  # Stage 2: 超軽量 3B 爆速整形
+_HAIKU_POLISH_MODEL   = "claude-haiku-4-5-20251001"  # Stage 3: 最終清書
 
 # タイムアウト
-_GROQ_TIMEOUT = 15.0
-_CEREBRAS_TIMEOUT = 10.0
-_HAIKU_TIMEOUT = 20.0
+_CEREBRAS_TIMEOUT = 15.0
+_GROQ_TIMEOUT     = 10.0
+_HAIKU_TIMEOUT    = 20.0
 
 # トークン制限
-_GROQ_DRAFT_MAX_TOKENS = 1024
-_CEREBRAS_MAX_TOKENS = 1024
-_HAIKU_POLISH_MAX_TOKENS = 2048
+_CEREBRAS_DRAFT_MAX_TOKENS = 1024
+_GROQ_REFINE_MAX_TOKENS    = 1024
+_HAIKU_POLISH_MAX_TOKENS   = 2048
 
-# Cerebras 最適化 プロンプト
-_OPTIMIZE_SYSTEM = """\
-あなたは武士団マルチエージェントシステムの最適化担当です。
-以下のドラフト回答を最適化してください。
+# Groq 整形プロンプト
+_REFINE_SYSTEM = """\
+あなたは武士団マルチエージェントシステムの整形担当です。
+以下のドラフト回答を簡潔に整形してください。
 
-最適化の観点:
+整形の観点:
 - 論理的な流れ・構造の改善
 - 冗長性の排除・簡潔化
-- 技術的な正確性の確認
-- 説明の明確性向上
 - 形式や見出しの改善（見やすさ重視）
 
 ドラフトの核心的な情報は保持しつつ、より洗練された形で返してください。
@@ -50,19 +48,19 @@ _OPTIMIZE_SYSTEM = """\
 # Haiku ポリッシュ プロンプト
 _POLISH_SYSTEM = """\
 あなたは武士団マルチエージェントシステムの品質担当です。
-以下の最適化済み回答を、ユーザーの質問に対してさらに洗練・整形してください。
+以下の整形済み回答を、ユーザーの質問に対してさらに洗練・整形してください。
 
 ガイドライン:
 - 内容の正確性を最優先
 - マークダウンで読みやすく構造化
 - コードブロックは適切にフォーマット
 - 日本語で回答（コードは英語OK）
-- 最適化済みドラフトの品質を損なわない
+- 整形済みドラフトの品質を損なわない
 """
 
 
 class FastGenerationPipeline:
-    """Groq → Cerebras → Haiku 3 段階生成パイプライン"""
+    """Cerebras → Groq → Haiku 3 段階生成パイプライン"""
 
     def __init__(self) -> None:
         self._groq_key = os.getenv("GROQ_API_KEY", "")
@@ -72,15 +70,6 @@ class FastGenerationPipeline:
         self._cerebras = None
         self._anthropic = None
 
-    def _get_groq(self):
-        if self._groq is None and self._groq_key:
-            try:
-                from groq import AsyncGroq
-                self._groq = AsyncGroq(api_key=self._groq_key)
-            except ImportError:
-                logger.warning("groq package not installed")
-        return self._groq
-
     def _get_cerebras(self):
         if self._cerebras is None and self._cerebras_key:
             try:
@@ -89,6 +78,15 @@ class FastGenerationPipeline:
             except ImportError:
                 logger.warning("cerebras SDK not installed")
         return self._cerebras
+
+    def _get_groq(self):
+        if self._groq is None and self._groq_key:
+            try:
+                from groq import AsyncGroq
+                self._groq = AsyncGroq(api_key=self._groq_key)
+            except ImportError:
+                logger.warning("groq package not installed")
+        return self._groq
 
     def _get_anthropic(self):
         if self._anthropic is None and self._anthropic_key:
@@ -105,66 +103,66 @@ class FastGenerationPipeline:
         system_prompt: str,
         temperature: float = 0.7,
     ) -> Optional[str]:
-        """Stage 1: Groq でドラフト生成"""
-        groq = self._get_groq()
-        if groq is None:
-            return None
-
-        try:
-            response = await asyncio.wait_for(
-                groq.chat.completions.create(
-                    model=_GROQ_DRAFT_MODEL,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_input},
-                    ],
-                    temperature=temperature,
-                    max_tokens=_GROQ_DRAFT_MAX_TOKENS,
-                ),
-                timeout=_GROQ_TIMEOUT,
-            )
-            return response.choices[0].message.content or "" if response.choices else ""
-        except asyncio.TimeoutError:
-            logger.warning("FastGen: Groq draft timeout")
-            return None
-        except Exception as e:
-            logger.warning("FastGen: Groq draft error: %s", e)
-            return None
-
-    async def optimize_draft(
-        self,
-        draft: str,
-        user_input: str,
-    ) -> Optional[str]:
-        """Stage 2: Cerebras で最適化"""
+        """Stage 1: Cerebras (gemma2-9b-it) で日本語荒削りドラフト生成"""
         cerebras = self._get_cerebras()
         if cerebras is None:
             return None
-
-        optimize_user = f"ユーザーの質問:\n{user_input}\n\nドラフト回答:\n{draft}"
 
         try:
             response = await asyncio.wait_for(
                 asyncio.get_running_loop().run_in_executor(
                     None,
                     lambda: cerebras.chat.completions.create(
-                        model=_CEREBRAS_MODEL,
+                        model=_CEREBRAS_DRAFT_MODEL,
                         messages=[
-                            {"role": "system", "content": _OPTIMIZE_SYSTEM},
-                            {"role": "user", "content": optimize_user},
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_input},
                         ],
-                        max_tokens=_CEREBRAS_MAX_TOKENS,
-                        temperature=0.4,
+                        max_tokens=_CEREBRAS_DRAFT_MAX_TOKENS,
+                        temperature=temperature,
                     ),
                 ),
                 timeout=_CEREBRAS_TIMEOUT,
             )
-            return response.choices[0].message.content if response.choices else None
+            return response.choices[0].message.content or "" if response.choices else ""
         except asyncio.TimeoutError:
-            logger.warning("FastGen: Cerebras optimize timeout")
+            logger.warning("FastGen: Cerebras draft timeout")
             return None
         except Exception as e:
-            logger.warning("FastGen: Cerebras optimize error: %s", e)
+            logger.warning("FastGen: Cerebras draft error: %s", e)
+            return None
+
+    async def refine_draft(
+        self,
+        draft: str,
+        user_input: str,
+    ) -> Optional[str]:
+        """Stage 2: Groq (llama-3.2-3b) で超軽量・爆速整形"""
+        groq = self._get_groq()
+        if groq is None:
+            return None
+
+        refine_user = f"ユーザーの質問:\n{user_input}\n\nドラフト回答:\n{draft}"
+
+        try:
+            response = await asyncio.wait_for(
+                groq.chat.completions.create(
+                    model=_GROQ_REFINE_MODEL,
+                    messages=[
+                        {"role": "system", "content": _REFINE_SYSTEM},
+                        {"role": "user", "content": refine_user},
+                    ],
+                    max_tokens=_GROQ_REFINE_MAX_TOKENS,
+                    temperature=0.4,
+                ),
+                timeout=_GROQ_TIMEOUT,
+            )
+            return response.choices[0].message.content if response.choices else None
+        except asyncio.TimeoutError:
+            logger.warning("FastGen: Groq refine timeout")
+            return None
+        except Exception as e:
+            logger.warning("FastGen: Groq refine error: %s", e)
             return None
 
     async def polish_draft(
@@ -207,40 +205,37 @@ class FastGenerationPipeline:
         user_input: str,
         system_prompt: str,
         context: str = "",
-        skip_optimize_polish: bool = False,
+        skip_refine_polish: bool = False,
     ) -> dict:
         """
         3 段階生成のメインエントリポイント
-        Stage 1: Groq ドラフト
-        Stage 2: Cerebras 最適化 (オプション)
-        Stage 3: Haiku ポリッシュ
+        Stage 1: Cerebras (gemma2-9b-it) 日本語荒削りドラフト
+        Stage 2: Groq (llama-3.2-3b) 超軽量爆速整形
+        Stage 3: Haiku 最終清書
 
         Returns:
-            dict with keys: response, draft, optimize, stage, draft_ms, optimize_ms, polish_ms, total_ms
+            dict with keys: response, draft, refine, stage, draft_ms, refine_ms, polish_ms, total_ms
         """
         t0 = time.time()
         stages: list[str] = []
 
-        # Stage 1: Groq ドラフト
+        # Stage 1: Cerebras 荒削りドラフト
         t1 = time.time()
         draft = await self.generate_draft(user_input, system_prompt)
         draft_ms = (time.time() - t1) * 1000
 
         if draft is None:
-            # Groq 失敗 → Cerebras→Haiku または Haiku で直接生成
-            logger.warning("FastGen: Groq failed, trying Cerebras or Haiku directly")
-            optimize_ms = 0.0
-            polish_ms = 0.0
-
+            # Cerebras 失敗 → Haiku で直接生成
+            logger.warning("FastGen: Cerebras failed, falling back to Haiku directly")
             anthropic = self._get_anthropic()
             if anthropic is None:
                 return {
                     "response": "⚠️ 生成サービスが利用不可です",
                     "draft": "",
-                    "optimize": "",
+                    "refine": "",
                     "stage": "error",
                     "draft_ms": draft_ms,
-                    "optimize_ms": 0.0,
+                    "refine_ms": 0.0,
                     "polish_ms": 0.0,
                     "total_ms": (time.time() - t0) * 1000,
                 }
@@ -261,10 +256,10 @@ class FastGenerationPipeline:
                 return {
                     "response": final,
                     "draft": "",
-                    "optimize": "",
+                    "refine": "",
                     "stage": "haiku_direct",
                     "draft_ms": 0.0,
-                    "optimize_ms": 0.0,
+                    "refine_ms": 0.0,
                     "polish_ms": polish_ms,
                     "total_ms": (time.time() - t0) * 1000,
                 }
@@ -272,58 +267,58 @@ class FastGenerationPipeline:
                 return {
                     "response": f"⚠️ 生成エラー: {e}",
                     "draft": "",
-                    "optimize": "",
+                    "refine": "",
                     "stage": "error",
                     "draft_ms": 0.0,
-                    "optimize_ms": 0.0,
+                    "refine_ms": 0.0,
                     "polish_ms": 0.0,
                     "total_ms": (time.time() - t0) * 1000,
                 }
 
-        stages.append("groq_draft")
+        stages.append("cerebras_draft")
 
-        if skip_optimize_polish:
+        if skip_refine_polish:
             return {
                 "response": draft,
                 "draft": draft,
-                "optimize": "",
-                "stage": "groq_only",
+                "refine": "",
+                "stage": "cerebras_only",
                 "draft_ms": draft_ms,
-                "optimize_ms": 0.0,
+                "refine_ms": 0.0,
                 "polish_ms": 0.0,
                 "total_ms": (time.time() - t0) * 1000,
             }
 
-        # Stage 2: Cerebras 最適化
+        # Stage 2: Groq 超軽量整形
         t2 = time.time()
-        optimized = await self.optimize_draft(draft, user_input)
-        optimize_ms = (time.time() - t2) * 1000
+        refined = await self.refine_draft(draft, user_input)
+        refine_ms = (time.time() - t2) * 1000
 
-        if optimized is None:
-            optimized = draft  # Cerebras 失敗時はドラフトをそのまま使用
-            logger.debug("FastGen: Cerebras optimize skipped, using draft")
+        if refined is None:
+            refined = draft  # Groq 失敗時はドラフトをそのまま使用
+            logger.debug("FastGen: Groq refine skipped, using draft")
         else:
-            stages.append("cerebras_optimize")
+            stages.append("groq_refine")
 
-        # Stage 3: Haiku ポリッシュ
+        # Stage 3: Haiku 最終清書
         t3 = time.time()
-        final = await self.polish_draft(optimized, user_input, context)
+        final = await self.polish_draft(refined, user_input, context)
         polish_ms = (time.time() - t3) * 1000
         stages.append("haiku_polish")
 
         total_ms = (time.time() - t0) * 1000
         logger.debug(
-            "FastGen: draft=%.0fms optimize=%.0fms polish=%.0fms total=%.0fms",
-            draft_ms, optimize_ms, polish_ms, total_ms,
+            "FastGen: draft=%.0fms refine=%.0fms polish=%.0fms total=%.0fms",
+            draft_ms, refine_ms, polish_ms, total_ms,
         )
 
         return {
             "response": final,
             "draft": draft,
-            "optimize": optimized,
+            "refine": refined,
             "stage": "+".join(stages),
             "draft_ms": draft_ms,
-            "optimize_ms": optimize_ms,
+            "refine_ms": refine_ms,
             "polish_ms": polish_ms,
             "total_ms": total_ms,
         }
@@ -333,7 +328,7 @@ class FastGenerationPipeline:
         user_input: str,
         system_prompt: str,
     ) -> AsyncIterator[str]:
-        """Groq ストリーミング生成（ポリッシュなし）"""
+        """Groq ストリーミング生成（Stage 2 軽量整形、ポリッシュなし）"""
         groq = self._get_groq()
         if groq is None:
             yield "⚠️ Groq サービスが利用不可です"
@@ -342,13 +337,13 @@ class FastGenerationPipeline:
         try:
             stream = await asyncio.wait_for(
                 groq.chat.completions.create(
-                    model=_GROQ_DRAFT_MODEL,
+                    model=_GROQ_REFINE_MODEL,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_input},
                     ],
                     temperature=0.7,
-                    max_tokens=_GROQ_DRAFT_MAX_TOKENS,
+                    max_tokens=_GROQ_REFINE_MAX_TOKENS,
                     stream=True,
                 ),
                 timeout=_GROQ_TIMEOUT,

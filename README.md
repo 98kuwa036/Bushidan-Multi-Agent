@@ -3,7 +3,8 @@
 [![Version](https://img.shields.io/badge/Version-18.0-brightgreen)](https://github.com/98kuwa036/Bushidan-Multi-Agent)
 [![Claude](https://img.shields.io/badge/Claude-Opus%204.6%20%2B%20Sonnet%204.6-purple)](https://www.anthropic.com/claude)
 [![Gemini](https://img.shields.io/badge/Gemini-3.1%20Flash%20%2F%20Flash--Lite-blue)](https://ai.google.dev/)
-[![Groq](https://img.shields.io/badge/Groq-Llama%203.3%2070B-red)](https://groq.com/)
+[![Cerebras](https://img.shields.io/badge/Cerebras-Gemma2%209B-teal)](https://cloud.cerebras.ai/)
+[![Groq](https://img.shields.io/badge/Groq-Llama%203.3%2070B%20%2F%203B-red)](https://groq.com/)
 [![Cohere](https://img.shields.io/badge/Cohere-Command%20A%20%2F%20R-coral)](https://cohere.com/)
 [![Mistral](https://img.shields.io/badge/Mistral-Small-orange)](https://mistral.ai/)
 [![Local LLM](https://img.shields.io/badge/Local-Gemma4%20MoE%20%2B%20Nemotron-76B900)](https://ai.google.dev/gemma)
@@ -53,13 +54,14 @@
 │                            │                                    │
 │              ┌─────────────┼─────────────┐                     │
 │              ▼             ▼             ▼                     │
-│       ┌────────────┐ ┌──────────┐ ┌──────────────┐            │
-│       │  pct105    │ │  pct103  │ │  Cloud APIs  │            │
-│       │ PostgreSQL │ │  Matrix  │ │  Anthropic   │            │
-│       │    :5432   │ │  Synapse │ │  Google      │            │
-│       │            │ │  :8448   │ │  Groq        │            │
-│       └────────────┘ └──────────┘ │  Cohere      │            │
+│       ┌────────────┐              ┌──────────────┐            │
+│       │  pct105    │              │  Cloud APIs  │            │
+│       │ PostgreSQL │              │  Anthropic   │            │
+│       │    :5432   │              │  Google      │            │
+│       │            │              │  Groq        │            │
+│       └────────────┘              │  Cohere      │            │
 │                                   │  Mistral     │            │
+│                                   │  Cerebras    │            │
 │                                   └──────────────┘            │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -67,7 +69,6 @@
 | コンテナ | IP | 役割 |
 |---------|-----|------|
 | pct100 | 192.168.11.231 | Bushidan アプリ本体・Web コンソール |
-| pct103 | 192.168.11.234 | Matrix Synapse サーバー |
 | pct105 | 192.168.11.236 | PostgreSQL 17（LangGraph チェックポイント） |
 | pct237 | 192.168.11.237 | Claude API Server・開発環境 |
 | pct239 | 192.168.11.239 | ローカル LLM サーバー |
@@ -144,6 +145,28 @@
 - 監査ログ（YAML）から実行効果を分析（`core/audit.py`）
 - `POST /api/v18/evolve` で手動トリガー
 
+### ⚡ 高速筆耕パイプライン（3段構え）
+
+軽量モデルを組み合わせた爆速生成ライン（`core/processors/fast_generation.py`）：
+
+```
+Stage 1: Cerebras (gemma2-9b-it)
+         ↓ 日本語対応 9B・ウェーハスケール超高速推論
+         ↓ 荒削りドラフト生成 (~80%完成)
+
+Stage 2: Groq (llama-3.2-3b-preview)
+         ↓ 超軽量 3B・爆速整形
+         ↓ 構造・冗長性の改善
+
+Stage 3: Haiku (claude-haiku-4-5-20251001)
+         ↓ 最終清書・マークダウン整形・日本語品質仕上げ
+         ↓ 完成出力
+```
+
+各ステージは独立してフォールバック可能。Cerebras 障害時は Haiku 直接生成に切替。
+
+---
+
 ### ⚡ パフォーマンス最適化
 - SemanticRouter 事前チェック（CONFIDENT 閾値以上で LLM ルーティングをスキップ）
 - キャッシュキー最適化（`MD5(message)` でスレッド横断キャッシュ共有）
@@ -213,7 +236,7 @@ Bushidan-Multi-Agent/
 | **DB** | PostgreSQL 17 + psycopg3 |
 | **Web フレームワーク** | FastAPI + uvicorn |
 | **認証** | bcrypt 5.x + secrets |
-| **LLM クライアント** | anthropic, google-generativeai, groq, cohere, mistralai, aiohttp |
+| **LLM クライアント** | anthropic, google-generativeai, groq, cohere, mistralai, cerebras-cloud-sdk, aiohttp |
 | **Web UI** | Vanilla JS + marked.js + highlight.js + DOMPurify |
 | **通信プロトコル** | WebSocket（チャット）、SSE（メンテナンス更新）、REST |
 | **監視** | Prometheus + Grafana (pct100:9090/3000) |
