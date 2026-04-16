@@ -323,12 +323,12 @@ html, body {
 }
 
 .side-nav-section {
-  padding: 16px 0;
+  padding: 10px 0;
   border-bottom: 1px solid var(--border-dim);
 }
 
 .side-nav-section:first-child {
-  padding-top: 12px;
+  padding-top: 8px;
 }
 
 .side-nav-label {
