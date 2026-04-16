@@ -291,8 +291,8 @@ html, body {
 }
 
 /* ── JupyterLab ページ ── */
-#page-jupyter {
-  display: flex;
+/* display は .page-content / .page-content.active に任せる（ID 優先度による上書き禁止） */
+#page-jupyter.active {
   flex-direction: column;
   height: 100%;
   overflow: hidden;
