@@ -290,17 +290,6 @@ html, body {
   50%      { opacity: 0.3; }
 }
 
-/* ── JupyterLab ページ ── */
-/* display は .page-content / .page-content.active に任せる（ID 優先度による上書き禁止） */
-#page-jupyter.active {
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-#jupyter-frame {
-  flex: 1;
-  min-height: 0;
-}
 
 /* ── メインコンテナ ── */
 .main-container {
