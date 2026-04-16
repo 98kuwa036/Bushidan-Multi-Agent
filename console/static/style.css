@@ -281,9 +281,26 @@ html, body {
   border-radius: 50%;
 }
 
-.status-dot.ok { background: var(--ok); }
-.status-dot.ng { background: var(--ng); }
+.status-dot.ok   { background: var(--ok); }
+.status-dot.ng   { background: var(--ng); }
+.status-dot.err  { background: var(--ng); animation: dot-pulse 1s infinite; }
 .status-dot.warn { background: var(--warn); }
+@keyframes dot-pulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+
+/* ── JupyterLab ページ ── */
+#page-jupyter {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+#jupyter-frame {
+  flex: 1;
+  min-height: 0;
+}
 
 /* ── メインコンテナ ── */
 .main-container {

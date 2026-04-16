@@ -33,17 +33,17 @@
       <span>武士団 v18</span>
     </div>
     <div class="header-status">
-      <div class="status-item">
-        <span class="status-dot ok"></span>
-        <span id="llm-status">Gemma4</span>
+      <div class="status-item" title="ローカルLLM状態">
+        <span class="status-dot" id="dot-llm"></span>
+        <span id="llm-status">...</span>
       </div>
-      <div class="status-item">
-        <span class="status-dot ok"></span>
-        <span>DB</span>
+      <div class="status-item" title="PostgreSQL状態">
+        <span class="status-dot" id="dot-db"></span>
+        <span id="db-status">DB</span>
       </div>
-      <div class="status-item">
-        <span class="status-dot ok"></span>
-        <span id="role-count">11ロール</span>
+      <div class="status-item" title="利用可能ロール数">
+        <span class="status-dot ok" id="dot-roles"></span>
+        <span id="role-count">-ロール</span>
       </div>
     </div>
   </header>
@@ -71,6 +71,9 @@
         </div>
         <div class="side-nav-item" data-page="maintenance" onclick="showPage('maintenance')">
           <span>🔧</span> メンテナンス
+        </div>
+        <div class="side-nav-item" data-page="jupyter" onclick="showPage('jupyter')">
+          <span>📊</span> JupyterLab
         </div>
       </div>
 
@@ -385,7 +388,6 @@
               <option value="maintenance">メンテナンスログ</option>
               <option value="journal-bushidan-console">systemd: bushidan-console</option>
               <option value="journal-jupyterlab">systemd: jupyterlab</option>
-              <option value="journal-matrix-bot">systemd: matrix-bot</option>
             </select>
             <select id="log-audit-date" onchange="loadLog()" style="display:none"></select>
             <select id="log-lines">
@@ -452,6 +454,24 @@
         </div>
 
       </div><!-- /page-maintenance -->
+
+      <!-- PAGE 6: JupyterLab -->
+      <div id="page-jupyter" class="page-content" style="display:none; padding:0; overflow:hidden; height:100%">
+        <div id="jupyter-toolbar" style="display:flex; align-items:center; gap:8px; padding:8px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0">
+          <span style="font-size:14px; font-weight:600; color:var(--text)">📊 JupyterLab</span>
+          <span id="jupyter-status-badge" style="font-size:11px; padding:2px 8px; border-radius:4px; background:var(--surface2); color:var(--text-dim)">確認中...</span>
+          <div style="margin-left:auto; display:flex; gap:6px">
+            <button onclick="reloadJupyter()" style="font-size:11px; padding:4px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:4px; color:var(--text); cursor:pointer">🔄 再読み込み</button>
+            <a id="jupyter-open-link" href="http://192.168.11.231:8888" target="_blank" style="font-size:11px; padding:4px 10px; background:var(--primary); color:var(--bg); border-radius:4px; text-decoration:none; font-weight:600">↗ 別タブで開く</a>
+          </div>
+        </div>
+        <iframe id="jupyter-frame"
+          src="about:blank"
+          style="width:100%; flex:1; border:none; background:var(--bg)"
+          allow="clipboard-read; clipboard-write"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals">
+        </iframe>
+      </div><!-- /page-jupyter -->
 
     </div>
 
@@ -635,10 +655,84 @@ async function loadStatus() {
     });
     if (!res.ok) return;
     const data = await res.json();
-    document.getElementById('role-count').textContent = (data.roles || []).length + 'ロール';
+
+    // ロール数
+    const roleCount = (data.roles || []).length;
+    document.getElementById('role-count').textContent = roleCount + 'ロール';
+    _setDot('dot-roles', roleCount > 0 ? 'ok' : 'warn');
+
+    // PostgreSQL 状態
+    const pg = data.postgres || {};
+    const pgOk   = pg.status === 'ok' || pg.saver === 'postgres';
+    const pgInit = pg.status === 'initializing';
+    _setDot('dot-db', pgOk ? 'ok' : pgInit ? 'warn' : 'err');
+    document.getElementById('db-status').textContent = pgOk ? 'DB' : pgInit ? 'DB…' : 'DB!';
+
+    // ローカルLLM状態
+    const llm = data.local_llm || {};
+    const model = llm.active_model || '?';
+    const locked = llm.lock_held;
+    document.getElementById('llm-status').textContent =
+      model === 'unknown' || model === '?' ? 'LLM?' : model.replace('gemma', 'Gemma').replace('nemotron', 'Nemo');
+    _setDot('dot-llm', model === 'unknown' || model === '?' ? 'warn' : locked ? 'warn' : 'ok');
   } catch (e) {
+    _setDot('dot-llm', 'err');
+    _setDot('dot-db', 'err');
     console.error('loadStatus error:', e);
   }
+}
+
+function _setDot(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'status-dot ' + state; // ok / warn / err
+}
+
+// ── JupyterLab 統合 ──────────────────────────────────────────────
+const _JUPYTER_URL = `http://${location.hostname}:8888`;
+let _jupyterLoaded = false;
+
+async function loadJupyterFrame() {
+  const badge = document.getElementById('jupyter-status-badge');
+  const frame = document.getElementById('jupyter-frame');
+  if (!frame) return;
+
+  // 起動確認（fetch は CORS で弾かれるので img ping を使う）
+  badge.textContent = '接続確認中...';
+  badge.style.color = 'var(--text-dim)';
+
+  const alive = await _pingJupyter();
+  if (!alive) {
+    badge.textContent = '⚠️ 起動していません';
+    badge.style.color = 'var(--warn, #E8A020)';
+    frame.src = 'about:blank';
+    _jupyterLoaded = false;
+    return;
+  }
+
+  badge.textContent = '✅ 起動中';
+  badge.style.color = 'var(--ok, #4CAF50)';
+
+  // 初回のみロード（再表示のたびにリロードしない）
+  if (!_jupyterLoaded) {
+    frame.src = _JUPYTER_URL;
+    _jupyterLoaded = true;
+  }
+}
+
+async function reloadJupyter() {
+  _jupyterLoaded = false;
+  await loadJupyterFrame();
+}
+
+function _pingJupyter() {
+  return new Promise(resolve => {
+    const img = new Image();
+    const timer = setTimeout(() => { img.src = ''; resolve(false); }, 3000);
+    img.onload = img.onerror = () => { clearTimeout(timer); resolve(true); };
+    // JupyterLab の favicon を取得して生死確認
+    img.src = `http://${location.hostname}:8888/static/base/images/favicon.ico?_=${Date.now()}`;
+  });
 }
 
 async function loadThreads() {
@@ -1694,6 +1788,10 @@ function showPage(page) {
     const logBox = document.getElementById('log-content');
     if (logBox && logBox.textContent === 'ログを選択してください') loadLog();
   }
+  // JupyterLab ページ: iframe をロード（初回のみ）
+  if (page === 'jupyter') {
+    loadJupyterFrame();
+  }
 }
 
 function selectRole() {
@@ -2431,7 +2529,7 @@ async function upgradePackage(pkg, btn) {
 }
 
 // ── サービス管理 ─────────────────────────────────────────────
-const _SERVICES = ['bushidan-console', 'jupyterlab', 'matrix-bot'];
+const _SERVICES = ['bushidan-console', 'jupyterlab'];
 
 async function loadServices() {
   const tbody = document.getElementById('services-tbody');
