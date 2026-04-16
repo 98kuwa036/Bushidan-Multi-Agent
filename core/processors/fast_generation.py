@@ -1,10 +1,15 @@
 """
-武士団 v18 — Phase 2 高速筆耕ライン
-Cerebras → Groq → Haiku 3 段階生成
+武士団 v18 — 高速筆耕ライン
+Gemini 3 Flash → Cerebras gpt-oss-120b → Haiku 3 段階生成
 
-Stage 1: Cerebras (gemma2-9b-it) で日本語荒削りドラフト生成 (~80%完成)
-Stage 2: Groq (llama-3.2-3b) で超軽量・爆速整形
-Stage 3: Haiku で最終清書・品質仕上げ
+Stage 1: Gemini 3 Flash (gemini-3-flash-preview)
+         日本語対応・高品質な荒削りドラフト生成
+
+Stage 2: Cerebras gpt-oss-120b (3,000 tok/s)
+         OpenAI 120B 品質で爆速整形・構造化
+
+Stage 3: Claude Haiku (claude-haiku-4-5-20251001)
+         最終清書・マークダウン仕上げ
 """
 from __future__ import annotations
 
@@ -17,22 +22,22 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-# モデル設定
-_CEREBRAS_DRAFT_MODEL = "gemma2-9b-it"          # Stage 1: 日本語対応 9B 荒削り
-_GROQ_REFINE_MODEL    = "llama-3.2-3b-preview"  # Stage 2: 超軽量 3B 爆速整形
-_HAIKU_POLISH_MODEL   = "claude-haiku-4-5-20251001"  # Stage 3: 最終清書
+# ── モデル設定 ────────────────────────────────────────────────────
+_GEMINI_DRAFT_MODEL  = "gemini-3-flash-preview"      # Stage 1: 日本語荒削り
+_CEREBRAS_REFINE_MODEL = "gpt-oss-120b"               # Stage 2: 3,000 tok/s 爆速整形
+_HAIKU_POLISH_MODEL  = "claude-haiku-4-5-20251001"   # Stage 3: 最終清書
 
-# タイムアウト
+# ── タイムアウト ──────────────────────────────────────────────────
+_GEMINI_TIMEOUT   = 20.0
 _CEREBRAS_TIMEOUT = 15.0
-_GROQ_TIMEOUT     = 10.0
 _HAIKU_TIMEOUT    = 20.0
 
-# トークン制限
-_CEREBRAS_DRAFT_MAX_TOKENS = 1024
-_GROQ_REFINE_MAX_TOKENS    = 1024
+# ── トークン制限 ──────────────────────────────────────────────────
+_GEMINI_DRAFT_MAX_TOKENS   = 1024
+_CEREBRAS_REFINE_MAX_TOKENS = 1024
 _HAIKU_POLISH_MAX_TOKENS   = 2048
 
-# Groq 整形プロンプト
+# ── Cerebras 整形プロンプト ────────────────────────────────────────
 _REFINE_SYSTEM = """\
 あなたは武士団マルチエージェントシステムの整形担当です。
 以下のドラフト回答を簡潔に整形してください。
@@ -45,7 +50,7 @@ _REFINE_SYSTEM = """\
 ドラフトの核心的な情報は保持しつつ、より洗練された形で返してください。
 """
 
-# Haiku ポリッシュ プロンプト
+# ── Haiku 清書プロンプト ──────────────────────────────────────────
 _POLISH_SYSTEM = """\
 あなたは武士団マルチエージェントシステムの品質担当です。
 以下の整形済み回答を、ユーザーの質問に対してさらに洗練・整形してください。
@@ -58,16 +63,17 @@ _POLISH_SYSTEM = """\
 - 整形済みドラフトの品質を損なわない
 """
 
+_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+
 
 class FastGenerationPipeline:
-    """Cerebras → Groq → Haiku 3 段階生成パイプライン"""
+    """Gemini 3 Flash → Cerebras gpt-oss-120b → Haiku 3 段階生成パイプライン"""
 
     def __init__(self) -> None:
-        self._groq_key = os.getenv("GROQ_API_KEY", "")
+        self._gemini_key   = os.getenv("GEMINI_API_KEY", "")
         self._cerebras_key = os.getenv("CEREBRAS_API_KEY", "")
         self._anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self._groq = None
-        self._cerebras = None
+        self._cerebras  = None
         self._anthropic = None
 
     def _get_cerebras(self):
@@ -78,15 +84,6 @@ class FastGenerationPipeline:
             except ImportError:
                 logger.warning("cerebras SDK not installed")
         return self._cerebras
-
-    def _get_groq(self):
-        if self._groq is None and self._groq_key:
-            try:
-                from groq import AsyncGroq
-                self._groq = AsyncGroq(api_key=self._groq_key)
-            except ImportError:
-                logger.warning("groq package not installed")
-        return self._groq
 
     def _get_anthropic(self):
         if self._anthropic is None and self._anthropic_key:
@@ -103,33 +100,59 @@ class FastGenerationPipeline:
         system_prompt: str,
         temperature: float = 0.7,
     ) -> Optional[str]:
-        """Stage 1: Cerebras (gemma2-9b-it) で日本語荒削りドラフト生成"""
-        cerebras = self._get_cerebras()
-        if cerebras is None:
+        """Stage 1: Gemini 3 Flash で日本語荒削りドラフト生成"""
+        if not self._gemini_key:
             return None
 
         try:
-            response = await asyncio.wait_for(
-                asyncio.get_running_loop().run_in_executor(
-                    None,
-                    lambda: cerebras.chat.completions.create(
-                        model=_CEREBRAS_DRAFT_MODEL,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_input},
-                        ],
-                        max_tokens=_CEREBRAS_DRAFT_MAX_TOKENS,
-                        temperature=temperature,
-                    ),
-                ),
-                timeout=_CEREBRAS_TIMEOUT,
-            )
-            return response.choices[0].message.content or "" if response.choices else ""
+            import httpx
+
+            prompt = f"[System]: {system_prompt}\n\n[User]: {user_input}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": temperature,
+                    "topP": 0.95,
+                    "topK": 40,
+                    "maxOutputTokens": _GEMINI_DRAFT_MAX_TOKENS,
+                },
+                "safetySettings": [
+                    {"category": "HARM_CATEGORY_HARASSMENT",        "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_HATE_SPEECH",        "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",  "threshold": "BLOCK_ONLY_HIGH"},
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT",  "threshold": "BLOCK_ONLY_HIGH"},
+                ],
+            }
+            url = f"{_GEMINI_BASE_URL}/models/{_GEMINI_DRAFT_MODEL}:generateContent"
+
+            async with httpx.AsyncClient(timeout=_GEMINI_TIMEOUT) as client:
+                resp = await asyncio.wait_for(
+                    client.post(url, params={"key": self._gemini_key}, json=payload),
+                    timeout=_GEMINI_TIMEOUT,
+                )
+
+            if resp.status_code != 200:
+                logger.warning("FastGen: Gemini draft HTTP %s", resp.status_code)
+                return None
+
+            result = resp.json()
+            candidates = result.get("candidates", [])
+            if not candidates:
+                logger.warning("FastGen: Gemini draft no candidates")
+                return None
+
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if not parts or "text" not in parts[0]:
+                logger.warning("FastGen: Gemini draft blocked/empty")
+                return None
+
+            return parts[0]["text"]
+
         except asyncio.TimeoutError:
-            logger.warning("FastGen: Cerebras draft timeout")
+            logger.warning("FastGen: Gemini draft timeout")
             return None
         except Exception as e:
-            logger.warning("FastGen: Cerebras draft error: %s", e)
+            logger.warning("FastGen: Gemini draft error: %s", e)
             return None
 
     async def refine_draft(
@@ -137,32 +160,35 @@ class FastGenerationPipeline:
         draft: str,
         user_input: str,
     ) -> Optional[str]:
-        """Stage 2: Groq (llama-3.2-3b) で超軽量・爆速整形"""
-        groq = self._get_groq()
-        if groq is None:
+        """Stage 2: Cerebras gpt-oss-120b (3,000 tok/s) で爆速整形"""
+        cerebras = self._get_cerebras()
+        if cerebras is None:
             return None
 
         refine_user = f"ユーザーの質問:\n{user_input}\n\nドラフト回答:\n{draft}"
 
         try:
             response = await asyncio.wait_for(
-                groq.chat.completions.create(
-                    model=_GROQ_REFINE_MODEL,
-                    messages=[
-                        {"role": "system", "content": _REFINE_SYSTEM},
-                        {"role": "user", "content": refine_user},
-                    ],
-                    max_tokens=_GROQ_REFINE_MAX_TOKENS,
-                    temperature=0.4,
+                asyncio.get_running_loop().run_in_executor(
+                    None,
+                    lambda: cerebras.chat.completions.create(
+                        model=_CEREBRAS_REFINE_MODEL,
+                        messages=[
+                            {"role": "system", "content": _REFINE_SYSTEM},
+                            {"role": "user",   "content": refine_user},
+                        ],
+                        max_tokens=_CEREBRAS_REFINE_MAX_TOKENS,
+                        temperature=0.4,
+                    ),
                 ),
-                timeout=_GROQ_TIMEOUT,
+                timeout=_CEREBRAS_TIMEOUT,
             )
             return response.choices[0].message.content if response.choices else None
         except asyncio.TimeoutError:
-            logger.warning("FastGen: Groq refine timeout")
+            logger.warning("FastGen: Cerebras refine timeout")
             return None
         except Exception as e:
-            logger.warning("FastGen: Groq refine error: %s", e)
+            logger.warning("FastGen: Cerebras refine error: %s", e)
             return None
 
     async def polish_draft(
@@ -171,13 +197,12 @@ class FastGenerationPipeline:
         user_input: str,
         context: str = "",
     ) -> str:
-        """Stage 3: Haiku でポリッシュ"""
+        """Stage 3: Haiku で最終清書"""
         anthropic = self._get_anthropic()
         if anthropic is None:
-            # Anthropic 未設定ならドラフトをそのまま返す
             return draft
 
-        polish_user = f"ユーザーの質問:\n{user_input}\n\n最適化済みドラフト:\n{draft}"
+        polish_user = f"ユーザーの質問:\n{user_input}\n\n整形済みドラフト:\n{draft}"
         if context:
             polish_user = f"コンテキスト:\n{context}\n\n{polish_user}"
 
@@ -209,34 +234,31 @@ class FastGenerationPipeline:
     ) -> dict:
         """
         3 段階生成のメインエントリポイント
-        Stage 1: Cerebras (gemma2-9b-it) 日本語荒削りドラフト
-        Stage 2: Groq (llama-3.2-3b) 超軽量爆速整形
-        Stage 3: Haiku 最終清書
+
+        Stage 1: Gemini 3 Flash  — 日本語荒削りドラフト
+        Stage 2: Cerebras 120B   — 3,000 tok/s 爆速整形
+        Stage 3: Haiku           — 最終清書
 
         Returns:
-            dict with keys: response, draft, refine, stage, draft_ms, refine_ms, polish_ms, total_ms
+            dict: response, draft, refine, stage, draft_ms, refine_ms, polish_ms, total_ms
         """
         t0 = time.time()
         stages: list[str] = []
 
-        # Stage 1: Cerebras 荒削りドラフト
+        # ── Stage 1: Gemini 荒削りドラフト ───────────────────────────
         t1 = time.time()
         draft = await self.generate_draft(user_input, system_prompt)
         draft_ms = (time.time() - t1) * 1000
 
         if draft is None:
-            # Cerebras 失敗 → Haiku で直接生成
-            logger.warning("FastGen: Cerebras failed, falling back to Haiku directly")
+            # Gemini 失敗 → Haiku 直接生成にフォールバック
+            logger.warning("FastGen: Gemini failed, falling back to Haiku directly")
             anthropic = self._get_anthropic()
             if anthropic is None:
                 return {
                     "response": "⚠️ 生成サービスが利用不可です",
-                    "draft": "",
-                    "refine": "",
-                    "stage": "error",
-                    "draft_ms": draft_ms,
-                    "refine_ms": 0.0,
-                    "polish_ms": 0.0,
+                    "draft": "", "refine": "", "stage": "error",
+                    "draft_ms": draft_ms, "refine_ms": 0.0, "polish_ms": 0.0,
                     "total_ms": (time.time() - t0) * 1000,
                 }
             try:
@@ -252,55 +274,43 @@ class FastGenerationPipeline:
                     timeout=_HAIKU_TIMEOUT,
                 )
                 final = response.content[0].text if response.content else ""
-                polish_ms = (time.time() - t3) * 1000
                 return {
                     "response": final,
-                    "draft": "",
-                    "refine": "",
-                    "stage": "haiku_direct",
-                    "draft_ms": 0.0,
-                    "refine_ms": 0.0,
-                    "polish_ms": polish_ms,
+                    "draft": "", "refine": "", "stage": "haiku_direct",
+                    "draft_ms": 0.0, "refine_ms": 0.0,
+                    "polish_ms": (time.time() - t3) * 1000,
                     "total_ms": (time.time() - t0) * 1000,
                 }
             except Exception as e:
                 return {
                     "response": f"⚠️ 生成エラー: {e}",
-                    "draft": "",
-                    "refine": "",
-                    "stage": "error",
-                    "draft_ms": 0.0,
-                    "refine_ms": 0.0,
-                    "polish_ms": 0.0,
+                    "draft": "", "refine": "", "stage": "error",
+                    "draft_ms": 0.0, "refine_ms": 0.0, "polish_ms": 0.0,
                     "total_ms": (time.time() - t0) * 1000,
                 }
 
-        stages.append("cerebras_draft")
+        stages.append("gemini_draft")
 
         if skip_refine_polish:
             return {
-                "response": draft,
-                "draft": draft,
-                "refine": "",
-                "stage": "cerebras_only",
-                "draft_ms": draft_ms,
-                "refine_ms": 0.0,
-                "polish_ms": 0.0,
+                "response": draft, "draft": draft, "refine": "",
+                "stage": "gemini_only",
+                "draft_ms": draft_ms, "refine_ms": 0.0, "polish_ms": 0.0,
                 "total_ms": (time.time() - t0) * 1000,
             }
 
-        # Stage 2: Groq 超軽量整形
+        # ── Stage 2: Cerebras 爆速整形 ───────────────────────────────
         t2 = time.time()
         refined = await self.refine_draft(draft, user_input)
         refine_ms = (time.time() - t2) * 1000
 
         if refined is None:
-            refined = draft  # Groq 失敗時はドラフトをそのまま使用
-            logger.debug("FastGen: Groq refine skipped, using draft")
+            refined = draft
+            logger.debug("FastGen: Cerebras refine skipped, using draft")
         else:
-            stages.append("groq_refine")
+            stages.append("cerebras_refine")
 
-        # Stage 3: Haiku 最終清書
+        # ── Stage 3: Haiku 最終清書 ───────────────────────────────────
         t3 = time.time()
         final = await self.polish_draft(refined, user_input, context)
         polish_ms = (time.time() - t3) * 1000
@@ -328,31 +338,49 @@ class FastGenerationPipeline:
         user_input: str,
         system_prompt: str,
     ) -> AsyncIterator[str]:
-        """Groq ストリーミング生成（Stage 2 軽量整形、ポリッシュなし）"""
-        groq = self._get_groq()
-        if groq is None:
-            yield "⚠️ Groq サービスが利用不可です"
+        """
+        Gemini ストリーミング生成（Stage 1 のみ、整形・清書なし）
+        リアルタイム表示が必要な場合に使用
+        """
+        if not self._gemini_key:
+            yield "⚠️ Gemini サービスが利用不可です"
             return
 
         try:
-            stream = await asyncio.wait_for(
-                groq.chat.completions.create(
-                    model=_GROQ_REFINE_MODEL,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_input},
-                    ],
-                    temperature=0.7,
-                    max_tokens=_GROQ_REFINE_MAX_TOKENS,
-                    stream=True,
-                ),
-                timeout=_GROQ_TIMEOUT,
-            )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    yield delta
+            import httpx
+
+            prompt = f"[System]: {system_prompt}\n\n[User]: {user_input}"
+            payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "maxOutputTokens": _GEMINI_DRAFT_MAX_TOKENS,
+                },
+            }
+            url = f"{_GEMINI_BASE_URL}/models/{_GEMINI_DRAFT_MODEL}:streamGenerateContent"
+
+            async with httpx.AsyncClient(timeout=_GEMINI_TIMEOUT) as client:
+                async with client.stream(
+                    "POST", url,
+                    params={"key": self._gemini_key, "alt": "sse"},
+                    json=payload,
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if line.startswith("data: "):
+                            import json
+                            try:
+                                chunk = json.loads(line[6:])
+                                parts = (
+                                    chunk.get("candidates", [{}])[0]
+                                    .get("content", {})
+                                    .get("parts", [])
+                                )
+                                if parts and "text" in parts[0]:
+                                    yield parts[0]["text"]
+                            except Exception:
+                                pass
+
         except asyncio.TimeoutError:
-            yield "\n\n⚠️ Groq タイムアウト"
+            yield "\n\n⚠️ Gemini タイムアウト"
         except Exception as e:
-            yield f"\n\n⚠️ Groq エラー: {e}"
+            yield f"\n\n⚠️ Gemini エラー: {e}"

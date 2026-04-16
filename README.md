@@ -3,8 +3,8 @@
 [![Version](https://img.shields.io/badge/Version-18.0-brightgreen)](https://github.com/98kuwa036/Bushidan-Multi-Agent)
 [![Claude](https://img.shields.io/badge/Claude-Opus%204.6%20%2B%20Sonnet%204.6-purple)](https://www.anthropic.com/claude)
 [![Gemini](https://img.shields.io/badge/Gemini-3.1%20Flash%20%2F%20Flash--Lite-blue)](https://ai.google.dev/)
-[![Cerebras](https://img.shields.io/badge/Cerebras-Gemma2%209B-teal)](https://cloud.cerebras.ai/)
-[![Groq](https://img.shields.io/badge/Groq-Llama%203.3%2070B%20%2F%203B-red)](https://groq.com/)
+[![Cerebras](https://img.shields.io/badge/Cerebras-gpt--oss--120b%203000tok%2Fs-teal)](https://cloud.cerebras.ai/)
+[![Groq](https://img.shields.io/badge/Groq-Llama%203.3%2070B-red)](https://groq.com/)
 [![Cohere](https://img.shields.io/badge/Cohere-Command%20A%20%2F%20R-coral)](https://cohere.com/)
 [![Mistral](https://img.shields.io/badge/Mistral-Small-orange)](https://mistral.ai/)
 [![Local LLM](https://img.shields.io/badge/Local-Gemma4%20MoE%20%2B%20Nemotron-76B900)](https://ai.google.dev/gemma)
@@ -150,20 +150,21 @@
 軽量モデルを組み合わせた爆速生成ライン（`core/processors/fast_generation.py`）：
 
 ```
-Stage 1: Cerebras (gemma2-9b-it)
-         ↓ 日本語対応 9B・ウェーハスケール超高速推論
+Stage 1: Gemini 3 Flash (gemini-3-flash-preview)
+         ↓ 日本語◎◎・1Mコンテキスト・既存APIキー流用
          ↓ 荒削りドラフト生成 (~80%完成)
 
-Stage 2: Groq (llama-3.2-3b-preview)
-         ↓ 超軽量 3B・爆速整形
-         ↓ 構造・冗長性の改善
+Stage 2: Cerebras gpt-oss-120b (~3,000 tok/s)
+         ↓ OpenAI 120B 品質をウェーハスケールで爆速処理
+         ↓ 構造・冗長性の整形
 
 Stage 3: Haiku (claude-haiku-4-5-20251001)
-         ↓ 最終清書・マークダウン整形・日本語品質仕上げ
+         ↓ 最終清書・マークダウン整形・品質仕上げ
          ↓ 完成出力
 ```
 
-各ステージは独立してフォールバック可能。Cerebras 障害時は Haiku 直接生成に切替。
+各ステージは独立してフォールバック可能。Gemini 障害時は Haiku 直接生成に切替。  
+Groq は筆耕パイプラインから分離し、斥候（seppou）役職専用として運用。
 
 ---
 
