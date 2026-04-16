@@ -35,6 +35,9 @@ class RoleResult:
     mcp_tools_used: list = field(default_factory=list)
     requires_followup: bool = False
     status: str = "completed"
+    # HITL — ロールが人間の承認を要求する場合に設定
+    awaiting_human_input: bool = False
+    human_question: str = ""
 
 
 class BaseRole(ABC):
@@ -323,6 +326,12 @@ class BaseRole(ABC):
         import re
         return re.findall(r'(?:/[\w./\-]+|[\w\-]+\.(?:py|js|ts|json|yaml|yml|md|txt|sh))', message)
 
+    def _extract_code_blocks(self, message: str, language: str = "python") -> list[str]:
+        """メッセージからコードブロック (```lang ... ```) を抽出"""
+        import re
+        pattern = rf'```{language}\s*([\s\S]*?)```'
+        return re.findall(pattern, message, re.IGNORECASE)
+
     def _extract_urls(self, message: str) -> list[str]:
         """メッセージから URL を抽出"""
         import re
@@ -362,70 +371,3 @@ class BaseRole(ABC):
         # 例外が混入した場合は None に変換 (個別の _one() 内で既にキャッチしているが安全弁)
         return [r if not isinstance(r, BaseException) else None for r in results]
 
-    async def _delegate_task(
-        self,
-        role_key: str,
-        task: str,
-        context: str = "",
-        priority: int = 0,
-    ) -> bool:
-        """
-        別役職に非同期タスクを委譲する (RabbitMQ 経由)。
-
-        Args:
-            role_key:  委譲先の役職キー (例: "shogun", "gunshi")
-            task:      タスク内容
-            context:   追加コンテキスト (省略可)
-            priority:  メッセージ優先度 0-9
-
-        Returns:
-            送信成功なら True
-        """
-        try:
-            from utils.rabbitmq_client import RabbitMQBus
-            bus = RabbitMQBus.get()
-            if not bus._connected:
-                if not await bus.connect():
-                    self.logger.warning("RabbitMQ 未接続 — 委譲スキップ: %s", role_key)
-                    return False
-
-            payload = {
-                "type": "delegation",
-                "from_role": self.role_key,
-                "task": task,
-                "context": context,
-            }
-            ok = await bus.send_to_role(role_key, payload, priority=priority)
-            if ok:
-                self.logger.info("📨 委譲完了: %s → %s | %s", self.role_key, role_key, task[:60])
-            return ok
-        except Exception as e:
-            self.logger.error("_delegate_task 失敗: %s", e)
-            return False
-
-    async def _broadcast_alert(self, message: str) -> bool:
-        """
-        全役職へアラートをブロードキャスト (RabbitMQ fanout)。
-
-        Args:
-            message: アラートメッセージ
-
-        Returns:
-            送信成功なら True
-        """
-        try:
-            from utils.rabbitmq_client import RabbitMQBus
-            bus = RabbitMQBus.get()
-            if not bus._connected:
-                if not await bus.connect():
-                    return False
-
-            payload = {
-                "type": "alert",
-                "from_role": self.role_key,
-                "message": message,
-            }
-            return await bus.broadcast(payload)
-        except Exception as e:
-            self.logger.error("_broadcast_alert 失敗: %s", e)
-            return False

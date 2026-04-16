@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v15 - Groq Client
+Bushidan Multi-Agent System v18 - Groq Client
 
 Lightning-fast LLM inference via Groq Cloud API.
 Uses Llama 3.3 70B Versatile for instant responses.

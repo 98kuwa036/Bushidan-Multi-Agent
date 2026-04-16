@@ -340,7 +340,23 @@
       "Bash(pkill -f \"python.*uvicorn\" sleep 2 cd /mnt/Bushidan-Multi-Agent ~/.venv/bin/python -m uvicorn console.app:app --host 0.0.0.0 --port 8067)",
       "Bash(sort -k6,7)",
       "WebFetch(domain:www.issoh.co.jp)",
-      "Bash(chmod 775 /mnt/Bushidan-Multi-Agent/audit /mnt/Bushidan-Multi-Agent/audit/v18)"
+      "Bash(chmod 775 /mnt/Bushidan-Multi-Agent/audit /mnt/Bushidan-Multi-Agent/audit/v18)",
+      "Bash(ping -c 2 192.168.11.231)",
+      "Bash(pip show *)",
+      "Bash(nc -z 192.168.11.231 8067)",
+      "Bash(python3.13 *)",
+      "Bash(sed -n '1575,1600p' /mnt/Bushidan-Multi-Agent/core/langgraph_router.py)",
+      "Bash(sed -n '535,580p' /mnt/Bushidan-Multi-Agent/core/langgraph_router.py)",
+      "Bash(sed -n '1480,1520p' /mnt/Bushidan-Multi-Agent/core/langgraph_router.py)",
+      "Bash(sed -n '1140,1165p' /mnt/Bushidan-Multi-Agent/core/langgraph_router.py)",
+      "Bash(gh repo *)",
+      "Bash(xargs -I{} basename {} .py)",
+      "WebFetch(domain:inference.cerebras.ai)",
+      "WebFetch(domain:console.groq.com)",
+      "WebFetch(domain:inference-docs.cerebras.ai)",
+      "WebFetch(domain:support.cerebras.net)",
+      "WebFetch(domain:ai.google.dev)",
+      "WebFetch(domain:swallow-llm.github.io)"
     ]
   },
   "additionalDirectories": [

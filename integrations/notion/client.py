@@ -37,6 +37,10 @@ class NotionClient:
             page_id = await client.create_page(db_id, properties, children)
     """
 
+    # notion-client v3 は API 2025-09-03 を使用するが、
+    # databases.query が廃止されているため 2022-06-28 に固定する
+    _NOTION_VERSION = "2022-06-28"
+
     def __init__(
         self,
         api_key: str,
@@ -48,10 +52,11 @@ class NotionClient:
         self.kb_database_id = kb_database_id or database_id
         self._sdk: Optional[NotionSDK] = None
         if HAS_NOTION and api_key:
-            self._sdk = NotionSDK(auth=api_key)
-            logger.info("[Notion] クライアント初期化完了 db=%s kb=%s",
+            self._sdk = NotionSDK(auth=api_key, notion_version=self._NOTION_VERSION)
+            logger.info("[Notion] クライアント初期化完了 db=%s kb=%s (api-version=%s)",
                         database_id[:8] if database_id else "未設定",
-                        kb_database_id[:8] if kb_database_id else "同上")
+                        kb_database_id[:8] if kb_database_id else "同上",
+                        self._NOTION_VERSION)
         else:
             if not HAS_NOTION:
                 logger.warning("[Notion] notion-client 未インストール: pip install notion-client")
@@ -79,19 +84,23 @@ class NotionClient:
         sorts: Optional[List[Dict]] = None,
         limit: int = 10,
     ) -> List[Dict]:
-        """データベースをクエリして結果リストを返す。"""
+        """データベースをクエリして結果リストを返す。
+        notion-client v3 では databases.query が削除されたため
+        request() メソッドで直接 REST エンドポイントを呼び出す。
+        """
         if not self._sdk:
             return []
         def _query():
-            kwargs: Dict[str, Any] = {
-                "database_id": database_id,
-                "page_size": limit,
-            }
+            body: Dict[str, Any] = {"page_size": limit}
             if filter_obj:
-                kwargs["filter"] = filter_obj
+                body["filter"] = filter_obj
             if sorts:
-                kwargs["sorts"] = sorts
-            return self._sdk.databases.query(**kwargs)
+                body["sorts"] = sorts
+            return self._sdk.request(
+                path=f"databases/{database_id}/query",
+                method="POST",
+                body=body,
+            )
         try:
             result = await asyncio.to_thread(_query)
             return result.get("results", [])
@@ -107,7 +116,11 @@ class NotionClient:
         if not self._sdk or not query.strip():
             return []
         def _search():
-            return self._sdk.search(query=query, filter={"value": "page", "property": "object"}, page_size=limit)
+            return self._sdk.search(
+                query=query,
+                filter={"value": "page", "property": "object"},
+                page_size=limit,
+            )
         try:
             result = await asyncio.to_thread(_search)
             return result.get("results", [])
@@ -141,14 +154,20 @@ class NotionClient:
     async def get_page_title(self, page: Dict) -> str:
         """ページオブジェクトからタイトルを抽出する。"""
         props = page.get("properties", {})
-        # "Name" or "Title" プロパティ
-        for key in ("Title", "Name", "タイトル"):
+        # タイトル型プロパティを名前に関係なく検索
+        for key in ("タイトル", "名前", "Title", "Name", "スキル名"):
             prop = props.get(key, {})
             prop_type = prop.get("type", "")
             if prop_type == "title":
                 items = prop.get("title", [])
                 if items:
-                    return items[0].get("text", {}).get("content", "")
+                    return items[0].get("plain_text", items[0].get("text", {}).get("content", ""))
+        # どのプロパティもタイトル型でなければ、title型を持つプロパティを探す
+        for key, prop in props.items():
+            if prop.get("type") == "title":
+                items = prop.get("title", [])
+                if items:
+                    return items[0].get("plain_text", items[0].get("text", {}).get("content", ""))
         return page.get("url", "")[:60]
 
     # ── ページ作成 / 更新 ─────────────────────────────────────────────

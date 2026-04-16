@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-local_llm_server.py — ローカルLLMサーバー v17
+local_llm_server.py — ローカルLLMサーバー v18
 192.168.11.239 で稼働。Gemma4 MoE（常時）と Nemotron（排他）を管理。
 
 起動:
@@ -69,7 +69,7 @@ _model_lock      = asyncio.Lock()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("🚀 Local LLM Server v17 starting...")
+    logger.info("🚀 Local LLM Server v18 starting...")
     logger.info("   Gemma4 MoE: %s", GEMMA_PATH)
     logger.info("   Nemotron:   %s", NEMOTRON_PATH)
     logger.info("   n_threads=%d  n_gpu_layers=%d  n_ctx=%d", N_THREADS, N_GPU_LAYERS, N_CTX)
@@ -137,7 +137,8 @@ async def _load_gemma() -> bool:
         from llama_cpp import Llama
         logger.info("🎌 Loading Gemma4 MoE: %s", GEMMA_PATH)
         t0 = time.time()
-        _gemma_model = Llama(
+        loop = asyncio.get_event_loop()
+        _gemma_model = await loop.run_in_executor(None, lambda: Llama(
             model_path=GEMMA_PATH,
             n_gpu_layers=N_GPU_LAYERS,
             n_ctx=N_CTX,
@@ -146,7 +147,7 @@ async def _load_gemma() -> bool:
             use_mlock=True,
             chat_format="gemma",
             verbose=False,
-        )
+        ))
         _active_model = "gemma"
         logger.info("✅ Gemma4 MoE ready (%.1fs)", time.time() - t0)
         return True
@@ -177,7 +178,8 @@ async def _load_nemotron() -> bool:
         from llama_cpp import Llama
         logger.info("🐉 Loading Nemotron: %s", NEMOTRON_PATH)
         t0 = time.time()
-        _nemotron_model = Llama(
+        loop = asyncio.get_event_loop()
+        _nemotron_model = await loop.run_in_executor(None, lambda: Llama(
             model_path=NEMOTRON_PATH,
             n_gpu_layers=N_GPU_LAYERS,
             n_ctx=N_CTX,
@@ -186,7 +188,7 @@ async def _load_nemotron() -> bool:
             use_mlock=True,
             chat_format="chatml",
             verbose=False,
-        )
+        ))
         _active_model = "nemotron"
         logger.info("✅ Nemotron ready (%.1fs)", time.time() - t0)
         return True
@@ -248,12 +250,13 @@ async def generate_gemma(req: GenerateRequest):
             if req.system:
                 messages.append({"role": "system", "content": req.system})
             messages.append({"role": "user", "content": req.prompt})
-            result = _gemma_model.create_chat_completion(
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, lambda: _gemma_model.create_chat_completion(
                 messages=messages,
                 max_tokens=req.max_tokens,
                 temperature=req.temperature,
                 top_p=req.top_p,
-            )
+            ))
             choices = result.get("choices", [])
             text = _strip_thinking(choices[0]["message"]["content"] if choices else "")
             elapsed_ms = (time.time() - t0) * 1000
@@ -281,12 +284,13 @@ async def generate_nemotron(req: GenerateRequest):
             if req.system:
                 messages.append({"role": "system", "content": req.system})
             messages.append({"role": "user", "content": req.prompt})
-            result = _nemotron_model.create_chat_completion(
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, lambda: _nemotron_model.create_chat_completion(
                 messages=messages,
                 max_tokens=req.max_tokens,
                 temperature=req.temperature,
                 top_p=req.top_p,
-            )
+            ))
             choices = result.get("choices", [])
             text = choices[0]["message"]["content"] if choices else ""
             elapsed_ms = (time.time() - t0) * 1000
@@ -315,12 +319,13 @@ async def generate_structured(req: StructuredRequest):
             from llama_cpp import LlamaGrammar
             grammar = LlamaGrammar.from_string(req.grammar)
             t0 = time.time()
-            result = _gemma_model.create_completion(
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, lambda: _gemma_model.create_completion(
                 prompt=req.prompt,
                 grammar=grammar,
                 max_tokens=req.max_tokens,
                 temperature=req.temperature,
-            )
+            ))
             choices = result.get("choices", [])
             text = choices[0]["text"] if choices else ""
             elapsed_ms = (time.time() - t0) * 1000
@@ -377,11 +382,12 @@ async def benchmark():
             raise HTTPException(503, "Gemma4 not loaded")
         try:
             t0 = time.time()
-            result = _gemma_model.create_chat_completion(
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, lambda: _gemma_model.create_chat_completion(
                 messages=[{"role": "user", "content": "日本語で1から10まで数えてください。"}],
                 max_tokens=50,
                 temperature=0.1,
-            )
+            ))
             elapsed_ms = (time.time() - t0) * 1000
             choices = result.get("choices", [])
             text = _strip_thinking(choices[0]["message"]["content"] if choices else "")

@@ -45,18 +45,20 @@ async def save_task_result(state: dict) -> Optional[str]:
 
     title = f"[{agent_role or handled_by}] {message[:60]}"
 
+    # Notion タスクDB のプロパティ名: 名前/ロール/タグ/ステータス/作成日時/実行時間(ms)
     properties: Dict[str, Any] = {
-        "Title": {"title": [{"type": "text", "text": {"content": title}}]},
-        "Type": {"select": {"name": "タスク完了"}},
-        "Date": {"date": {"start": datetime.now().isoformat()}},
-        "Status": {"select": {"name": "完了"}},
+        "名前": {"title": [{"type": "text", "text": {"content": title}}]},
+        "ステータス": {"select": {"name": "完了"}},
+        "作成日時": {"date": {"start": datetime.now().isoformat()}},
     }
     if agent_role:
-        properties["Agent"] = {"select": {"name": agent_role[:100]}}
+        properties["ロール"] = {"select": {"name": agent_role[:100]}}
     if tools:
-        properties["Tags"] = {
+        properties["タグ"] = {
             "multi_select": [{"name": t[:100]} for t in tools[:5]]
         }
+    if exec_time:
+        properties["実行時間(ms)"] = {"number": int(exec_time * 1000)}
 
     # コンテンツブロック構築
     children: list = [

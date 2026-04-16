@@ -28,10 +28,9 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-POSTGRES_URL = os.environ.get(
-    "POSTGRES_URL",
-    "postgresql://postgres:kuwa1998@192.168.11.236/bushidan",
-)
+POSTGRES_URL = os.environ.get("POSTGRES_URL")
+if not POSTGRES_URL:
+    raise RuntimeError("環境変数 POSTGRES_URL が未設定です。.env を確認してください。")
 
 # 候補生成のしきい値 (同一パターンが N 回以上で提案)
 SKILL_PROPOSE_THRESHOLD = int(os.environ.get("SKILL_PROPOSE_THRESHOLD", "3"))
@@ -182,7 +181,7 @@ async def observe(
             await conn.commit()
 
     except Exception as e:
-        logger.debug("SkillTracker.observe 失敗 (スキップ): %s", e)
+        logger.error("SkillTracker.observe 失敗: %s", e)
 
 
 async def _maybe_create_candidate(cur, phash: str, keywords: list[str], role: str, count: int) -> None:

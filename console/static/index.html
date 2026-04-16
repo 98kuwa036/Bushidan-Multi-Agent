@@ -15,7 +15,7 @@
 <div id="login-screen">
   <div class="login-box">
     <div class="login-logo">🏯</div>
-    <h1>武士団 <span class="ver">v17</span></h1>
+    <h1>武士団 <span class="ver">v18</span></h1>
     <p>マルチエージェント ダッシュボード</p>
     <input type="password" id="pw-input" placeholder="パスワード" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
     <button onclick="doLogin()">ログイン</button>
@@ -69,6 +69,9 @@
         <div class="side-nav-item" data-page="system" onclick="showPage('system')">
           <span>⚙️</span> システム設定
         </div>
+        <div class="side-nav-item" data-page="maintenance" onclick="showPage('maintenance')">
+          <span>🔧</span> メンテナンス
+        </div>
       </div>
 
       <div class="side-nav-section">
@@ -86,25 +89,17 @@
       <!-- PAGE 1: ダッシュボード -->
       <div id="page-dashboard" class="page-content active">
         <div class="dashboard-main">
-          <!-- ステータスパネル -->
-          <div class="status-panel">
-            <span class="status-label">ロール</span>
-            <div class="role-cards" id="role-cards"></div>
-          </div>
-
           <!-- 会話エリア -->
           <div class="conversation-area">
             <div class="conversation-controls">
               <select id="role-select" onchange="selectRole()">
                 <option value="auto">🤖 自動ルーティング</option>
               </select>
-              <select id="role-filter" onchange="applyRoleFilter()">
-                <option value="all">全ロール表示</option>
-              </select>
               <label>
                 <input type="checkbox" id="parallel-mode" onchange="toggleParallel()">
                 並列実行
               </label>
+              <button onclick="showCheckpoints()" title="タイムトラベル: 過去の状態に巻き戻す" style="padding:4px 10px; font-size:11px; background:var(--surface2); border:1px solid var(--border); border-radius:4px; color:var(--text-dim); cursor:pointer; margin-left:auto">⏮ 巻き戻し</button>
             </div>
 
             <!-- 処理状態インジケータ -->
@@ -136,9 +131,6 @@
       <div id="page-history" class="page-content">
         <h2>💭 チャット履歴</h2>
         <div style="padding:16px">
-          <button onclick="createNewThread()" style="width:100%; padding:10px; background:var(--primary); color:var(--bg); border:none; border-radius:6px; font-weight:600; font-size:13px; cursor:pointer; margin-bottom:16px">
-            + 新しい会話
-          </button>
           <input type="search" id="history-search" placeholder="タイトルで検索..." style="width:100%; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; margin-bottom:16px; box-sizing:border-box" oninput="applyHistoryFilters()">
           <div class="date-filter-row">
             <input type="date" id="filter-from" onchange="applyHistoryFilters()" style="flex:1; padding:6px 8px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11px;">
@@ -185,7 +177,7 @@
           <div class="settings-item">
             <span class="settings-label">ダークモード</span>
             <div class="settings-value">
-              <div class="toggle-switch active" onclick="toggleTheme(this)"></div>
+              <div class="toggle-switch" id="dark-mode-toggle" onclick="toggleTheme(this)"></div>
             </div>
           </div>
         </div>
@@ -371,6 +363,96 @@
         </div>
       </div>
 
+      <!-- PAGE 5: メンテナンス -->
+      <div id="page-maintenance" class="page-content">
+        <h2>🔧 メンテナンス</h2>
+
+        <!-- タブバー -->
+        <div class="maint-tabs">
+          <button class="maint-tab active" onclick="maintTab(this,'logs')">📄 ログ</button>
+          <button class="maint-tab" onclick="maintTab(this,'update')">🚀 アップデート</button>
+          <button class="maint-tab" onclick="maintTab(this,'packages')">📦 パッケージ</button>
+          <button class="maint-tab" onclick="maintTab(this,'services')">⚡ サービス</button>
+          <button class="maint-tab" onclick="maintTab(this,'sysinfo')">💻 システム</button>
+        </div>
+
+        <!-- ── ログビューア ─────────────────────────────────── -->
+        <div id="maint-logs" class="maint-panel">
+          <div class="maint-log-toolbar">
+            <select id="log-source" onchange="loadLog()">
+              <option value="console">アプリログ (console.log)</option>
+              <option value="audit">監査ログ (audit YAML)</option>
+              <option value="maintenance">メンテナンスログ</option>
+              <option value="journal-bushidan-console">systemd: bushidan-console</option>
+              <option value="journal-jupyterlab">systemd: jupyterlab</option>
+              <option value="journal-matrix-bot">systemd: matrix-bot</option>
+            </select>
+            <select id="log-audit-date" onchange="loadLog()" style="display:none"></select>
+            <select id="log-lines">
+              <option value="100">100行</option>
+              <option value="300" selected>300行</option>
+              <option value="500">500行</option>
+              <option value="1000">1000行</option>
+            </select>
+            <button onclick="loadLog()">🔄 更新</button>
+            <label style="font-size:12px; cursor:pointer">
+              <input type="checkbox" id="log-autorefresh" onchange="toggleLogAutoRefresh()"> 自動更新
+            </label>
+          </div>
+          <pre id="log-content" class="maint-logbox">ログを選択してください</pre>
+        </div>
+
+        <!-- ── アップデート ─────────────────────────────────── -->
+        <div id="maint-update" class="maint-panel" style="display:none">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
+            <button class="maint-update-btn" onclick="runUpdate('check')">🔍 ① 変更確認</button>
+            <button class="maint-update-btn" onclick="runUpdate('sandbox')">🏗️ ② サンドボックス検証</button>
+            <button class="maint-update-btn" onclick="runUpdate('apply')" style="background:var(--ok)">🚀 ③ 本番適用</button>
+          </div>
+          <div id="update-stage-indicator" style="font-size:12px; color:var(--text-dim); margin-bottom:6px"></div>
+          <pre id="update-output" class="maint-logbox" style="height:400px">ボタンを押してアップデートを開始してください
+
+① 変更確認 — git fetch して保留中の変更とパッケージ差分を表示
+② サンドボックス検証 — sandbox venv でインストール＋インポートテスト実行
+③ 本番適用 — git pull → pip install → サービス再起動</pre>
+        </div>
+
+        <!-- ── パッケージ管理 ───────────────────────────────── -->
+        <div id="maint-packages" class="maint-panel" style="display:none">
+          <div style="display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap">
+            <button onclick="loadPackages()">📋 インストール済み一覧</button>
+            <button onclick="loadOutdated()">🔍 更新可能を確認</button>
+          </div>
+          <div id="packages-filter" style="margin-bottom:8px; display:none">
+            <input type="text" id="pkg-search" placeholder="パッケージ名で絞り込み..." oninput="filterPackages()"
+              style="width:100%; box-sizing:border-box; padding:6px 10px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px">
+          </div>
+          <div id="packages-list"></div>
+        </div>
+
+        <!-- ── サービス管理 ─────────────────────────────────── -->
+        <div id="maint-services" class="maint-panel" style="display:none">
+          <table class="maint-table" id="services-table">
+            <thead><tr><th>サービス</th><th>状態</th><th>操作</th></tr></thead>
+            <tbody id="services-tbody"></tbody>
+          </table>
+          <div id="service-output" class="maint-logbox" style="margin-top:10px; height:120px; display:none"></div>
+        </div>
+
+        <!-- ── システム情報 ─────────────────────────────────── -->
+        <div id="maint-sysinfo" class="maint-panel" style="display:none">
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px">
+            <button onclick="loadSysInfo()">🔄 情報を更新</button>
+            <button onclick="loadCacheStatus()">📦 キャッシュ状態</button>
+            <button onclick="runEvolve()" id="evolve-btn">🧠 スキル進化サイクル実行</button>
+          </div>
+          <div id="cache-status-content" style="display:none; margin-bottom:12px"></div>
+          <div id="evolve-result" style="display:none; margin-bottom:12px"></div>
+          <div id="sysinfo-content"></div>
+        </div>
+
+      </div><!-- /page-maintenance -->
+
     </div>
 
   </div>
@@ -388,6 +470,9 @@
     </button>
     <button data-page="system" onclick="showPage('system')">
       <span class="nav-icon">⚙️</span>
+    </button>
+    <button data-page="maintenance" onclick="showPage('maintenance')">
+      <span class="nav-icon">🔧</span>
     </button>
   </nav>
 
@@ -419,6 +504,10 @@ const S = {
   processingTimer: null,
   // setInterval ID (ログアウト時にクリア)
   statusInterval: null,
+  // 履歴ページ展開スレッドID
+  historyExpandedId: null,
+  // 履歴から続きを書く際のフラグ（trueならdashboard遷移時にクリアしない）
+  _continuing: false,
 };
 
 // ─── 初期化 ─────────────────────────────────────────────────
@@ -428,6 +517,22 @@ window.addEventListener('DOMContentLoaded', () => {
     loadUI();
   }
 });
+
+// ─── 401 自動ログアウト (fetch グローバルラップ) ────────────────
+(function() {
+  const _orig = window.fetch.bind(window);
+  window.fetch = async function(url, opts) {
+    const res = await _orig(url, opts);
+    if (res.status === 401 && !String(url).endsWith('/login')) {
+      S.token = '';
+      localStorage.removeItem('token');
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('login-err').textContent = 'セッションが期限切れです。再ログインしてください。';
+    }
+    return res;
+  };
+})();
 
 // ─── ログイン ───────────────────────────────────────────────
 async function doLogin() {
@@ -508,11 +613,13 @@ async function loadModels() {
         `;
       }).join('');
 
-    // ロール状態カード（稼働中/健全性）
+    // ロール状態カード（ステータスパネルが存在する場合のみ）
     const cards = document.getElementById('role-cards');
-    cards.innerHTML = Object.entries(S.models)
-      .map(([k, v]) => `<div class="role-card healthy" id="role-${k}"><div class="role-status ok" title="稼働中"></div><span class="role-name">${v}</span></div>`)
-      .join('');
+    if (cards) {
+      cards.innerHTML = Object.entries(S.models)
+        .map(([k, v]) => `<div class="role-card healthy" id="role-${k}"><div class="role-status ok" title="稼働中"></div><span class="role-name">${v}</span></div>`)
+        .join('');
+    }
 
     // 個別チャット用ロール選択ドロップダウン
     initIndividualRoleSelect();
@@ -559,7 +666,7 @@ function renderThreads() {
     return;
   }
   list.innerHTML = filteredThreads.map(t => `
-    <div class="side-nav-item thread" onclick="loadThread('${t.id}')" title="${t.title}">
+    <div class="side-nav-item thread" onclick="openThreadInHistory('${t.id}')" title="${t.title}">
       ${t.title.substring(0, 18)}${t.title.length > 18 ? '...' : ''}
     </div>
   `).join('');
@@ -595,14 +702,10 @@ async function loadThread(threadId) {
     S.currentThreadId = threadId;
     S.currentThread = { id: threadId, title: thread?.title || '会話', messages: data.messages || [] };
 
-    // ロールフィルタドロップダウン更新
-    const roles = [...new Set(S.currentThread.messages.filter(m => m.agent_role).map(m => m.agent_role))];
-    const filter = document.getElementById('role-filter');
-    filter.innerHTML = '<option value="all">全ロール表示</option>' +
-      roles.map(r => `<option value="${r}">${r}</option>`).join('');
     S.roleFilter = 'all';
     S.msgSearchQuery = '';
-    document.getElementById('msg-search').value = '';
+    const msgSearch = document.getElementById('msg-search');
+    if (msgSearch) msgSearch.value = '';
 
     renderMessages();
     showPage('dashboard');
@@ -630,6 +733,26 @@ function renderMessages(messages = S.currentThread?.messages) {
   const showTime  = uiCfg.showTimestamp !== false;
 
   container.innerHTML = filtered.map(msg => {
+    // HITL 承認カード
+    if (msg.role === 'hitl') {
+      const tid = (msg.thread_id || '').replace(/'/g, "\\'");
+      const q   = msg.content.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return `
+        <div class="hitl-card" id="hitl-card-${tid}">
+          <div class="hitl-header">⚠️ 承認が必要です <span class="hitl-agent">${msg.agent_role || ''}</span></div>
+          <div class="hitl-question">${q}</div>
+          <div class="hitl-buttons">
+            <button class="hitl-btn approve" onclick="resumeHITL('${tid}','approved')">✅ 承認して実行</button>
+            <button class="hitl-btn reject"  onclick="resumeHITL('${tid}','rejected')">❌ 却下</button>
+            <button class="hitl-btn custom"  onclick="toggleHITLInput('${tid}')">✏️ 修正指示</button>
+          </div>
+          <div class="hitl-custom-area" id="hitl-input-${tid}" style="display:none">
+            <textarea id="hitl-text-${tid}" placeholder="修正指示を入力..." rows="3"></textarea>
+            <button class="hitl-btn approve" onclick="resumeHITLCustom('${tid}')">送信</button>
+          </div>
+        </div>
+      `;
+    }
     const content = msg.role === 'assistant'
       ? renderMarkdown(msg.content)
       : highlightText(msg.content, S.msgSearchQuery);
@@ -896,6 +1019,37 @@ async function handleWSMessage(data) {
       // 処理インジケータを非表示
       hideProcessingIndicator();
 
+      // token が来なかったモデル (Gemma / Nemotron 等) 向け:
+      // done イベントに response が含まれていれば "⏳ 処理中..." を置換
+      if (data.response) {
+        if (S.currentThread?.messages?.length > 0) {
+          const pendingMsg = S.currentThread.messages[S.currentThread.messages.length - 1];
+          if (pendingMsg.role === 'assistant' && pendingMsg.content === '⏳ 処理中...') {
+            pendingMsg.content    = data.response;
+            pendingMsg.agent_role = data.agent_role || pendingMsg.agent_role;
+          }
+        }
+        if (S.currentIndividualRole) {
+          const indThread = S.individualThreads[S.currentIndividualRole];
+          if (indThread?.messages?.length > 0) {
+            const indLast = indThread.messages[indThread.messages.length - 1];
+            if (indLast.role === 'assistant' && indLast.content === '⏳ 処理中...') {
+              indLast.content    = data.response;
+              indLast.agent_role = data.agent_role || S.currentIndividualRole;
+            } else if (indLast.role === 'system') {
+              indThread.messages.splice(indThread.messages.indexOf(indLast), 1, {
+                role: 'assistant', content: data.response,
+                agent_role: data.agent_role || S.currentIndividualRole,
+                model: S.models[S.currentIndividualRole] || '',
+                execution_time: data.execution_time,
+                created_at: new Date().toISOString(),
+              });
+            }
+          }
+        }
+        renderMessages();
+      }
+
       // DB に保存
       if (S.currentThreadId && S.currentThread?.messages?.length > 0) {
         const lastMsg = S.currentThread.messages[S.currentThread.messages.length - 1];
@@ -978,10 +1132,109 @@ async function handleWSMessage(data) {
       }
       break;
 
+    case 'thinking':
+      // バックエンドが処理を開始したことを確認 — ⏳ がなければ追加
+      if (S.currentThread) {
+        const last = S.currentThread.messages.at(-1);
+        if (!last || (last.role !== 'assistant' && last.role !== 'hitl')) {
+          S.currentThread.messages.push({ role: 'assistant', content: '⏳ 処理中...' });
+          renderMessages();
+          scrollBottom();
+        }
+      }
+      showProcessingIndicator();
+      break;
+
+    case 'system':
+      hideProcessingIndicator();
+      if (data.message) addMessage('system', data.message);
+      break;
+
+    case 'audit_start':
+      // ライフサイクルイベント — 表示不要、ログのみ
+      break;
+
     case 'error':
       hideProcessingIndicator();
       addMessage('system', '❌ エラー: ' + (data.message || data.error || 'Unknown'));
       break;
+
+    case 'hitl_question':
+      hideProcessingIndicator();
+      // 「⏳ 処理中...」を HITL カードに置換
+      if (S.currentThread) {
+        const pending = S.currentThread.messages.at(-1);
+        if (pending?.role === 'assistant' && pending.content === '⏳ 処理中...') {
+          S.currentThread.messages.pop();
+        }
+        S.currentThread.messages.push({
+          role:       'hitl',
+          content:    data.question || '確認が必要です。続行しますか？',
+          agent_role: data.agent_role || '',
+          thread_id:  data.thread_id || S.currentThreadId,
+        });
+        renderMessages();
+        scrollBottom();
+      }
+      break;
+  }
+}
+
+// ─── HITL 承認 ──────────────────────────────────────────────
+function toggleHITLInput(threadId) {
+  const area = document.getElementById(`hitl-input-${threadId}`);
+  if (area) area.style.display = area.style.display === 'none' ? '' : 'none';
+}
+
+async function resumeHITL(threadId, response) {
+  _clearHITLCard(threadId, response === 'approved' ? '✅ 承認して実行' : '❌ 却下');
+  await _callResume(threadId, response);
+}
+
+async function resumeHITLCustom(threadId) {
+  const text = document.getElementById(`hitl-text-${threadId}`)?.value?.trim();
+  if (!text) return;
+  _clearHITLCard(threadId, `✏️ ${text}`);
+  await _callResume(threadId, text);
+}
+
+function _clearHITLCard(threadId, label) {
+  if (S.currentThread) {
+    S.currentThread.messages = S.currentThread.messages.filter(m => m.role !== 'hitl');
+    S.currentThread.messages.push({ role: 'user', content: label });
+    S.currentThread.messages.push({ role: 'assistant', content: '⏳ 処理中...' });
+    renderMessages();
+    showProcessingIndicator();
+    scrollBottom();
+  }
+}
+
+async function _callResume(threadId, response) {
+  try {
+    const res = await fetch(`${S.apiBase}/resume`, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${S.token}`,
+      },
+      body: JSON.stringify({ thread_id: threadId, response }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    hideProcessingIndicator();
+    if (data.response && S.currentThread) {
+      const last = S.currentThread.messages.at(-1);
+      if (last?.content === '⏳ 処理中...') {
+        last.content    = data.response;
+        last.agent_role = data.agent_role || '';
+        last.execution_time = data.execution_time || null;
+      }
+      renderMessages();
+      scrollBottom();
+    }
+  } catch (e) {
+    hideProcessingIndicator();
+    addMessage('system', '❌ 再開エラー: ' + e.message);
   }
 }
 
@@ -991,17 +1244,11 @@ function renderHistoryList(threads = S.threads) {
 
   // 個別チャット（"個別:" で始まるスレッド）を除外
   const filteredThreads = threads.filter(t => {
-    // title が "個別:" で始まる場合は除外
-    if (t.title && t.title.startsWith('個別:')) {
-      return false;
-    }
-    // または #individual タグが含まれている場合も除外
+    if (t.title && t.title.startsWith('個別:')) return false;
     try {
       const tags = JSON.parse(t.tags || '[]');
       return !tags.includes('#individual');
-    } catch {
-      return true;
-    }
+    } catch { return true; }
   });
 
   if (!filteredThreads.length) {
@@ -1009,21 +1256,97 @@ function renderHistoryList(threads = S.threads) {
     return;
   }
 
-  list.innerHTML = filteredThreads.map(t => `
+  list.innerHTML = filteredThreads.map(t => {
+    const isExpanded = S.historyExpandedId === t.id;
+    const expandIcon = isExpanded ? '▼' : '▶';
+    const inlineMsgs = isExpanded && t._expandedMessages
+      ? `<div class="history-thread-messages">${_renderHistoryMessagesHtml(t._expandedMessages)}</div>
+         <div style="display:flex; gap:8px; padding:8px 0 4px 0">
+           <button onclick="continueThread('${t.id}')" style="flex:1; padding:6px 12px; background:var(--primary); color:var(--bg); border:none; border-radius:4px; font-size:12px; font-weight:600; cursor:pointer">✏️ 続きを書く</button>
+         </div>`
+      : (isExpanded ? `<div style="color:var(--text-dim); font-size:12px; padding:8px 0">読み込み中...</div>` : '');
+    return `
     <div style="background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:10px; margin-bottom:8px">
       <div style="display:flex; justify-content:space-between; align-items:start; gap:12px">
-        <div style="flex:1; cursor:pointer" onclick="loadThread('${t.id}')">
-          <div style="font-weight:600; color:var(--text); font-size:13px">${escapeHtml(t.title)}</div>
+        <div style="flex:1; cursor:pointer; min-width:0" onclick="expandHistoryThread('${t.id}')">
+          <div style="font-weight:600; color:var(--text); font-size:13px">${expandIcon} ${escapeHtml(t.title)}</div>
           <div style="font-size:11px; color:var(--text-dim); margin-top:4px">${new Date(t.created_at).toLocaleDateString('ja-JP')}</div>
-          <div class="thread-tags">${parseTags(t.tags).map(tag => `<span class="tag-badge" onclick="filterHistoryByTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</span>`).join('')}</div>
+          <div class="thread-tags">${parseTags(t.tags).map(tag => `<span class="tag-badge" onclick="event.stopPropagation(); filterHistoryByTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</span>`).join('')}</div>
         </div>
-        <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end">
-          <button onclick="editTags('${t.id}', \`${escapeHtml(t.tags || '[]')}\`)" class="tag-edit-btn" title="タグ編集" style="padding:4px 8px; background:var(--primary-glow); border:1px solid var(--primary); border-radius:4px; color:var(--primary); font-size:12px; cursor:pointer; white-space:nowrap">🏷 タグ編集</button>
+        <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end; flex-shrink:0">
+          <button onclick="editTags('${t.id}', \`${escapeHtml(t.tags || '[]')}\`)" class="tag-edit-btn" title="タグ編集" style="padding:4px 8px; background:var(--primary-glow); border:1px solid var(--primary); border-radius:4px; color:var(--primary); font-size:12px; cursor:pointer; white-space:nowrap">🏷 タグ</button>
           <button onclick="deleteThread('${t.id}')" style="padding:4px 8px; background:var(--ng); color:white; border:none; border-radius:4px; font-size:11px; cursor:pointer; white-space:nowrap">🗑 削除</button>
         </div>
       </div>
+      ${inlineMsgs}
     </div>
-  `).join('');
+  `;
+  }).join('');
+}
+
+function _renderHistoryMessagesHtml(messages) {
+  if (!messages || !messages.length) {
+    return '<div style="color:var(--text-dim); font-size:12px; padding:8px">メッセージがありません</div>';
+  }
+  return messages.map(msg => {
+    const isUser = msg.role === 'user';
+    const label = isUser ? 'あなた' : (msg.agent_role || 'アシスタント');
+    const content = isUser ? escapeHtml(msg.content || '') : renderMarkdown(msg.content || '');
+    return `
+      <div style="margin-bottom:6px; padding:8px 10px; background:${isUser ? 'var(--user-bg)' : 'var(--bot-bg)'}; border:1px solid ${isUser ? 'var(--user-border)' : 'var(--bot-border)'}; border-radius:6px; font-size:12px">
+        <div style="font-size:11px; font-weight:600; color:var(--text-dim); margin-bottom:4px">${escapeHtml(label)}</div>
+        <div class="${msg.role === 'assistant' ? 'md-content' : ''}" style="word-break:break-word">${content}</div>
+      </div>`;
+  }).join('');
+}
+
+function openThreadInHistory(threadId) {
+  showPage('history');
+  expandHistoryThread(threadId);
+}
+
+async function expandHistoryThread(threadId) {
+  // 同じスレッドを再クリック → 閉じる
+  if (S.historyExpandedId === threadId) {
+    S.historyExpandedId = null;
+    renderHistoryList();
+    return;
+  }
+  // 先に展開状態をセット（ローディング表示のため）
+  S.historyExpandedId = threadId;
+  renderHistoryList();
+
+  try {
+    const res = await fetch(`${S.apiBase}/threads/${threadId}/messages`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (!res.ok) throw new Error();
+    const data = await res.json();
+    const thread = S.threads.find(t => t.id === threadId);
+    if (thread) thread._expandedMessages = data.messages || [];
+  } catch (e) {
+    console.error('expandHistoryThread error:', e);
+  }
+  renderHistoryList();
+}
+
+async function continueThread(threadId) {
+  try {
+    const res = await fetch(`${S.apiBase}/threads/${threadId}/messages`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (!res.ok) throw new Error('メッセージロード失敗');
+    const data = await res.json();
+    const thread = S.threads.find(t => t.id === threadId);
+    S.currentThreadId = threadId;
+    S.currentThread = { id: threadId, title: thread?.title || '会話', messages: data.messages || [] };
+    S._continuing = true;
+    renderMessages();
+    showPage('dashboard');
+  } catch (e) {
+    console.error('continueThread error:', e);
+    alert('スレッドの読み込みに失敗しました');
+  }
 }
 
 async function deleteThread(threadId) {
@@ -1041,7 +1364,8 @@ async function deleteThread(threadId) {
 
 // ─── 機能 2: ロール別フィルタリング ─────────────────────────
 function applyRoleFilter() {
-  S.roleFilter = document.getElementById('role-filter').value;
+  const el = document.getElementById('role-filter');
+  S.roleFilter = el ? el.value : 'all';
   renderMessages();
 }
 
@@ -1347,6 +1671,16 @@ function showPage(page) {
   document.querySelectorAll('[data-page]').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll(`[data-page="${page}"]`).forEach(btn => btn.classList.add('active'));
 
+  // ダッシュボード: _continuing フラグがなければ新規状態にリセット
+  if (page === 'dashboard') {
+    if (!S._continuing) {
+      S.currentThread = null;
+      S.currentThreadId = null;
+      const msgs = document.getElementById('messages');
+      if (msgs) msgs.innerHTML = '<div class="msg system" style="text-align:center; padding:40px; color:var(--text-dim)">💬 新しい会話を始めてください</div>';
+    }
+    S._continuing = false;
+  }
   // 履歴ページを表示する時に一覧を更新
   if (page === 'history') {
     renderHistoryList();
@@ -1354,6 +1688,11 @@ function showPage(page) {
   // システム設定ページでフォールバックモードを読み込む
   if (page === 'system') {
     loadClaudeFallbackMode();
+  }
+  // メンテナンスページ: 初回表示時にログを自動ロード
+  if (page === 'maintenance') {
+    const logBox = document.getElementById('log-content');
+    if (logBox && logBox.textContent === 'ログを選択してください') loadLog();
   }
 }
 
@@ -1363,10 +1702,7 @@ function selectRole() {
   const selectedRoleName = S.models[S.currentRole] || (S.currentRole === 'auto' ? '🤖 自動ルーティング' : '?');
   console.log(`✨ Role selected: ${selectedRoleName}`);
 
-  // ロールカードのビジュアル更新
-  document.querySelectorAll('.role-card').forEach(card => {
-    card.classList.remove('processing');
-  });
+  document.querySelectorAll('.role-card').forEach(card => card.classList.remove('processing'));
 }
 
 // ─── ロール改善・体感速度改善: 処理インジケータ ──────────────────
@@ -1406,14 +1742,11 @@ function showProcessingIndicator(roleKey, startTime = null) {
 
   indicator.classList.remove('hidden');
 
-  // ロールカードをハイライト（キーが auto でない場合）
+  // ロールカードをハイライト（カードが存在する場合のみ）
   if (roleKey !== 'auto' && roleKey !== 'broadcast') {
-    const roleCards = document.querySelectorAll('.role-card');
-    roleCards.forEach(card => {
+    document.querySelectorAll('.role-card').forEach(card => {
       card.classList.remove('processing');
-      if (card.id === `role-${roleKey}`) {
-        card.classList.add('processing');
-      }
+      if (card.id === `role-${roleKey}`) card.classList.add('processing');
     });
   }
 }
@@ -1427,10 +1760,7 @@ function hideProcessingIndicator() {
     S.processingTimer = null;
   }
 
-  // ロールカードのハイライトを削除
-  document.querySelectorAll('.role-card').forEach(card => {
-    card.classList.remove('processing');
-  });
+  document.querySelectorAll('.role-card').forEach(card => card.classList.remove('processing'));
 }
 
 function toggleParallel() {
@@ -1481,17 +1811,28 @@ async function loadClaudeFallbackMode() {
 }
 
 async function switchLLMModel(model) {
+  const btn = event?.target;
+  const origText = btn?.textContent;
+  if (btn) { btn.disabled = true; btn.textContent = '切替中...'; }
   try {
     const res = await fetch(`${S.apiBase}/llm/switch/${model}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${S.token}` },
     });
-    if (res.ok) {
-      document.getElementById('active-model-display').textContent = model === 'gemma' ? 'Gemma4' : 'Nemotron';
-      alert('✅ LLM モデル切り替え完了');
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success !== false) {
+      const label = model === 'gemma' ? 'Gemma4 MoE' : 'Nemotron';
+      const display = document.getElementById('active-model-display');
+      if (display) display.textContent = label;
+      alert(`✅ ${label} に切り替え完了`);
+    } else {
+      const errMsg = data.error || data.message || `HTTP ${res.status}`;
+      alert(`❌ 切り替え失敗: ${errMsg}`);
     }
   } catch (e) {
     alert('❌ エラー: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = origText; }
   }
 }
 
@@ -1668,7 +2009,7 @@ function loadUISettings() {
   // ダークモード
   if (saved.darkMode) {
     document.body.classList.add('dark');
-    document.querySelector('[onclick="toggleTheme(this)"]')?.classList.add('active');
+    document.getElementById('dark-mode-toggle')?.classList.add('active');
   }
 
   // テーマカラー
@@ -1801,6 +2142,463 @@ function onPromptKey(e) {
     }
   }
 }
+
+// ── タイムトラベル (LangGraph Time Travel) ───────────────────────────────
+
+async function showCheckpoints() {
+  if (!S.currentThread) {
+    alert('会話を選択してください');
+    return;
+  }
+  const threadId = S.currentThread.id;
+  try {
+    const res = await fetch(`${S.apiBase}/threads/${threadId}/checkpoints`, {
+      headers: { 'Authorization': `Bearer ${S.token}` }
+    });
+    const data = await res.json();
+    if (data.error) { alert('チェックポイント取得失敗: ' + data.error); return; }
+    _renderCheckpointModal(data.checkpoints || []);
+  } catch (e) {
+    alert('エラー: ' + e.message);
+  }
+}
+
+function _renderCheckpointModal(checkpoints) {
+  const existing = document.getElementById('checkpoint-modal');
+  if (existing) existing.remove();
+
+  const rows = checkpoints.length === 0
+    ? '<p style="color:var(--text-dim); text-align:center; padding:24px">チェックポイントなし<br><small>PostgreSQL チェックポインターが必要です</small></p>'
+    : checkpoints.map((cp, i) => `
+      <div style="padding:10px; border-bottom:1px solid var(--border); display:flex; gap:12px; align-items:flex-start">
+        <div style="flex:1; min-width:0">
+          <div style="font-size:11px; color:var(--text-dim)">${cp.created_at || '不明'}</div>
+          <div style="font-size:12px; margin:4px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">
+            <strong style="color:var(--primary)">${escapeHtml(cp.handled_by || '?')}</strong>
+            ${cp.message ? ' — ' + escapeHtml(cp.message.slice(0, 60)) : ''}
+          </div>
+          ${cp.response ? `<div style="font-size:11px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${escapeHtml(cp.response.slice(0, 80))}</div>` : ''}
+        </div>
+        <button onclick="rewindThread('${escapeHtml(cp.checkpoint_id || '')}', \`${escapeHtml(cp.message || '')}\`)"
+          style="flex-shrink:0; padding:4px 10px; font-size:11px; background:var(--primary); color:#fff; border:none; border-radius:4px; cursor:pointer">
+          ここから再実行
+        </button>
+      </div>`
+    ).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'checkpoint-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.innerHTML = `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;width:min(600px,94vw);max-height:80vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px">
+        <h3 style="margin:0;font-size:14px">⏮ タイムトラベル — チェックポイント一覧</h3>
+        <button onclick="document.getElementById('checkpoint-modal').remove()"
+          style="margin-left:auto;background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:18px">✕</button>
+      </div>
+      <div style="overflow-y:auto;flex:1">${rows}</div>
+    </div>`;
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
+}
+
+async function rewindThread(checkpointId, originalMsg) {
+  if (!S.currentThread) return;
+  const modal = document.getElementById('checkpoint-modal');
+  if (modal) modal.remove();
+
+  const newMsg = prompt('再実行するメッセージ（空白で元のメッセージを使用）:', originalMsg);
+  if (newMsg === null) return;  // キャンセル
+
+  showProcessingIndicator('タイムトラベル中...', Date.now());
+  try {
+    const res = await fetch(`${S.apiBase}/threads/${S.currentThread.id}/rewind`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ checkpoint_id: checkpointId, new_message: newMsg || originalMsg }),
+    });
+    const data = await res.json();
+    hideProcessingIndicator();
+    if (data.error) { alert('巻き戻し失敗: ' + data.error); return; }
+
+    // 新スレッドとして結果を表示
+    const newThread = {
+      id: data.thread_id,
+      title: `⏮ 再実行: ${(newMsg || originalMsg).slice(0, 30)}`,
+      messages: [
+        { role: 'user', content: newMsg || originalMsg, agent_role: null },
+        { role: 'assistant', content: data.response, agent_role: data.handled_by },
+      ],
+    };
+    S.currentThread = newThread;
+    S.currentThreadId = newThread.id;
+    S.threads.unshift(newThread);
+    renderThreads();
+    renderMessages();
+    alert(`✅ 巻き戻し完了！新スレッド: ${data.thread_id}`);
+  } catch (e) {
+    hideProcessingIndicator();
+    alert('エラー: ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// メンテナンスページ
+// ═══════════════════════════════════════════════════════════════
+
+let _logRefreshTimer = null;
+let _pkgAllData = [];
+
+// ── タブ切り替え ─────────────────────────────────────────────
+function maintTab(btn, panel) {
+  document.querySelectorAll('.maint-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.maint-panel').forEach(p => p.style.display = 'none');
+  document.getElementById('maint-' + panel).style.display = 'block';
+  // 初回表示時に自動ロード
+  if (panel === 'logs' && document.getElementById('log-content').textContent === 'ログを選択してください') loadLog();
+  if (panel === 'sysinfo') loadSysInfo();
+  if (panel === 'services') loadServices();
+}
+
+// ── ログビューア ─────────────────────────────────────────────
+async function loadLog() {
+  const source = document.getElementById('log-source').value;
+  const lines  = document.getElementById('log-lines').value;
+  const dateEl = document.getElementById('log-audit-date');
+  const date   = dateEl.value || '';
+
+  // 監査ログは日付セレクト表示
+  if (source === 'audit') {
+    dateEl.style.display = '';
+    if (!dateEl.options.length) {
+      const r = await fetch(`${S.apiBase}/maintenance/audit-dates?token=${S.token}`);
+      const d = await r.json();
+      dateEl.innerHTML = d.dates.map(dt => `<option value="${dt}">${dt}</option>`).join('');
+    }
+  } else {
+    dateEl.style.display = 'none';
+    dateEl.innerHTML = '';
+  }
+
+  const box = document.getElementById('log-content');
+  box.textContent = '読み込み中...';
+  try {
+    const params = new URLSearchParams({ source, lines, token: S.token });
+    if (date) params.set('date', date);
+    const r = await fetch(`${S.apiBase}/maintenance/logs?${params}`);
+    const d = await r.json();
+    box.textContent = d.text || '(空)';
+    box.scrollTop = box.scrollHeight;
+    _colorizeLog(box);
+  } catch (e) {
+    box.textContent = 'エラー: ' + e.message;
+  }
+}
+
+function _colorizeLog(pre) {
+  const text = pre.textContent;
+  pre.innerHTML = text
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/(ERROR|エラー|CRITICAL|❌)/g, '<span class="log-error">$1</span>')
+    .replace(/(WARNING|WARN|⚠️)/g, '<span class="log-warn">$1</span>')
+    .replace(/(✅|完了|SUCCESS|INFO:.*Application startup complete)/g, '<span class="log-success">$1</span>');
+}
+
+function toggleLogAutoRefresh() {
+  const on = document.getElementById('log-autorefresh').checked;
+  if (_logRefreshTimer) { clearInterval(_logRefreshTimer); _logRefreshTimer = null; }
+  if (on) _logRefreshTimer = setInterval(loadLog, 5000);
+}
+
+// ── アップデート ─────────────────────────────────────────────
+let _updateSource = null;
+
+async function runUpdate(stage) {
+  const out = document.getElementById('update-output');
+  const ind = document.getElementById('update-stage-indicator');
+  const labels = { check: '① 変更確認', sandbox: '② サンドボックス検証', apply: '③ 本番適用' };
+
+  if (stage === 'apply') {
+    if (!confirm('本番環境にアップデートを適用します。サンドボックス検証は完了していますか？')) return;
+  }
+
+  if (_updateSource) { _updateSource.close(); _updateSource = null; }
+
+  out.textContent = '';
+  ind.textContent = `実行中: ${labels[stage]}...`;
+  ind.style.color = 'var(--primary)';
+
+  _updateSource = new EventSource(
+    `${S.apiBase}/maintenance/update/stream?stage=${stage}&token=${S.token}`
+  );
+
+  _updateSource.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.done) {
+        _updateSource.close(); _updateSource = null;
+        ind.textContent = `完了: ${labels[stage]}`;
+        ind.style.color = 'var(--ok)';
+        return;
+      }
+      const line = document.createElement('span');
+      line.textContent = d.text + '\n';
+      if (d.level === 'error')   line.style.color = '#ef5350';
+      else if (d.level === 'warn') line.style.color = '#ffa726';
+      else if (d.level === 'success') line.style.color = '#66bb6a';
+      out.appendChild(line);
+      out.scrollTop = out.scrollHeight;
+    } catch {}
+  };
+
+  _updateSource.onerror = () => {
+    ind.textContent = 'ストリーム切断';
+    ind.style.color = 'var(--ng)';
+    if (_updateSource) { _updateSource.close(); _updateSource = null; }
+  };
+}
+
+// ── パッケージ管理 ─────────────────────────────────────────
+async function loadPackages() {
+  const el = document.getElementById('packages-list');
+  el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px">読み込み中...</div>';
+  document.getElementById('packages-filter').style.display = '';
+  try {
+    const r = await fetch(`${S.apiBase}/maintenance/packages?token=${S.token}`);
+    const d = await r.json();
+    _pkgAllData = d.packages || [];
+    renderPkgTable(_pkgAllData, false);
+  } catch (e) {
+    el.textContent = 'エラー: ' + e.message;
+  }
+}
+
+async function loadOutdated() {
+  const el = document.getElementById('packages-list');
+  el.innerHTML = '<div style="color:var(--text-dim);font-size:12px;padding:8px">更新可能なパッケージを確認中（しばらくお待ちください）...</div>';
+  document.getElementById('packages-filter').style.display = 'none';
+  try {
+    const r = await fetch(`${S.apiBase}/maintenance/packages/outdated?token=${S.token}`);
+    const d = await r.json();
+    renderPkgTable(d.outdated || [], true);
+  } catch (e) {
+    el.textContent = 'エラー: ' + e.message;
+  }
+}
+
+function renderPkgTable(pkgs, isOutdated) {
+  const el = document.getElementById('packages-list');
+  if (!pkgs.length) { el.innerHTML = '<div style="padding:8px;font-size:13px;color:var(--text-dim)">（なし）</div>'; return; }
+  const cols = isOutdated
+    ? `<th>パッケージ</th><th>現在</th><th>最新</th><th>操作</th>`
+    : `<th>パッケージ</th><th>バージョン</th>`;
+  const rows = pkgs.map(p => isOutdated
+    ? `<tr>
+        <td>${p.name}</td>
+        <td>${p.version}</td>
+        <td class="pkg-outdated">${p.latest_version}</td>
+        <td><button class="pkg-upgrade-btn" onclick="upgradePackage('${p.name}',this)">更新</button></td>
+      </tr>`
+    : `<tr><td>${p.name}</td><td>${p.version}</td></tr>`
+  ).join('');
+  el.innerHTML = `<div style="font-size:12px;color:var(--text-dim);margin-bottom:6px">${pkgs.length}件</div>
+    <table class="pkg-table"><thead><tr>${cols}</tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function filterPackages() {
+  const q = document.getElementById('pkg-search').value.toLowerCase();
+  const filtered = _pkgAllData.filter(p => p.name.toLowerCase().includes(q));
+  renderPkgTable(filtered, false);
+}
+
+async function upgradePackage(pkg, btn) {
+  btn.disabled = true;
+  btn.textContent = '更新中...';
+  try {
+    const r = await fetch(`${S.apiBase}/maintenance/packages/upgrade?token=${S.token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${S.token}` },
+      body: JSON.stringify({ package: pkg }),
+    });
+    const d = await r.json();
+    btn.textContent = d.success ? '✅' : '❌';
+    btn.style.background = d.success ? 'var(--ok)' : 'var(--ng)';
+    if (!d.success) alert(`アップグレード失敗:\n${d.output.slice(0,300)}`);
+  } catch (e) {
+    btn.textContent = '❌'; alert('エラー: ' + e.message);
+  }
+}
+
+// ── サービス管理 ─────────────────────────────────────────────
+const _SERVICES = ['bushidan-console', 'jupyterlab', 'matrix-bot'];
+
+async function loadServices() {
+  const tbody = document.getElementById('services-tbody');
+  tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-dim);font-size:12px">読み込み中...</td></tr>';
+  try {
+    const r = await fetch(`${S.apiBase}/maintenance/system?token=${S.token}`);
+    const d = await r.json();
+    tbody.innerHTML = _SERVICES.map(svc => {
+      const st = (d.services || {})[svc] || 'unknown';
+      const badgeClass = st === 'active' ? 'active' : st === 'inactive' ? 'inactive' : 'unknown';
+      return `<tr>
+        <td>${svc}</td>
+        <td><span class="maint-badge ${badgeClass}">${st}</span></td>
+        <td style="display:flex;gap:4px">
+          <button onclick="serviceAction('${svc}','restart')" style="font-size:11px;padding:3px 8px">再起動</button>
+          <button onclick="serviceAction('${svc}','stop')" style="font-size:11px;padding:3px 8px;background:var(--ng)">停止</button>
+          <button onclick="serviceAction('${svc}','start')" style="font-size:11px;padding:3px 8px;background:var(--ok)">起動</button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="3">エラー: ${e.message}</td></tr>`;
+  }
+}
+
+async function serviceAction(service, action) {
+  if (action === 'stop' && !confirm(`${service} を停止しますか？`)) return;
+  const outEl = document.getElementById('service-output');
+  outEl.style.display = 'block';
+  outEl.textContent = `${service} を ${action} 中...`;
+  try {
+    const r = await fetch(`${S.apiBase}/maintenance/service?token=${S.token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${S.token}` },
+      body: JSON.stringify({ service, action }),
+    });
+    const d = await r.json();
+    outEl.textContent = (d.success ? '✅ 成功\n' : '⚠️ 結果:\n') + (d.output || '');
+    setTimeout(loadServices, 2000);
+  } catch (e) {
+    outEl.textContent = 'エラー: ' + e.message;
+  }
+}
+
+// ── システム情報 ─────────────────────────────────────────────
+async function loadSysInfo() {
+  const el = document.getElementById('sysinfo-content');
+  el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">読み込み中...</div>';
+  try {
+    const r = await fetch(`${S.apiBase}/maintenance/system?token=${S.token}`);
+    const d = await r.json();
+
+    const barColor = pct => pct < 60 ? '#66bb6a' : pct < 85 ? '#ffa726' : '#ef5350';
+    const fmtUptime = s => {
+      const h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+      return `${h}時間 ${m}分`;
+    };
+
+    el.innerHTML = `
+      <div class="sysinfo-grid">
+        <div class="sysinfo-card">
+          <div class="si-label">CPU</div>
+          <div class="si-value">${d.cpu_percent}%</div>
+          <div class="si-bar"><div class="si-bar-fill" style="width:${d.cpu_percent}%;background:${barColor(d.cpu_percent)}"></div></div>
+        </div>
+        <div class="sysinfo-card">
+          <div class="si-label">メモリ</div>
+          <div class="si-value">${d.mem_percent}%</div>
+          <div class="si-sub">${d.mem_used_gb} / ${d.mem_total_gb} GB</div>
+          <div class="si-bar"><div class="si-bar-fill" style="width:${d.mem_percent}%;background:${barColor(d.mem_percent)}"></div></div>
+        </div>
+        <div class="sysinfo-card">
+          <div class="si-label">ディスク</div>
+          <div class="si-value">${d.disk_percent}%</div>
+          <div class="si-sub">${d.disk_used_gb} / ${d.disk_total_gb} GB</div>
+          <div class="si-bar"><div class="si-bar-fill" style="width:${d.disk_percent}%;background:${barColor(d.disk_percent)}"></div></div>
+        </div>
+        <div class="sysinfo-card">
+          <div class="si-label">稼働時間</div>
+          <div class="si-value" style="font-size:16px">${fmtUptime(d.uptime_seconds)}</div>
+        </div>
+        <div class="sysinfo-card">
+          <div class="si-label">Git</div>
+          <div class="si-value" style="font-size:14px">${d.git_hash}</div>
+          <div class="si-sub">${d.git_branch}</div>
+        </div>
+        <div class="sysinfo-card">
+          <div class="si-label">Python</div>
+          <div class="si-value" style="font-size:16px">${d.python_version}</div>
+        </div>
+      </div>
+      <div class="settings-section" style="margin-top:0">
+        <div class="section-title">サービス状態</div>
+        ${Object.entries(d.services || {}).map(([k,v]) => `
+          <div class="settings-item">
+            <span class="settings-label" style="font-family:monospace">${k}</span>
+            <span class="maint-badge ${v==='active'?'active':v==='inactive'?'inactive':'unknown'}">${v}</span>
+          </div>`).join('')}
+      </div>`;
+  } catch (e) {
+    el.textContent = 'エラー: ' + e.message;
+  }
+}
+
+// ── キャッシュ状態 ──────────────────────────────────────────
+async function loadCacheStatus() {
+  const el = document.getElementById('cache-status-content');
+  el.style.display = 'block';
+  el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">キャッシュ状態を取得中...</div>';
+  try {
+    const r = await fetch(`${S.apiBase}/v18/cache/status`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    const d = await r.json();
+    if (d.error) { el.textContent = '⚠️ ' + d.error; return; }
+    el.innerHTML = `
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px">
+        <div style="font-weight:600;margin-bottom:8px">📦 キャッシュ状態</div>
+        ${Object.entries(d).map(([k,v]) =>
+          `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border-dim)">
+            <span style="color:var(--text-dim)">${k}</span>
+            <span style="font-family:monospace">${typeof v === 'object' ? JSON.stringify(v) : v}</span>
+          </div>`
+        ).join('')}
+      </div>`;
+  } catch (e) {
+    el.textContent = 'エラー: ' + e.message;
+  }
+}
+
+// ── スキル進化サイクル手動実行 ──────────────────────────────
+async function runEvolve() {
+  if (!confirm('スキル自動進化サイクルを手動実行しますか？（数秒〜数十秒かかります）')) return;
+  const btn = document.getElementById('evolve-btn');
+  const el  = document.getElementById('evolve-result');
+  btn.disabled = true;
+  btn.textContent = '🧠 実行中...';
+  el.style.display = 'block';
+  el.innerHTML = '<div style="color:var(--text-dim);font-size:12px">進化サイクルを実行中...</div>';
+  try {
+    const r = await fetch(`${S.apiBase}/v18/evolve`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    const d = await r.json();
+    if (d.error) {
+      el.innerHTML = `<div style="color:var(--ng)">❌ ${d.error}</div>`;
+    } else {
+      el.innerHTML = `
+        <div style="background:var(--surface2);border:1px solid var(--ok);border-radius:8px;padding:12px;font-size:12px">
+          <div style="font-weight:600;color:var(--ok);margin-bottom:8px">✅ スキル進化完了</div>
+          ${Object.entries(d).map(([k,v]) =>
+            `<div style="display:flex;justify-content:space-between;padding:2px 0">
+              <span style="color:var(--text-dim)">${k}</span>
+              <span style="font-family:monospace">${typeof v === 'object' ? JSON.stringify(v) : v}</span>
+            </div>`
+          ).join('')}
+        </div>`;
+    }
+  } catch (e) {
+    el.innerHTML = `<div style="color:var(--ng)">❌ エラー: ${e.message}</div>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🧠 スキル進化サイクル実行';
+  }
+}
+
 </script>
 
 </body>

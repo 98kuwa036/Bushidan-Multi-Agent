@@ -173,9 +173,9 @@ async def _query_kb_db(client, query: str, limit: int) -> list:
     if not client.kb_database_id:
         return []
 
-    # 主クエリ (先頭50文字) でタイトル検索
+    # 主クエリ (先頭50文字) でタイトル検索 (KB DBのプロパティ名は「タイトル」)
     filter_obj = {
-        "property": "Title",
+        "property": "タイトル",
         "title": {"contains": query[:50]},
     }
 
@@ -196,8 +196,8 @@ async def _query_kb_db(client, query: str, limit: int) -> list:
             try:
                 extra = await client.search_database(
                     client.kb_database_id,
-                    filter_obj={"property": "Title", "title": {"contains": word}},
-                    sorts=[{"property": "Date", "direction": "descending"}],
+                    filter_obj={"property": "タイトル", "title": {"contains": word}},
+                    sorts=[{"property": "作成日時", "direction": "descending"}],
                     limit=limit,
                 )
                 results = results + extra

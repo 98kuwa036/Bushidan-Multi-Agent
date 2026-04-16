@@ -1,7 +1,7 @@
 """
-武士団 Multi-Agent System v15 - LangGraph Router
+武士団 Multi-Agent System v18 - LangGraph Router
 
-10役職ルーティング + ノードタイムアウト + HITL + MCP ツール注入
+12役職ルーティング + ノードタイムアウト + HITL + MCP ツール注入
 
 StateGraph v15
   [START]
@@ -39,37 +39,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from core.state import BushidanState
 from utils.logger import get_logger
 
-# Matrix 通知チャンネルマッピング (role_key → channel)
-_MATRIX_CHANNEL: dict = {
-    "daigensui": "strategy",
-    "shogun":    "strategy",
-    "gunshi":    "strategy",
-    "sanbo":     "ops",
-    "gaiji":     "intel",
-    "uketuke":   "general",
-    "seppou":    "intel",
-    "kengyo":    "intel",
-    "yuhitsu":   "logs",
-    "onmitsu":   "ops",
-}
-
-
-async def _post_to_matrix(role_key: str, message: str, response: str) -> None:
-    """Matrix にルーティング結果を非同期投稿 (fire-and-forget)"""
-    try:
-        from utils.matrix_client import MatrixClient
-        channel = _MATRIX_CHANNEL.get(role_key, "general")
-        client = MatrixClient(role_key)
-        if not await client.connect():
-            return
-        # 長すぎる場合は末尾を省略
-        resp_preview = response[:300] + ("..." if len(response) > 300 else "")
-        text = f"📨 [{message[:60]}]\n{resp_preview}"
-        await client.send_to_channel(channel, text)
-        await client.close()
-    except Exception as e:
-        logger.debug("Matrix 投稿スキップ (%s): %s", role_key, e)
-
 logger = get_logger(__name__)
 
 
@@ -80,7 +49,7 @@ async def _refresh_notion_index_bg():
         n = await refresh_index()
         logger.info("📋 Notionインデックス初期構築: %d件", n)
     except Exception as e:
-        logger.debug("Notionインデックス初期構築スキップ: %s", e)
+        logger.warning("Notionインデックス初期構築スキップ: %s", e)
 
 
 async def _skill_observe(thread_id: str, message: str, handled_by: str, execution_time: float) -> None:
@@ -89,14 +58,26 @@ async def _skill_observe(thread_id: str, message: str, handled_by: str, executio
         from utils.skill_tracker import observe as _st_observe
         await _st_observe(thread_id, message, handled_by, execution_time)
     except Exception as e:
-        logger.debug("skill_observe スキップ: %s", e)
+        logger.error("skill_observe 失敗: %s", e)
+
+
+# ── バックグラウンドタスク管理 ─────────────────────────────────────────────
+# fire-and-forget タスクへの強参照を保持し GC による中断を防ぐ
+_bg_tasks: set = set()
+
+
+def _fire(coro, *, name: str = None) -> "asyncio.Task":
+    """バックグラウンドタスクを起動し、完了まで参照を保持する"""
+    t = asyncio.create_task(coro, name=name)
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+    return t
 
 
 # ── PostgreSQL 接続設定 ────────────────────────────────────────────────────
-POSTGRES_URL = os.environ.get(
-    "POSTGRES_URL",
-    "postgresql://postgres:kuwa1998@192.168.11.236/bushidan",
-)
+POSTGRES_URL = os.environ.get("POSTGRES_URL")
+if not POSTGRES_URL:
+    raise RuntimeError("環境変数 POSTGRES_URL が未設定です。.env を確認してください。")
 
 # ── ノード別タイムアウト (秒) ────────────────────────────────────────────────
 NODE_TIMEOUTS = {
@@ -230,7 +211,7 @@ class LangGraphRouter:
                 )
             checkpointer_type = type(self._checkpointer).__name__
             # Notion インデックスをバックグラウンドで初期構築
-            asyncio.create_task(_refresh_notion_index_bg(), name="notion_index_init")
+            _fire(_refresh_notion_index_bg(), name="notion_index_init")
             logger.info("✅ LangGraph Router v16 初期化完了 (%s)", checkpointer_type)
         except Exception as e:
             import traceback
@@ -562,7 +543,84 @@ class LangGraphRouter:
                                       "required_capabilities": ["japanese"], "user_goal": message[:80]},
             }
 
+        # ── ② Semantic Router (ローカル埋め込み、LLM 不使用) ──────────────
+        try:
+            from utils.semantic_router import SemanticRouter, CONFIDENT_THRESHOLD
+            sr = SemanticRouter.get()
+            if not sr.is_ready:
+                sr.initialize()
+            if sr.is_ready:
+                sem_route, sem_score = sr.route(message)
+                if sem_route and sem_score >= CONFIDENT_THRESHOLD:
+                    # ルート名 → forced_role のマッピング
+                    _ROUTE_TO_ROLE = {
+                        "groq_qa":       "seppou",
+                        "yuhitsu_jp":    "yuhitsu",
+                        "metsuke_proc":  "metsuke",
+                        "gunshi_haiku":  "gunshi",
+                        "gaiji_rag":     "gaiji",
+                        "sanbo_mcp":     "sanbo",
+                        "kengyo_vision": "kengyo",
+                        "onmitsu_local": "onmitsu",
+                        "shogun_plan":   "shogun",
+                    }
+                    sem_role = _ROUTE_TO_ROLE.get(sem_route)
+                    if sem_role:
+                        is_jp  = sem_role == "yuhitsu"
+                        is_qa  = sem_role == "seppou"
+                        is_conf = sem_role == "onmitsu"
+                        logger.info(
+                            "🧭 SemanticRouter ショートカット: %s (%.3f) → %s",
+                            sem_route, sem_score, sem_role,
+                        )
+                        return {
+                            "complexity": "simple" if is_qa else "medium",
+                            "is_multi_step": False, "is_action_task": False,
+                            "is_simple_qa": is_qa, "is_japanese_priority": is_jp,
+                            "is_confidential": is_conf,
+                            "attachments": [], "forced_role": forced or sem_role,
+                            "intent_structured": {
+                                "intent_type": "semantic",
+                                "domain": "general",
+                                "required_capabilities": [],
+                                "user_goal": message[:80],
+                                "sem_score": round(sem_score, 3),
+                            },
+                        }
+        except Exception as _sr_err:
+            logger.debug("SemanticRouter スキップ: %s", _sr_err)
+
         logger.info("🚪 [受付] 分析開始: '%s'...", message[:60])
+
+        # ── ③ 長大コンテキスト圧縮 (analyze_intent 段階で実施) ───────────
+        # check_followup の閾値(20)より早めに 12 往復超で圧縮することで
+        # 以降の全ノードへ渡すトークン量を削減する
+        _history_trimmed: Optional[list] = None
+        _summary_text: Optional[str] = None
+        history_now = state.get("conversation_history", [])
+        if len(history_now) > 12 and not state.get("context_summary"):
+            try:
+                from utils.client_registry import ClientRegistry
+                _sum_client = (
+                    ClientRegistry.get().get_client("metsuke")
+                    or ClientRegistry.get().get_client("seppou")
+                )
+                if _sum_client:
+                    _old = history_now[:-6]
+                    _joined = "\n".join(
+                        f"{m['role']}: {str(m.get('content',''))[:300]}"
+                        for m in _old
+                    )
+                    _summary_text = await _sum_client.generate(
+                        messages=[{"role": "user", "content":
+                            f"以下の会話を3〜5行の要点に圧縮してください:\n{_joined[:3000]}"}],
+                        system="会話要約アシスタント。箇条書きで簡潔に。",
+                        max_tokens=300,
+                    )
+                    _history_trimmed = history_now[-6:]
+                    logger.info("📝 [受付] 事前コンテキスト圧縮: %d→%d turns", len(history_now), 6)
+            except Exception as _ce:
+                logger.debug("受付コンテキスト圧縮スキップ: %s", _ce)
 
         # ── Gemini Flash-Lite による分析 ──────────────────────────────────
         try:
@@ -624,7 +682,7 @@ class LangGraphRouter:
                     logger.info("🚪 [受付] 分析完了: complexity=%s caps=%s goal='%s'",
                                 complexity, intent_structured["required_capabilities"],
                                 intent_structured["user_goal"][:40])
-                    return {
+                    _ret = {
                         "complexity": complexity,
                         "is_multi_step": is_multi,
                         "is_action_task": is_action,
@@ -635,6 +693,11 @@ class LangGraphRouter:
                         "forced_role": forced,
                         "intent_structured": intent_structured,
                     }
+                    if _summary_text:
+                        _ret["context_summary"] = _summary_text
+                    if _history_trimmed is not None:
+                        _ret["conversation_history"] = _history_trimmed
+                    return _ret
         except Exception as e:
             logger.warning("🚪 [受付] LLM分析失敗 → キーワードフォールバック: %s", e)
 
@@ -656,7 +719,7 @@ class LangGraphRouter:
         is_japanese     = any(kw in message for kw in ["日本語で書いて", "和訳", "添削", "翻訳", "ビジネスメール", "敬語で"])
         is_confidential = any(kw in content_lower for kw in ["機密", "秘密", "confidential", "オフライン", "社外秘"])
         logger.info("🚪 [受付] フォールバック分析: complexity=%s", complexity)
-        return {
+        _ret = {
             "complexity": complexity,
             "is_multi_step": is_multi,
             "is_action_task": is_action,
@@ -672,6 +735,11 @@ class LangGraphRouter:
                 "user_goal": message[:120],
             },
         }
+        if _summary_text:
+            _ret["context_summary"] = _summary_text
+        if _history_trimmed is not None:
+            _ret["conversation_history"] = _history_trimmed
+        return _ret
 
     # =========================================================================
     # ノード: notion_index — v16 ローカルインデックス検索
@@ -924,14 +992,7 @@ class LangGraphRouter:
                 {"role": "assistant", "content": result.response},
             ]
 
-            # Matrix に結果を非同期投稿 (エラーでも処理は止めない)
-            if result.response and not result.error:
-                asyncio.create_task(
-                    _post_to_matrix(role_key, state.get("message", ""), result.response),
-                    name=f"matrix_{node_name}",
-                )
-
-            return {
+            state_update = {
                 "response":       result.response,
                 "handled_by":     result.handled_by,
                 "agent_role":     result.agent_role,
@@ -943,6 +1004,14 @@ class LangGraphRouter:
                 "available_tools": state.get("available_tools", []),
                 "conversation_history": new_history,
             }
+            # HITL フィールドが設定されていれば状態に反映
+            if getattr(result, "awaiting_human_input", False):
+                state_update["awaiting_human_input"] = True
+                state_update["human_question"] = getattr(result, "human_question", "")
+                state_update["dialog_status"] = "waiting_for_human"
+                logger.info("🛑 HITL 中断: %s → '%s'", node_name,
+                            state_update["human_question"][:60])
+            return state_update
 
         _node.__name__ = f"exec_{node_name}"
         return _node
@@ -1419,12 +1488,6 @@ class LangGraphRouter:
             {"role": "assistant", "content": merged},
         ]
 
-        if merged:
-            asyncio.create_task(
-                _post_to_matrix("seppou", message, merged),
-                name="matrix_parallel_groq",
-            )
-
         return {
             "response":       merged,
             "handled_by":     "parallel_groq",
@@ -1555,13 +1618,13 @@ class LangGraphRouter:
             return {"notion_page_id": None}
         try:
             from integrations.notion.storage import save_task_result_bg
-            asyncio.create_task(
+            _fire(
                 save_task_result_bg(dict(state)),
                 name=f"notion_store_{state.get('thread_id', '')[:8]}",
             )
             return {"notion_page_id": "pending"}
         except Exception as e:
-            logger.debug("[notion_store] スキップ: %s", e)
+            logger.warning("[notion_store] スキップ: %s", e)
             return {"notion_page_id": None}
 
     # =========================================================================
@@ -1591,12 +1654,47 @@ class LangGraphRouter:
             and len(message) <= 200
         )
         if _can_cache:
-            _h = hashlib.md5(f"{message}|{thread_id}".encode()).hexdigest()
+            # 短文Q&A はスレッドをまたいでもキャッシュを共有する（thread_id除外）
+            # メッセージが事実・手順・定義の質問なら回答はスレッドに依存しないため
+            _h = hashlib.md5(message.encode()).hexdigest()
             _cache_key = _h
             _entry = self._RESP_CACHE.get(_h)
             if _entry and (time.time() - _entry[1]) < self._RESP_CACHE_TTL:
                 logger.debug("⚡ 応答キャッシュヒット: %s", message[:40])
                 return _entry[0]
+
+        # ── SemanticRouter 事前チェック (ainvoke 前、添付・強制ロールなし時のみ) ──
+        # CONFIDENT スコアで一致 → forced_role に注入 → _analyze_intent の
+        # forced_role ショートカット (line ~487) が Flash-Lite 呼び出しをスキップする
+        if not forced_role and not attachments:
+            try:
+                from utils.semantic_router import SemanticRouter, CONFIDENT_THRESHOLD
+                _sr = SemanticRouter.get()
+                if not _sr.is_ready:
+                    _sr.initialize()
+                if _sr.is_ready:
+                    _sem_route, _sem_score = _sr.route(message)
+                    if _sem_route and _sem_score >= CONFIDENT_THRESHOLD:
+                        _ROUTE_MAP = {
+                            "groq_qa":       "seppou",
+                            "yuhitsu_jp":    "yuhitsu",
+                            "metsuke_proc":  "metsuke",
+                            "gunshi_haiku":  "gunshi",
+                            "gaiji_rag":     "gaiji",
+                            "sanbo_mcp":     "sanbo",
+                            "kengyo_vision": "kengyo",
+                            "onmitsu_local": "onmitsu",
+                            "shogun_plan":   "shogun",
+                        }
+                        _sem_role = _ROUTE_MAP.get(_sem_route)
+                        if _sem_role:
+                            logger.info(
+                                "⚡ [SR事前] %s (%.3f) → forced_role=%s (Flash-Lite スキップ)",
+                                _sem_route, _sem_score, _sem_role,
+                            )
+                            forced_role = _sem_role
+            except Exception as _sr_pre_err:
+                logger.debug("SR事前チェックスキップ: %s", _sr_pre_err)
 
         initial: BushidanState = {
             "thread_id":   thread_id or "default",
@@ -1717,7 +1815,7 @@ class LangGraphRouter:
                 except Exception:
                     pass
             # スキルトラッカー (バックグラウンド — 応答には影響しない)
-            asyncio.create_task(
+            _fire(
                 _skill_observe(
                     thread_id=_tid_key,
                     message=message,
@@ -1839,15 +1937,19 @@ class LangGraphRouter:
         last_roadmap_step = -1
         # ── ストリーミングタイムアウト (秒): ゆったり設定、デフォルト 240 秒 ──
         stream_timeout = 240
+        # ── 最終レスポンス追跡 (token が来ないモデル用) ──
+        _final_response: Optional[str] = None
+        _final_handled_by: Optional[str] = None
+        _final_agent_role: Optional[str] = None
 
         try:
             async def _stream_with_timeout():
                 try:
-                    async for event in asyncio.wait_for(
-                        self._compiled.astream_events(initial, config=config, version="v2"),
-                        timeout=stream_timeout
-                    ):
-                        yield event
+                    async with asyncio.timeout(stream_timeout):
+                        async for event in self._compiled.astream_events(
+                            initial, config=config, version="v2"
+                        ):
+                            yield event
                 except asyncio.TimeoutError:
                     logger.error("⏱️ stream_message タイムアウト (%.1fs): thread=%s",
                                  stream_timeout, thread_id[:8])
@@ -1919,6 +2021,16 @@ class LangGraphRouter:
                         yield {"type": "route", "route": name}
                         route_sent = True
 
+                # ノード完了時に最終レスポンスを捕捉 (Gemma/Nemotron 等 token 非ストリーミングモデル用)
+                if event_type == "on_chain_end":
+                    output = event.get("data", {}).get("output") or {}
+                    if isinstance(output, dict):
+                        resp = output.get("response")
+                        if resp:
+                            _final_response = resp
+                            _final_handled_by = output.get("handled_by")
+                            _final_agent_role = output.get("agent_role")
+
                 # LLMトークンをストリーミング
                 if event_type == "on_chat_model_stream":
                     chunk = event.get("data", {}).get("chunk")
@@ -1939,7 +2051,13 @@ class LangGraphRouter:
             logger.error("stream_message 失敗: %s", e)
             yield {"type": "error", "message": str(e)}
         finally:
-            yield {"type": "done", "execution_time": time.time() - start}
+            yield {
+                "type": "done",
+                "execution_time": time.time() - start,
+                "response":    _final_response,
+                "handled_by":  _final_handled_by,
+                "agent_role":  _final_agent_role,
+            }
 
     async def resume(self, thread_id: str, human_response: str) -> dict:
         """

@@ -1,4 +1,4 @@
-"""roles/shogun.py — 将軍 (Claude Sonnet 4.6) ロール v15
+"""roles/shogun.py — 将軍 (Claude Sonnet 4.6) ロール v18
 
 役割: メインワーカー・高難度コーディング
 モデル: claude-sonnet-4-6 (Proプラン CLI 優先 → API フォールバック)

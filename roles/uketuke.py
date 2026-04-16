@@ -1,4 +1,4 @@
-"""roles/uketuke.py — 受付 (Gemini 3.1 Flash-Lite) ロール v15.1
+"""roles/uketuke.py — 受付 (Gemma4 MoE Local) ロール v18
 
 役割: ルーティング受付・軽量フォールバック応答
 モデル: Gemini 3.1 Flash-Lite Preview（高速・軽量・汎用）

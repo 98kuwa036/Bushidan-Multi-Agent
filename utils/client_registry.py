@@ -1,5 +1,5 @@
 """
-utils/client_registry.py — クライアントレジストリ v15
+utils/client_registry.py — クライアントレジストリ v18
 
 role_key → BaseLLMClient のキャッシュ付きシングルトン。
 各ロールが ClientRegistry.get().get_client(role_key) で取得する。
@@ -113,7 +113,7 @@ class _ClaudeAdapter(BaseLLMClient):
 class _Gemini3Adapter(BaseLLMClient):
     """Gemini3Client → BaseLLMClient（モデル指定可能）"""
 
-    def __init__(self, model: str = "gemini-2.0-flash"):
+    def __init__(self, model: str = "gemini-3-flash-preview"):
         from utils.gemini3_client import Gemini3Client
         api_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GOOGLE_API_KEY", ""))
         if not api_key or len(api_key) < 5:
@@ -182,13 +182,13 @@ _FACTORIES = {
     "metsuke":        lambda: _MistralAdapter("mistral-small-latest"),               # 低中難度: Mistral Small
     "seppou":         lambda: _GroqAdapter(),                                          # 高速Q&A: Llama 3.3
     "gunshi":         lambda: _CohereAdapter("command-a-03-2025"),                    # 汎用処理: Command A
-    "sanbo":          lambda: _Gemini3Adapter("gemini-3.1-flash-preview"),            # ツール実行: Gemini Flash
+    "sanbo":          lambda: _Gemini3Adapter("gemini-3-flash-preview"),              # ツール実行: Gemini Flash
     "shogun":         lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet
     "daigensui":      lambda: _ClaudeAdapter("claude-opus-4-6"),                      # 最終判断: Opus
     "kengyo":         lambda: _Gemini3Adapter("gemini-3.1-flash-image-preview"),      # 画像解析
     "yuhitsu":        lambda: _GemmaLocalAdapter(),                                   # 日本語処理: Gemma4 (統合)
     "onmitsu":        lambda: _NemotronAdapter(),                                     # 機密: Nemotron Local
-    "claude_fallback":lambda: _Gemini3Adapter("gemini-3.1-pro"),                     # Claude障害時: Gemini Pro
+    "claude_fallback":lambda: _Gemini3Adapter("gemini-3.1-pro-preview"),              # Claude障害時: Gemini Pro
 }
 
 

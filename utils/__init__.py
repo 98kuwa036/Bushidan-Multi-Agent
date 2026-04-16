@@ -1,3 +1,3 @@
 """
-Bushidan Multi-Agent System v15 - Utilities Package
+Bushidan Multi-Agent System v18 - Utilities Package
 """

@@ -142,7 +142,7 @@
 
 ### 📊 スキル自動進化
 - 会話履歴から繰り返しパターンを自動検出 → スキル候補生成（`utils/skill_tracker.py`）
-- 監査ログ（YAML）から実行効果を分析（`core/audit/audit_logger.py`）
+- 監査ログ（YAML）から実行効果を分析（`core/audit.py`）
 - `POST /api/v18/evolve` で手動トリガー
 
 ### ⚡ 高速筆耕パイプライン（3段構え）
@@ -181,20 +181,9 @@ Groq は筆耕パイプラインから分離し、斥候（seppou）役職専用
 ```
 Bushidan-Multi-Agent/
 ├── core/
-│   ├── langgraph_router.py     # LangGraph StateGraph + 全ルーティングロジック
+│   ├── langgraph_router.py     # LangGraph StateGraph + 全ルーティングロジック (~2100行)
 │   ├── system_orchestrator.py
-│   ├── state.py                # LangGraph 状態定義
-│   ├── mcp_sdk.py              # MCP SDK ツールレジストリ
-│   ├── audit/                  # 監査ログ処理
-│   │   └── audit_logger.py
-│   ├── processors/             # 処理パイプライン
-│   │   ├── fast_generation.py  # Gemini3→Cerebras→Haiku 3段筆耕
-│   │   ├── code_quality_loop.py
-│   │   ├── analyze_intent.py
-│   │   └── ...
-│   ├── models/                 # Pydantic モデル定義
-│   └── skill/
-│       └── skill_evolution.py  # スキル自動進化
+│   └── audit.py
 ├── roles/                      # 各役職の実装（11ファイル）
 │   ├── base.py                 # BaseRole・RoleResult（HITL フィールド含む）
 │   ├── daigensui.py            # 大元帥 (Claude Opus 4.6)
@@ -218,13 +207,14 @@ Bushidan-Multi-Agent/
 │       ├── index.html          # シングルページ Web UI
 │       └── style.css
 ├── integrations/
-│   └── notion/                 # Notion 統合（ローカルインデックス）
-├── config/                     # MCP 設定ファイル・各種 YAML
+│   ├── notion/                 # Notion 統合（ローカルインデックス）
+│   └── mcp/                    # MCP SDK ツールレジストリ
 ├── tests/
 │   ├── unit/                   # ユニットテスト（auth 等）
 │   └── performance/
 ├── notebooks/                  # JupyterLab 分析ノートブック
-└── audit/                      # YAML 監査ログ格納
+├── audit/                      # YAML 監査ログ格納
+└── skills/                     # 承認済みスキル格納
 ```
 
 ---
@@ -247,7 +237,7 @@ Bushidan-Multi-Agent/
 | **DB** | PostgreSQL 17 + psycopg3 |
 | **Web フレームワーク** | FastAPI + uvicorn |
 | **認証** | bcrypt 5.x + secrets |
-| **LLM クライアント** | anthropic, google-genai, groq, cohere, mistralai, cerebras-cloud-sdk, aiohttp |
+| **LLM クライアント** | anthropic, google-generativeai, groq, cohere, mistralai, cerebras-cloud-sdk, aiohttp |
 | **Web UI** | Vanilla JS + marked.js + highlight.js + DOMPurify |
 | **通信プロトコル** | WebSocket（チャット）、SSE（メンテナンス更新）、REST |
 | **監視** | Prometheus + Grafana (pct100:9090/3000) |

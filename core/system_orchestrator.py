@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v15 - System Orchestrator (簡素化)
+Bushidan Multi-Agent System v18 - System Orchestrator (簡素化)
 
 MCP サーバー初期化 / LangGraph Router 初期化 / ヘルスチェック / process_task 委譲
 
@@ -41,7 +41,6 @@ class SystemConfig:
     mistral_api_key: Optional[str] = None
     xai_api_key: Optional[str] = None
 
-    discord_token: Optional[str] = None
     notion_token: Optional[str] = None
 
     llamacpp_endpoint: str = "http://127.0.0.1:8080"

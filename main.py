@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Bushidan Multi-Agent System v15 - Main Entry Point
+Bushidan Multi-Agent System v18 - Main Entry Point
 
-武士団マルチエージェントシステム v15
-10役職体制 + LangGraph + MCP SDK + HITL + 分散Claude処理
+武士団マルチエージェントシステム v18
+12役職体制 + LangGraph + MCP SDK + HITL + 独自 Web UI
 """
 
 import asyncio
@@ -13,7 +13,7 @@ from utils.config import load_config
 from utils.logger import setup_logger
 
 
-VERSION = "15"
+VERSION = "18"
 
 
 def print_banner() -> None:
@@ -60,33 +60,12 @@ async def main() -> None:
 
         # Claude API Server への接続確認
         import os
-        claude_api_server = os.environ.get("CLAUDE_API_SERVER_URL", "http://192.168.11.237:8070")
-        logger.info("Claude API Server: %s", claude_api_server)
+        claude_api_server = os.environ.get("CLAUDE_API_SERVER_URL")
+        logger.info("Claude API Server: %s", claude_api_server or "(未設定)")
 
         from core.system_orchestrator import SystemOrchestrator
         orchestrator = SystemOrchestrator(config)
         await orchestrator.initialize()
-
-        # ── RabbitMQ メッセージバス起動 ──────────────────────────────
-        try:
-            from utils.rabbitmq_client import RabbitMQBus
-            bus = RabbitMQBus.get()
-            if await bus.connect():
-                logger.info("✅ RabbitMQ バス接続完了")
-            else:
-                logger.warning("⚠️  RabbitMQ 接続失敗 — バス機能は無効")
-        except Exception as e:
-            logger.warning("⚠️  RabbitMQ スキップ: %s", e)
-
-        # ── Matrix Bot 起動 ───────────────────────────────────────────
-        try:
-            from interfaces.matrix_bot import MatrixBot
-            matrix_bot = MatrixBot()
-            bot_task = asyncio.create_task(matrix_bot.start(), name="matrix_bot")
-            background_tasks.append(bot_task)
-            logger.info("✅ Matrix bot タスク起動")
-        except Exception as e:
-            logger.warning("⚠️  Matrix bot スキップ: %s", e)
 
         # ── DelegationWorker 起動 ─────────────────────────────────────
         try:
@@ -103,7 +82,7 @@ async def main() -> None:
         logger.info("v%s Ready for commands", VERSION)
         logger.info("=" * 60)
         logger.info("Claude処理チェーン:")
-        logger.info("  1. リモート Claude API Server (192.168.11.237:8070)")
+        logger.info("  1. リモート Claude API Server (%s)", claude_api_server or "未設定")
         logger.info("  2. Claude Pro CLI (優先)")
         logger.info("  3. Anthropic API (フォールバック)")
         logger.info("=" * 60)
@@ -124,11 +103,6 @@ async def main() -> None:
                 await task
             except asyncio.CancelledError:
                 pass
-        try:
-            from utils.rabbitmq_client import RabbitMQBus
-            await RabbitMQBus.get().close()
-        except Exception:
-            pass
         if orchestrator:
             await orchestrator.shutdown()
         logger.info("Bushidan v%s shutdown complete", VERSION)

@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v15 - Gemini 3.1 Flash Client
+Bushidan Multi-Agent System v18 - Gemini 3.1 Flash Client
 
 Latest Gemini 3 Flash with Pro-level intelligence at Flash speed.
 
@@ -55,7 +55,7 @@ class Gemini3Client:
     - Tactical coordination for complex scenarios
     """
 
-    def __init__(self, api_key: str, model: str = "gemini-3-flash-preview"):
+    def __init__(self, api_key: str, model: str = "gemini-3.1-flash-lite-preview"):
         self.api_key = api_key
         self.model = model
         self.base_url = "https://generativelanguage.googleapis.com/v1beta"
@@ -255,9 +255,19 @@ class Gemini3Client:
                 # Extract response text
                 if "candidates" not in result or len(result["candidates"]) == 0:
                     raise Exception(f"No candidates in response: {result}")
-                
+
                 candidate = result["candidates"][0]
-                response_text = candidate["content"]["parts"][0]["text"]
+
+                # Safety block or empty content → finishReason は SAFETY など
+                finish_reason = candidate.get("finishReason", "")
+                content = candidate.get("content", {})
+                parts = content.get("parts", [])
+                if not parts or "text" not in parts[0]:
+                    raise Exception(
+                        f"Gemini response blocked or empty "
+                        f"(finishReason={finish_reason}): {candidate}"
+                    )
+                response_text = parts[0]["text"]
                 
                 # Extract token counts
                 usage = result.get("usageMetadata", {})
@@ -439,16 +449,16 @@ class Gemini3Client:
     async def health_check(self) -> bool:
         """
         Check if Gemini 3.0 Flash API is available
-        
+
         Returns:
             True if healthy, False otherwise
         """
-        
+
         try:
-            await self.generate(prompt="Health check", max_output_tokens=10)
+            await self.generate(prompt="Hi", max_output_tokens=64)
             logger.info("✅ Gemini 3 health check passed")
             return True
-            
+
         except Exception as e:
             logger.warning(f"⚠️ Gemini 3 health check failed: {e}")
             return False

@@ -29,9 +29,9 @@ import urllib.error
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -70,7 +70,7 @@ load_dotenv()
 
 logger = get_logger(__name__)
 
-app = FastAPI(title="武士団コンソール", version="15")
+app = FastAPI(title="武士団コンソール", version="18")
 
 # CORS対応（ローカルLLMサーバーのプロキシ用）
 app.add_middleware(
@@ -91,6 +91,18 @@ if os.path.isdir(_STATIC_DIR):
 POSTGRES_URL = os.environ.get("POSTGRES_URL", "")
 if not POSTGRES_URL:
     raise RuntimeError("POSTGRES_URL が未設定です。.env を確認してください。")
+
+# ── バックグラウンドタスク管理 ─────────────────────────────────────────────
+_bg_tasks: set = set()
+
+
+def _fire(coro, *, name: str = None) -> "asyncio.Task":
+    """fire-and-forget タスクを起動し GC による中断を防ぐ"""
+    t = asyncio.create_task(coro, name=name)
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+    return t
+
 
 # ── ロール有効/無効管理 ───────────────────────────────────────────────────
 _DISABLED_ROLES: set = set()  # 無効化されたロールキーのセット（メモリ管理）
@@ -195,7 +207,10 @@ async def startup_init_db_and_switch():
 
     # Phase 2: LLM サーバー Gemma4 に切り替え
     try:
-        llm_url = os.environ.get("LOCAL_LLM_URL", "http://192.168.11.239:8082")
+        llm_url = os.environ.get("LOCAL_LLM_URL")
+        if not llm_url:
+            logger.warning("LOCAL_LLM_URL 未設定: LLM 切り替えスキップ")
+            return
 
         # 3回リトライ
         for attempt in range(3):
@@ -377,13 +392,14 @@ async def set_claude_fallback(req: FallbackModeRequest):
 
 
 @app.post("/api/resume")
-async def resume(req: ResumeRequest):
+async def resume(req: ResumeRequest, token: str = ""):
     """
     HITL Go サイン — human_interrupt で停止中のグラフを再開する。
 
     Request:
       { "thread_id": "abc12345", "response": "GoサインまたはYes/No/テキスト" }
     """
+    _check_auth(token)
     router = await _get_router()
     result = await router.resume(
         thread_id=req.thread_id,
@@ -423,7 +439,7 @@ async def llm_test(req: LLMTestRequest):
     """ローカルLLMサーバーのプロキシエンドポイント（CORS対応） v16"""
     try:
         import os
-        llm_url = os.environ.get("LOCAL_LLM_URL", "http://192.168.11.239:8082")
+        llm_url = os.environ.get("LOCAL_LLM_URL")
         endpoint = req.endpoint or "/generate/gemma"
         full_url = f"{llm_url}{endpoint}"
 
@@ -456,7 +472,7 @@ async def llm_switch(model: str):
     """ローカルLLMサーバーのモデル切り替え (Gemma4 ↔ Nemotron) v16"""
     try:
         import os
-        llm_url = os.environ.get("LOCAL_LLM_URL", "http://192.168.11.239:8082")
+        llm_url = os.environ.get("LOCAL_LLM_URL")
 
         # モデル検証
         if model not in ["gemma", "nemotron"]:
@@ -474,9 +490,19 @@ async def llm_switch(model: str):
         )
 
         try:
-            with urllib.request.urlopen(http_req, timeout=30) as response:
+            with urllib.request.urlopen(http_req, timeout=60) as response:
                 result = json.loads(response.read().decode('utf-8'))
                 logger.info(f"✅ LLM model switched to: {model}")
+                # local_model_manager の内部状態も同期する
+                # (WebUI直接スイッチ後にチャットしても状態不整合が起きないように)
+                if result.get("success"):
+                    try:
+                        from utils.local_model_manager import LocalModelManager
+                        mgr = LocalModelManager.get()
+                        mgr._active_model = model
+                        logger.info(f"✅ LocalModelManager._active_model synced to: {model}")
+                    except Exception as sync_err:
+                        logger.warning(f"LocalModelManager sync failed (non-fatal): {sync_err}")
                 return result
         except urllib.error.HTTPError as e:
             error_data = json.loads(e.read().decode('utf-8')) if e.headers.get('Content-Type', '').startswith('application/json') else {}
@@ -504,7 +530,7 @@ async def health():
     registry = ClientRegistry.get()
     result: dict = {
         "status": "ok",
-        "version": "15",
+        "version": "18",
         "roles": registry.available_roles,
     }
     # PostgreSQL 接続状態
@@ -522,8 +548,9 @@ async def health():
             "lock_holder":  llm_status.get("lock_holder", ""),
             "lock_seconds": llm_status.get("lock_seconds", 0),
         }
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("local_llm status 取得失敗: %s", e)
+        result["local_llm"] = {"active_model": "unknown", "lock_held": False}
     return result
 
 
@@ -723,6 +750,115 @@ async def save_message(thread_id: str, msg: MessageRequest):
                 return {"status": "saved", "thread_id": thread_id}
     except Exception as e:
         logger.error(f"save_message error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+class RewindRequest(BaseModel):
+    checkpoint_id: str
+    new_message: Optional[str] = None
+    new_role: Optional[str] = None
+
+
+@app.get("/api/threads/{thread_id}/checkpoints")
+async def get_checkpoints(thread_id: str):
+    """LangGraph チェックポイント履歴を返す（タイムトラベル用）"""
+    try:
+        router = await _get_router()
+        checkpointer = getattr(router, "_checkpointer", None)
+        if checkpointer is None:
+            return JSONResponse({"error": "Checkpointer not available"}, status_code=503)
+
+        config = {"configurable": {"thread_id": thread_id}}
+        history = []
+        async for state in router._compiled.aget_state_history(config):
+            ts = state.created_at if hasattr(state, "created_at") else None
+            checkpoint_id = None
+            if state.config and "configurable" in state.config:
+                checkpoint_id = state.config["configurable"].get("checkpoint_id")
+            vals = state.values or {}
+            history.append({
+                "checkpoint_id": checkpoint_id,
+                "created_at": str(ts) if ts else None,
+                "message": vals.get("message", ""),
+                "response": vals.get("response", ""),
+                "handled_by": vals.get("handled_by", ""),
+                "agent_role": vals.get("agent_role", ""),
+            })
+        return {"thread_id": thread_id, "checkpoints": history}
+    except Exception as e:
+        logger.error(f"get_checkpoints error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/threads/{thread_id}/rewind")
+async def rewind_thread(thread_id: str, req: RewindRequest):
+    """指定チェックポイントに巻き戻して再実行（タイムトラベル）"""
+    try:
+        router = await _get_router()
+        if router._compiled is None:
+            return JSONResponse({"error": "Router not initialized"}, status_code=503)
+
+        # チェックポイントを指定して状態を復元
+        config = {
+            "configurable": {
+                "thread_id": thread_id,
+                "checkpoint_id": req.checkpoint_id,
+            }
+        }
+        state = await router._compiled.aget_state(config)
+        if state is None:
+            return JSONResponse({"error": "Checkpoint not found"}, status_code=404)
+
+        # 復元した状態から再実行するメッセージを決定
+        rerun_message = req.new_message or state.values.get("message", "")
+        rerun_role = req.new_role or state.values.get("agent_role", "auto")
+
+        # 新しいスレッドIDで再実行（元スレッドは保持）
+        new_thread_id = f"{thread_id}_rw_{req.checkpoint_id[:8]}"
+        new_config = {"configurable": {"thread_id": new_thread_id}}
+
+        result_response = ""
+        result_handled_by = ""
+        async for event in router._compiled.astream_events(
+            {"message": rerun_message, "forced_role": rerun_role if rerun_role != "auto" else None},
+            config=new_config,
+            version="v2",
+        ):
+            if event.get("event") == "on_chain_end":
+                output = event.get("data", {}).get("output") or {}
+                if isinstance(output, dict) and output.get("response"):
+                    result_response = output["response"]
+                    result_handled_by = output.get("handled_by", "")
+
+        return {
+            "thread_id": new_thread_id,
+            "original_thread_id": thread_id,
+            "checkpoint_id": req.checkpoint_id,
+            "response": result_response,
+            "handled_by": result_handled_by,
+        }
+    except Exception as e:
+        logger.error(f"rewind_thread error: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+class SandboxRequest(BaseModel):
+    code: str
+    language: str = "python"
+    timeout: float = 10.0
+
+
+@app.post("/api/sandbox/run")
+async def sandbox_run(req: SandboxRequest):
+    """Python コードをサンドボックスで安全に実行"""
+    try:
+        from utils.code_sandbox import run_code
+        if req.timeout > 30:
+            req.timeout = 30.0
+        result = await run_code(req.code, timeout=req.timeout, language=req.language)
+        return result
+    except Exception as e:
+        logger.error(f"sandbox_run error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
@@ -1197,7 +1333,7 @@ async def v2_chat(req: V2ChatRequest):
     final_agent_role = result.get("agent_role", "")
 
     # v18 監査ログ書き込み（非同期・ノンブロッキング）
-    asyncio.create_task(
+    _fire(
         _write_v18_audit(
             thread_id=thread_id,
             user_input=req.message,
@@ -1211,7 +1347,8 @@ async def v2_chat(req: V2ChatRequest):
             selected_role=suggested_role,
             notion_score=notion_score,
             karasu_results=karasu_results,
-        )
+        ),
+        name="audit_write",
     )
 
     return V2ChatResponse(
@@ -1231,8 +1368,9 @@ async def v2_chat(req: V2ChatRequest):
 
 
 @app.get("/api/v18/cache/status")
-async def v18_cache_status():
+async def v18_cache_status(token: str = ""):
     """v18 キャッシュバックエンドのステータス"""
+    _check_auth(token)
     try:
         from utils.cache_manager import CacheManager
         return await CacheManager.instance().get_status()
@@ -1241,8 +1379,9 @@ async def v18_cache_status():
 
 
 @app.post("/api/v18/evolve")
-async def v18_evolve_skills(days: int = 7):
+async def v18_evolve_skills(days: int = 7, token: str = ""):
     """スキル自動進化サイクルを手動実行"""
+    _check_auth(token)
     try:
         from core.skill import evolve_skills_from_audit
         result = await evolve_skills_from_audit(days=days)
@@ -1320,3 +1459,117 @@ async def v2_pipeline_analyze(req: V2ChatRequest):
     except Exception as e:
         logger.error("v2 pipeline analyze error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ═══════════════════════════════════════════════════════════════
+# メンテナンス API
+# ═══════════════════════════════════════════════════════════════
+
+class ServiceActionRequest(BaseModel):
+    service: str
+    action:  str  # start / stop / restart / status
+
+class PackageUpgradeRequest(BaseModel):
+    package: str
+
+
+@app.get("/api/maintenance/logs")
+async def maintenance_logs(
+    source: str = "console",
+    lines: int = 300,
+    date: str = "",
+    token: str = "",
+):
+    """ログ取得 (source: console / audit / maintenance / journal-{service})"""
+    _check_auth(token)
+    from console.maintenance import (
+        get_log_console, get_log_maintenance, get_audit_log, get_log_journal,
+    )
+    if source == "console":
+        text = get_log_console(lines)
+    elif source == "audit":
+        text = get_audit_log(date or None)
+    elif source == "maintenance":
+        text = get_log_maintenance(lines)
+    elif source.startswith("journal-"):
+        text = get_log_journal(source[len("journal-"):], lines)
+    else:
+        raise HTTPException(status_code=400, detail=f"不明なソース: {source}")
+    return JSONResponse({"text": text, "source": source})
+
+
+@app.get("/api/maintenance/audit-dates")
+async def maintenance_audit_dates(token: str = ""):
+    """監査ログが存在する日付一覧"""
+    _check_auth(token)
+    from console.maintenance import get_audit_dates
+    return JSONResponse({"dates": get_audit_dates()})
+
+
+@app.get("/api/maintenance/system")
+async def maintenance_system(token: str = ""):
+    """システム情報 (CPU・メモリ・ディスク・サービス・git)"""
+    _check_auth(token)
+    from console.maintenance import get_system_info
+    return JSONResponse(get_system_info())
+
+
+@app.get("/api/maintenance/packages")
+async def maintenance_packages(token: str = ""):
+    """インストール済みパッケージ一覧"""
+    _check_auth(token)
+    from console.maintenance import get_packages
+    return JSONResponse({"packages": get_packages()})
+
+
+@app.get("/api/maintenance/packages/outdated")
+async def maintenance_packages_outdated(token: str = ""):
+    """更新可能なパッケージ一覧 (時間がかかる場合あり)"""
+    _check_auth(token)
+    from console.maintenance import get_outdated_packages
+    pkgs = await get_outdated_packages()
+    return JSONResponse({"outdated": pkgs})
+
+
+@app.post("/api/maintenance/packages/upgrade")
+async def maintenance_package_upgrade(req: PackageUpgradeRequest, token: str = ""):
+    """単一パッケージをアップグレード"""
+    _check_auth(token)
+    from console.maintenance import upgrade_package
+    result = await upgrade_package(req.package)
+    return JSONResponse(result)
+
+
+@app.get("/api/maintenance/update/stream")
+async def maintenance_update_stream(stage: str = "check", token: str = ""):
+    """
+    アップデートをストリーミング実行 (SSE text/event-stream)
+    stage: check / sandbox / apply
+    """
+    _check_auth(token)
+    if stage not in ("check", "sandbox", "apply"):
+        raise HTTPException(status_code=400, detail="stage は check / sandbox / apply のいずれか")
+    from console.maintenance import stream_update
+
+    async def _gen():
+        async for chunk in stream_update(stage):
+            yield chunk
+        yield "data: {\"done\": true}\n\n"
+
+    return StreamingResponse(
+        _gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control":   "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/api/maintenance/service")
+async def maintenance_service(req: ServiceActionRequest, token: str = ""):
+    """サービス管理 (start / stop / restart / status)"""
+    _check_auth(token)
+    from console.maintenance import service_action
+    result = await service_action(req.service, req.action)
+    return JSONResponse(result)

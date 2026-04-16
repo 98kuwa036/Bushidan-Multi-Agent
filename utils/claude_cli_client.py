@@ -246,15 +246,24 @@ async def _call_anthropic_api(
         "max_tokens": max_tokens,
         "messages": messages,
     }
+    # Prompt Caching: システムプロンプトを ephemeral キャッシュ対象に設定
+    # プレフィックスが同一であれば入力トークンコストが最大 90% 削減される
     if system:
-        kwargs["system"] = system
-
-    # v16: thinking mode disabled for speed optimization (langgraph bridge use)
-    # kwargs["thinking"] = {"type": "disabled"}  # If supported by API version
+        kwargs["system"] = [
+            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+        ]
 
     try:
         response = await client.messages.create(**kwargs)
-        logger.info("✅ Anthropic API 使用 (有料, model=%s)", model)
+        usage = getattr(response, "usage", None)
+        cache_hit = getattr(usage, "cache_read_input_tokens", 0) if usage else 0
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) if usage else 0
+        if cache_hit:
+            logger.info("✅ Anthropic API (model=%s) キャッシュヒット %d tokens", model, cache_hit)
+        elif cache_write:
+            logger.info("✅ Anthropic API (model=%s) キャッシュ書き込み %d tokens", model, cache_write)
+        else:
+            logger.info("✅ Anthropic API 使用 (model=%s)", model)
         return response.content[0].text
     except anthropic.BadRequestError as e:
         if "credit balance" in str(e).lower() or "too low" in str(e).lower():
@@ -280,15 +289,23 @@ async def _call_anthropic_api_with_messages(
 
     client = anthropic.AsyncAnthropic(api_key=api_key)
     kwargs: dict = {"model": model, "max_tokens": max_tokens, "messages": messages}
+    # Prompt Caching: システムプロンプトを ephemeral キャッシュ対象に設定
     if system:
-        kwargs["system"] = system
-
-    # v16: thinking mode disabled for speed optimization (langgraph bridge use)
-    # kwargs["thinking"] = {"type": "disabled"}  # If supported by API version
+        kwargs["system"] = [
+            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+        ]
 
     try:
         response = await client.messages.create(**kwargs)
-        logger.info("✅ Anthropic API 使用 (会話履歴 %d件, model=%s)", len(messages), model)
+        usage = getattr(response, "usage", None)
+        cache_hit = getattr(usage, "cache_read_input_tokens", 0) if usage else 0
+        cache_write = getattr(usage, "cache_creation_input_tokens", 0) if usage else 0
+        if cache_hit:
+            logger.info("✅ Anthropic API (model=%s, %d件) キャッシュヒット %d tokens",
+                        model, len(messages), cache_hit)
+        else:
+            logger.info("✅ Anthropic API 使用 (会話履歴 %d件, model=%s, cache_write=%d)",
+                        len(messages), model, cache_write)
         return response.content[0].text
     except anthropic.BadRequestError as e:
         if "credit balance" in str(e).lower() or "too low" in str(e).lower():
@@ -312,7 +329,7 @@ async def _call_gemini_fallback(
         return None
     try:
         from utils.gemini3_client import Gemini3Client
-        client = Gemini3Client(api_key=api_key, model="gemini-3.1-pro")
+        client = Gemini3Client(api_key=api_key, model="gemini-3.1-pro-preview")
         all_msgs = ([{"role": "system", "content": system}] if system else []) + list(messages)
         result = await client.generate(messages=all_msgs, max_output_tokens=max_tokens)
         logger.info("✅ Gemini 3.1 Pro フォールバック成功 (Claudeインシデント対応)")

@@ -1,4 +1,4 @@
-"""roles/kengyo.py — 検校 (Gemini 3.1 Flash Image) ロール v15.1
+"""roles/kengyo.py — 検校 (Gemini 3.1 Flash Image) ロール v18
 
 役割: 画像解析・マルチモーダル処理
 モデル: Gemini 3.1 Flash Image Preview

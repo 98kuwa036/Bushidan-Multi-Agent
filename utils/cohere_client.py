@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v15 - Cohere Client
+Bushidan Multi-Agent System v18 - Cohere Client
 
 外事 (Gaiji): Command A 03-2025 - 外部ツール・RAG・外部情報収集
 

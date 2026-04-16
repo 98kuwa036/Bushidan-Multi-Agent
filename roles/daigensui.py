@@ -1,4 +1,4 @@
-"""roles/daigensui.py — 大元帥 (Claude Opus 4.6) ロール v15
+"""roles/daigensui.py — 大元帥 (Claude Opus 4.6) ロール v18
 
 役割: 最終エスカレーション・最高難度判断
 モデル: claude-opus-4-6 (Proプラン CLI 優先 → API フォールバック)

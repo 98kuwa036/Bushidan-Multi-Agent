@@ -24,7 +24,7 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
-LOCAL_LLM_BASE_URL  = os.environ.get("LOCAL_LLM_URL",     "http://192.168.11.239:8082")
+LOCAL_LLM_BASE_URL  = os.environ.get("LOCAL_LLM_URL",     "http://192.168.11.239:8082")  # .env: LOCAL_LLM_URL
 LOCAL_LLM_TIMEOUT   = int(os.environ.get("LOCAL_LLM_TIMEOUT",  "180"))  # 推論タイムアウト
 _SWITCH_TIMEOUT     = 60    # モデル切り替えタイムアウト (秒)
 _LOCK_WAIT_TIMEOUT  = 180   # ロック取得タイムアウト (秒)
@@ -52,6 +52,7 @@ class LocalModelManager:
         self._active_model  = "gemma"   # 起動時はサーバーの初期状態に合わせる
         self._lock_holder   = ""        # デバッグ用
         self._lock_since    = 0.0
+        self._session: Optional[aiohttp.ClientSession] = None
         logger.info("📦 LocalModelManager → %s", self.base_url)
 
     @classmethod
@@ -97,8 +98,21 @@ class LocalModelManager:
                 await self._switch_with_retry("gemma")
             except Exception as e:
                 logger.error("⚠️ Gemma3 復帰失敗 (要手動対応): %s", e)
-                self._active_model = "unknown"
+                # "unknown" にすると毎回 switch が走るため nemotron のまま記録する
+                self._active_model = "nemotron"
             self._release_lock()
+
+    async def close(self) -> None:
+        """永続セッションを閉じる (アプリ終了時に呼び出す)"""
+        if self._session and not self._session.closed:
+            await self._session.close()
+            self._session = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        """永続 aiohttp セッションを返す (遅延初期化)"""
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession()
+        return self._session
 
     # =========================================================================
     # ステータス / ヘルスチェック
@@ -106,23 +120,24 @@ class LocalModelManager:
 
     async def health_check(self) -> bool:
         try:
-            async with aiohttp.ClientSession() as s:
-                async with s.get(
-                    f"{self.base_url}/health",
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as r:
-                    return r.status == 200
-        except Exception:
+            s = await self._get_session()
+            async with s.get(
+                f"{self.base_url}/health",
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as r:
+                return r.status == 200
+        except Exception as e:
+            logger.debug("LocalModelManager health_check 失敗: %s", e)
             return False
 
     async def get_status(self) -> dict:
         try:
-            async with aiohttp.ClientSession() as s:
-                async with s.get(
-                    f"{self.base_url}/status",
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as r:
-                    remote = await r.json()
+            s = await self._get_session()
+            async with s.get(
+                f"{self.base_url}/status",
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as r:
+                remote = await r.json()
         except Exception as e:
             remote = {"error": str(e)}
 
@@ -178,22 +193,22 @@ class LocalModelManager:
         endpoint = f"/switch/{target}"
         for attempt in range(1, _SWITCH_RETRIES + 2):
             try:
-                async with aiohttp.ClientSession() as s:
-                    async with s.post(
-                        f"{self.base_url}{endpoint}",
-                        timeout=aiohttp.ClientTimeout(total=_SWITCH_TIMEOUT),
-                    ) as r:
-                        data = await r.json()
-                        if data.get("success"):
-                            self._active_model = target
-                            logger.info(
-                                "✅ モデル切り替え完了: %s → %s (試行%d)",
-                                "?" if self._active_model == target else "other",
-                                target, attempt,
-                            )
-                            return
-                        msg = data.get("message", "unknown error")
-                        logger.warning("⚠️ 切り替え失敗 (試行%d): %s", attempt, msg)
+                s = await self._get_session()
+                async with s.post(
+                    f"{self.base_url}{endpoint}",
+                    timeout=aiohttp.ClientTimeout(total=_SWITCH_TIMEOUT),
+                ) as r:
+                    data = await r.json()
+                    if data.get("success"):
+                        self._active_model = target
+                        logger.info(
+                            "✅ モデル切り替え完了: %s → %s (試行%d)",
+                            "?" if self._active_model == target else "other",
+                            target, attempt,
+                        )
+                        return
+                    msg = data.get("message", "unknown error")
+                    logger.warning("⚠️ 切り替え失敗 (試行%d): %s", attempt, msg)
             except Exception as e:
                 logger.warning("⚠️ 切り替えエラー (試行%d): %s", attempt, e)
 
@@ -212,19 +227,19 @@ class LocalModelManager:
         max_tokens: int,
         temperature: float = 0.7,
     ) -> str:
-        """推論 HTTP リクエスト共通ヘルパー"""
+        """推論 HTTP リクエスト共通ヘルパー (永続セッション使用)"""
         payload = {"prompt": prompt, "max_tokens": max_tokens, "temperature": temperature}
-        async with aiohttp.ClientSession() as s:
-            async with s.post(
-                f"{self.base_url}{endpoint}",
-                json=payload,
-                timeout=aiohttp.ClientTimeout(total=LOCAL_LLM_TIMEOUT),
-            ) as r:
-                if r.status != 200:
-                    body = await r.text()
-                    raise RuntimeError(f"LLM error {r.status} [{endpoint}]: {body[:200]}")
-                data = await r.json()
-                return data["content"]
+        s = await self._get_session()
+        async with s.post(
+            f"{self.base_url}{endpoint}",
+            json=payload,
+            timeout=aiohttp.ClientTimeout(total=LOCAL_LLM_TIMEOUT),
+        ) as r:
+            if r.status != 200:
+                body = await r.text()
+                raise RuntimeError(f"LLM error {r.status} [{endpoint}]: {body[:200]}")
+            data = await r.json()
+            return data["content"]
 
     # =========================================================================
     # 後方互換 — onmitsu.py の switch_to_* 呼び出しをサポート

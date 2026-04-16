@@ -1,5 +1,5 @@
 """
-武士団 BushidanState v15
+武士団 BushidanState v18
 """
 
 import operator

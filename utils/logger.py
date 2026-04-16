@@ -1,5 +1,5 @@
 """
-Bushidan Multi-Agent System v9.1 - Logging Utilities
+Bushidan Multi-Agent System v18 - Logging Utilities
 
 Centralized logging configuration for the system.
 """
@@ -10,7 +10,7 @@ from typing import Optional
 
 
 def setup_logger(name: str, level: str = "INFO") -> logging.Logger:
-    """Setup centralized logger for Bushidan v9.1"""
+    """Setup centralized logger for Bushidan v18"""
     
     logger = logging.getLogger(name)
     logger.setLevel(getattr(logging, level.upper()))

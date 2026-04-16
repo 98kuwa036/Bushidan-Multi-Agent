@@ -18,6 +18,16 @@ import time
 from pathlib import Path
 from typing import List, Optional
 
+# fire-and-forget タスク参照保持（GC 対策）
+_bg_tasks: set = set()
+
+
+def _fire(coro, *, name: str = None) -> "asyncio.Task":
+    t = asyncio.create_task(coro, name=name)
+    _bg_tasks.add(t)
+    t.add_done_callback(_bg_tasks.discard)
+    return t
+
 logger = logging.getLogger("integrations.notion.index")
 
 # ローカルキャッシュファイルのパス
@@ -184,7 +194,7 @@ async def get_index() -> list:
     cache = await _load_cache()
     now = time.time()
     if not cache or (now - _last_refresh) > _REFRESH_INTERVAL:
-        asyncio.create_task(refresh_index(), name="notion_index_refresh")
+        _fire(refresh_index(), name="notion_index_refresh")
     return cache or []
 
 
