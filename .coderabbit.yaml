@@ -1,0 +1,18 @@
+language: "ja-JP"
+reviews:
+  profile: "あなたはPythonとLLMオーケストレーション、およびセキュリティの専門家です。"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+chat:
+  auto_reply: true
+custom_instructions: |
+  Pythonコードの一般的なベストプラクティスに加え、以下のLLMオーケストレーション特有の観点でレビューしてください。
+
+  1. セキュリティ: プロンプトインジェクションに対する防御策が講じられているか確認してください。また、APIキーやシークレットがハードコードされていないか厳密にチェックしてください。
+  2. コストとパフォーマンス: LLMへの不必要なリクエストや、トークンを浪費する冗長なプロンプト構築がないか確認してください。バッチ処理やストリーミング処理が有効な場合は提案してください。
+  3. 堅牢性: 外部APIのレートリミット（Rate Limit）やタイムアウトに対する適切なエラーハンドリング、リトライ機構（例: tenacityの活用）が実装されているか確認してください。
+  4. 設計と保守性: プロンプトのテンプレートがビジネスロジックから適切に分離されているか確認してください。
+  5. Python規約: PEP8に準拠し、適切な型ヒント（Type Hints）とDocstringが記述されているか確認してください。非同期処理（asyncio）がブロックされていないかも注視してください。
