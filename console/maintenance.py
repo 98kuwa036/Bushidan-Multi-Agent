@@ -200,12 +200,42 @@ async def get_outdated_packages() -> List[Dict]:
         return [{"name": "error", "version": str(e), "latest_version": "?"}]
 
 
+async def upgrade_package_list(packages: list) -> Dict:
+    """複数パッケージを一括インストール (apply-fix 用)"""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            _PIP, "install", *packages,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(_APP_DIR),
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=180)
+        out = stdout.decode(errors="replace")
+        if proc.returncode != 0:
+            return {"success": False, "output": out}
+        # 再チェック
+        chk = await asyncio.create_subprocess_exec(
+            _PIP, "check",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        chk_out, _ = await asyncio.wait_for(chk.communicate(), timeout=30)
+        conflicts = chk_out.decode(errors="replace").strip()
+        return {
+            "success": True,
+            "output": out,
+            "conflicts": conflicts if conflicts and conflicts != "No broken requirements found." else "",
+        }
+    except Exception as e:
+        return {"success": False, "output": str(e)}
+
+
 async def upgrade_package(package: str) -> Dict:
-    """単一パッケージをアップグレード"""
-    # セキュリティ: パッケージ名のバリデーション
+    """単一パッケージをアップグレード (依存関係チェック付き)"""
     if not re.match(r'^[a-zA-Z0-9_\-\.]+$', package):
         return {"success": False, "output": "無効なパッケージ名"}
     try:
+        # ① インストール
         proc = await asyncio.create_subprocess_exec(
             _PIP, "install", "--upgrade", package,
             stdout=asyncio.subprocess.PIPE,
@@ -213,9 +243,25 @@ async def upgrade_package(package: str) -> Dict:
             cwd=str(_APP_DIR),
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+        out = stdout.decode(errors="replace")
+
+        if proc.returncode != 0:
+            return {"success": False, "output": out}
+
+        # ② pip check で依存競合を確認
+        chk = await asyncio.create_subprocess_exec(
+            _PIP, "check",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(_APP_DIR),
+        )
+        chk_out, _ = await asyncio.wait_for(chk.communicate(), timeout=30)
+        conflicts = chk_out.decode(errors="replace").strip()
+
         return {
-            "success": proc.returncode == 0,
-            "output": stdout.decode(errors="replace"),
+            "success": True,
+            "output": out,
+            "conflicts": conflicts if conflicts and conflicts != "No broken requirements found." else "",
         }
     except Exception as e:
         return {"success": False, "output": str(e)}
@@ -290,7 +336,7 @@ async def stream_update(stage: str) -> AsyncIterator[str]:
             _PIP, "install", "-r", "requirements.txt", "--dry-run",
         ], timeout=60)
         # "Would install X-1.0" 行だけ抽出（Requirement already satisfied は除外）
-        would_install = [l for l in dry.splitlines() if "Would install" in l or "would install" in l.lower()]
+        would_install = [line for line in dry.splitlines() if "Would install" in line or "would install" in line.lower()]
         if would_install:
             yield _msg("  インストール予定:\n" + "\n".join(would_install), "warn")
         else:
@@ -369,28 +415,39 @@ async def stream_update(stage: str) -> AsyncIterator[str]:
         else:
             yield _msg("  └ パッケージ更新完了", "success")
 
-        yield _msg("\n  ② サービス再起動...")
-        _uid = os.getuid()
-        _dbus_env = {
-            **os.environ,
-            "XDG_RUNTIME_DIR": f"/run/user/{_uid}",
-            "DBUS_SESSION_BUS_ADDRESS": f"unix:path=/run/user/{_uid}/bus",
-        }
-        rc, out = await _run(
-            ["systemctl", "--user", "restart", "bushidan-console"],
-            cwd="/tmp",
-            env=_dbus_env,
-        )
-        if rc == 0:
-            yield _msg("  └ bushidan-console 再起動完了", "success")
-        else:
-            # systemd サービスがない場合は uvicorn を直接再起動
-            yield _msg(f"  └ systemd 再起動失敗 ({out})、プロセスを直接再起動します", "warn")
-            await _run(["pkill", "-f", "uvicorn console.app"], cwd="/tmp")
-            _fire(_delayed_restart(), name="delayed_restart")
-            yield _msg("  └ 3秒後に uvicorn を再起動します", "info")
+        # 再起動はバックグラウンドで遅延実行し、完了メッセージを先に送信する
+        # (即時 systemctl restart だと SSE 接続が切れてエラー扱いになるため)
+        yield _msg("\n✅ アップデート適用完了！3秒後にサービスを再起動します...", "success")
+        _fire(_delayed_systemd_restart(), name="delayed_systemd_restart")
 
-        yield _msg("\n✅ アップデート適用完了！", "success")
+
+async def _delayed_systemd_restart():
+    """3秒後に systemd 経由でサービスを再起動"""
+    await asyncio.sleep(3)
+    _uid = os.getuid()
+    _env = {
+        **os.environ,
+        "XDG_RUNTIME_DIR": f"/run/user/{_uid}",
+        "DBUS_SESSION_BUS_ADDRESS": f"unix:path=/run/user/{_uid}/bus",
+    }
+    proc = await asyncio.create_subprocess_exec(
+        "systemctl", "--user", "restart", "bushidan-console",
+        cwd="/tmp", env=_env,
+    )
+    rc = await proc.wait()
+    if rc != 0:
+        # フォールバック: uvicorn を直接再起動
+        await asyncio.create_subprocess_exec(
+            "pkill", "-f", "uvicorn console.app", cwd="/tmp"
+        )
+        await asyncio.sleep(1)
+        subprocess.Popen(
+            [_PYTHON, "-m", "uvicorn", "console.app:app",
+             "--host", "0.0.0.0", "--port", "8067"],
+            cwd=str(_APP_DIR),
+            stdout=open("/tmp/console.log", "a"),
+            stderr=subprocess.STDOUT,
+        )
 
 
 async def _delayed_restart():

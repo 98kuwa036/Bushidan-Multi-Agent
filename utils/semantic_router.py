@@ -13,8 +13,10 @@ analyze_intent (Gemma) の前段に置き、明確なケースは直接ルーテ
 
 from __future__ import annotations
 
+import json
 import logging
 import time
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -23,8 +25,29 @@ logger = logging.getLogger(__name__)
 CONFIDENT_THRESHOLD = 0.72   # これ以上なら直接アサイン
 CANDIDATE_THRESHOLD = 0.55   # これ以上なら候補ヒントとして渡す
 
-# 各ロールの「職務記述書」— 埋め込みベクトル生成に使うテキスト
-_ROLE_DESCRIPTIONS: dict[str, list[str]] = {
+_KNOWLEDGE_PATH = Path(__file__).parent.parent / "config" / "semantic_knowledge.json"
+_MAX_LEARNED_EXAMPLES = 20  # ロールごとの学習例文上限
+
+
+def _load_role_descriptions() -> dict[str, list[str]]:
+    """semantic_knowledge.json からロール例文を読み込む。JSONがなければハードコードにフォールバック。"""
+    try:
+        data = json.loads(_KNOWLEDGE_PATH.read_text(encoding="utf-8"))
+        result = {}
+        for role, info in data.get("roles", {}).items():
+            examples = list(info.get("examples", []))
+            learned = list(info.get("learned_examples", []))
+            result[role] = examples + learned
+        if result:
+            logger.debug("SemanticRouter: %s からロール説明読み込み (%d ロール)", _KNOWLEDGE_PATH.name, len(result))
+            return result
+    except Exception as e:
+        logger.warning("semantic_knowledge.json 読み込み失敗、ハードコードにフォールバック: %s", e)
+    return _ROLE_DESCRIPTIONS_FALLBACK
+
+
+# フォールバック用ハードコード（JSONが読めない場合のみ使用）
+_ROLE_DESCRIPTIONS_FALLBACK: dict[str, list[str]] = {
     "groq_qa": [
         "今日の天気は？ 今何時？ 計算して。 雑談したい。 クイズ出して。",
         "簡単な質問に答えて。 事実を教えて。 ちょっと聞きたいことがある。",
@@ -107,10 +130,11 @@ class SemanticRouter:
             )
             # ロール説明（例文リスト）をベクトル化し、ロールごとに平均ベクトルを計算
             import numpy as np
-            roles = list(_ROLE_DESCRIPTIONS.keys())
+            role_descs = _load_role_descriptions()
+            roles = list(role_descs.keys())
             self._role_vectors = {}
             for role in roles:
-                examples = _ROLE_DESCRIPTIONS[role]
+                examples = role_descs[role]
                 vecs = self._model.encode(examples, normalize_embeddings=True)
                 # 各例文ベクトルの平均を取り、再正規化
                 avg = vecs.mean(axis=0)
@@ -172,6 +196,61 @@ class SemanticRouter:
         except Exception as e:
             logger.warning("⚠️ SemanticRouter.route 失敗: %s", e)
             return None, 0.0
+
+    def add_example(self, role: str, text: str) -> bool:
+        """
+        成功した入力例をロールの学習例文に追加し、JSONとベクトルを更新する。
+        SemanticRouter が未初期化の場合は JSON のみ更新して True を返す。
+        """
+        try:
+            data = json.loads(_KNOWLEDGE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            return False
+
+        role_data = data.get("roles", {}).get(role)
+        if role_data is None:
+            return False
+
+        learned = role_data.setdefault("learned_examples", [])
+        if text in learned or text in role_data.get("examples", []):
+            return False  # 重複スキップ
+        learned.append(text)
+
+        # 上限を超えたら古い順に削除
+        if len(learned) > _MAX_LEARNED_EXAMPLES:
+            learned[:] = learned[-_MAX_LEARNED_EXAMPLES:]
+
+        import datetime
+        data["updated_at"] = datetime.date.today().isoformat()
+        try:
+            _KNOWLEDGE_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning("semantic_knowledge.json 書き込み失敗: %s", e)
+            return False
+
+        # ベクトルをその場で再計算（モデルがロード済みの場合のみ）
+        if self._ready and self._model:
+            try:
+                import numpy as np
+                role_descs = _load_role_descriptions()
+                examples = role_descs.get(role, [])
+                if examples:
+                    vecs = self._model.encode(examples, normalize_embeddings=True)
+                    avg = vecs.mean(axis=0)
+                    norm = np.linalg.norm(avg)
+                    if norm > 0:
+                        avg = avg / norm
+                    self._role_vectors[role] = avg.tolist()
+                    logger.info("🧭 SemanticRouter: %s のベクトル更新 (例文数=%d)", role, len(examples))
+            except Exception as e:
+                logger.warning("SemanticRouter add_example ベクトル更新失敗: %s", e)
+
+        return True
+
+    def reload(self) -> bool:
+        """JSONから再読み込みして全ベクトルを再計算する。"""
+        self._ready = False
+        return self.initialize()
 
     @property
     def is_ready(self) -> bool:

@@ -4,7 +4,7 @@
 
 import operator
 from typing import Annotated, Optional
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, NotRequired
 
 
 class BushidanState(TypedDict):
@@ -88,3 +88,9 @@ class BushidanState(TypedDict):
 
     # ── v18: ステップ実行コンテキスト ─────────────────────────────────
     _step_task: str                  # execute_step → 各ロールへの個別タスク指示
+
+    # ── v18: 処理モード ────────────────────────────────────────────────
+    # "interactive": リアルタイム・低レイテンシ優先（デフォルト）
+    # "batch":       非同期・コスト効率優先（スキル進化分析・監査ログ等）
+    processing_mode: NotRequired[str]
+    batch_job_id: NotRequired[Optional[str]]

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>🏯 武士団 v18 ダッシュボード</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=20260419j">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
@@ -33,6 +33,7 @@
       <span>武士団 v18</span>
     </div>
     <div class="header-status">
+      <div class="status-item" id="header-kpi" title="24h 成功率 · 平均レイテンシ" onclick="showPage('metrics')" style="cursor:pointer; display:none; font-size:11px; gap:4px"></div>
       <div class="status-item" title="ローカルLLM状態">
         <span class="status-dot" id="dot-llm"></span>
         <span id="llm-status">...</span>
@@ -68,6 +69,12 @@
         </div>
         <div class="side-nav-item" data-page="system" onclick="showPage('system')">
           <span>⚙️</span> システム設定
+        </div>
+        <div class="side-nav-item" data-page="evolution" onclick="showPage('evolution')">
+          <span>🌱</span> 進化提案
+        </div>
+        <div class="side-nav-item" data-page="metrics" onclick="showPage('metrics')">
+          <span>📊</span> メトリクス
         </div>
         <div class="side-nav-item" data-page="maintenance" onclick="showPage('maintenance')">
           <span>🔧</span> メンテナンス
@@ -131,6 +138,11 @@
       <div id="page-history" class="page-content">
         <h2>💭 チャット履歴</h2>
         <div style="padding:16px">
+          <!-- モバイルのみ: 通常/個別チャット切り替え -->
+          <div class="history-mode-toggle mobile-only">
+            <button id="hmode-normal" class="hmode-btn active" onclick="setHistoryMode('normal')">💬 通常チャット</button>
+            <button id="hmode-individual" class="hmode-btn" onclick="setHistoryMode('individual')">🎯 個別チャット</button>
+          </div>
           <input type="search" id="history-search" placeholder="タイトルで検索..." style="width:100%; padding:8px 12px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; margin-bottom:16px; box-sizing:border-box" oninput="applyHistoryFilters()">
           <div class="date-filter-row">
             <input type="date" id="filter-from" onchange="applyHistoryFilters()" style="flex:1; padding:6px 8px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:11px;">
@@ -268,7 +280,13 @@
 
       <!-- PAGE 4: システム設定 -->
       <div id="page-system" class="page-content">
-        <h2>⚙️ システム設定</h2>
+        <div class="page-title-row">
+          <h2>⚙️ システム設定</h2>
+          <div class="page-title-actions mobile-only">
+            <button class="title-action-btn" onclick="showPage('settings')">🎨 UI設定</button>
+            <button class="title-action-btn" onclick="showPage('maintenance')">🔧 メンテ</button>
+          </div>
+        </div>
 
         <div class="settings-section">
           <div class="section-title">🔑 API キー</div>
@@ -359,6 +377,33 @@
             </div>
           </div>
           <div id="skill-proposals-list" style="padding:0 0 8px 0"></div>
+
+          <!-- 自動実行設定 -->
+          <div style="border-top:1px solid var(--border); padding-top:12px; margin-top:4px">
+            <div style="font-size:12px; font-weight:600; color:var(--text-dim); margin-bottom:10px">🔄 定期自動実行</div>
+            <div class="settings-item" style="margin-bottom:0">
+              <span class="settings-label">自動実行</span>
+              <div class="settings-value" style="align-items:center; gap:8px">
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer">
+                  <input type="checkbox" id="evolution-auto-enabled" onchange="saveEvolutionConfig()" style="width:16px; height:16px; cursor:pointer">
+                  <span id="evolution-auto-label" style="font-size:12px; color:var(--text-dim)">無効</span>
+                </label>
+              </div>
+            </div>
+            <div class="settings-item">
+              <span class="settings-label">実行間隔 (時間)</span>
+              <div class="settings-value">
+                <input type="number" id="evolution-interval" value="24" min="1" max="168" style="width:70px; text-align:center" onchange="saveEvolutionConfig()">
+              </div>
+            </div>
+            <div class="settings-item">
+              <span class="settings-label">最低観測数</span>
+              <div class="settings-value">
+                <input type="number" id="evolution-min-obs" value="10" min="1" max="1000" style="width:70px; text-align:center" onchange="saveEvolutionConfig()">
+              </div>
+            </div>
+            <div id="evolution-auto-status" style="font-size:11px; color:var(--text-dim); padding:6px 0 2px 0; min-height:16px"></div>
+          </div>
         </div>
 
         <!-- v18: YAML 監査ログ -->
@@ -373,6 +418,89 @@
             </button>
           </div>
           <div id="audit-logs-list" style="max-height:300px; overflow-y:auto; padding:0 0 8px 0"></div>
+        </div>
+      </div>
+
+      <!-- PAGE 6: 進化提案 (案1) -->
+      <div id="page-evolution" class="page-content">
+        <h2>🌱 進化提案</h2>
+        <div style="padding:16px">
+          <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap">
+            <button onclick="loadEvolutionProposals('pending')"   id="evbtn-pending"   style="flex:1; min-width:80px">💡 保留中</button>
+            <button onclick="loadEvolutionProposals('approved')"  id="evbtn-approved"  style="flex:1; min-width:80px; background:var(--surface2)">✅ 承認済み</button>
+            <button onclick="loadEvolutionProposals('dismissed')" id="evbtn-dismissed" style="flex:1; min-width:80px; background:var(--surface2)">🗑 却下済み</button>
+          </div>
+          <div id="evolution-badge" style="font-size:12px; color:var(--text-dim); margin-bottom:12px"></div>
+          <div id="evolution-cards"></div>
+        </div>
+      </div>
+
+      <!-- PAGE 7: メトリクス (案3) -->
+      <div id="page-metrics" class="page-content">
+        <h2>📊 メトリクス</h2>
+        <div style="padding:16px">
+          <!-- KPI ストリップ -->
+          <div class="kpi-strip" id="kpi-strip">
+            <div class="kpi-card" id="kpi-total">
+              <div class="kpi-label">リクエスト (24h)</div>
+              <div class="kpi-value" id="kpi-total-val">—</div>
+            </div>
+            <div class="kpi-card" id="kpi-success">
+              <div class="kpi-label">成功率</div>
+              <div class="kpi-value" id="kpi-success-val">—</div>
+            </div>
+            <div class="kpi-card" id="kpi-latency">
+              <div class="kpi-label">平均レイテンシ</div>
+              <div class="kpi-value" id="kpi-latency-val">—</div>
+            </div>
+            <div class="kpi-card" id="kpi-errors">
+              <div class="kpi-label">エラー数</div>
+              <div class="kpi-value" id="kpi-errors-val">—</div>
+            </div>
+            <div class="kpi-card" id="kpi-fallback">
+              <div class="kpi-label">フォールバック</div>
+              <div class="kpi-value" id="kpi-fallback-val">—</div>
+            </div>
+          </div>
+
+          <!-- トップロール -->
+          <div class="settings-section" style="margin-top:16px">
+            <div class="section-title">よく使われたロール (直近6h)</div>
+            <div id="top-roles-bar"></div>
+          </div>
+
+          <!-- Grafana iframe (案3) -->
+          <div class="settings-section" style="margin-top:16px">
+            <div class="section-title" style="display:flex; justify-content:space-between; align-items:center">
+              Grafana ダッシュボード
+              <a href="http://192.168.11.231:3000" target="_blank"
+                 style="font-size:11px; color:var(--primary); text-decoration:none">↗ 別タブで開く</a>
+            </div>
+            <div style="font-size:11px; color:var(--text-dim); margin-bottom:8px">
+              Grafana が 192.168.11.231:3000 で稼働している場合に表示されます。
+            </div>
+            <div id="grafana-frame-container" style="border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--surface2); min-height:280px; display:flex; align-items:center; justify-content:center">
+              <div id="grafana-placeholder" style="text-align:center; padding:24px; color:var(--text-dim)">
+                <div style="font-size:24px; margin-bottom:8px">📈</div>
+                <div style="font-size:13px; font-weight:600; margin-bottom:4px">Grafana ダッシュボード</div>
+                <button onclick="loadGrafanaFrame()" style="margin-top:8px; font-size:12px">iframe で読み込む</button>
+              </div>
+              <iframe id="grafana-iframe" style="display:none; width:100%; height:480px; border:none"
+                      src="" title="Grafana Dashboard" loading="lazy"></iframe>
+            </div>
+          </div>
+
+          <!-- JupyterLab リンク -->
+          <div class="settings-section" style="margin-top:16px">
+            <div class="section-title">詳細分析 (JupyterLab)</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap">
+              <a href="http://192.168.11.231:8888/lab/tree/notebooks/00_quickstart.ipynb"      target="_blank" class="nb-link">📓 クイックスタート</a>
+              <a href="http://192.168.11.231:8888/lab/tree/notebooks/performance_metrics.ipynb" target="_blank" class="nb-link">⚡ パフォーマンス</a>
+              <a href="http://192.168.11.231:8888/lab/tree/notebooks/role_effectiveness.ipynb"  target="_blank" class="nb-link">🎯 ロール効果</a>
+              <a href="http://192.168.11.231:8888/lab/tree/notebooks/audit_analysis.ipynb"      target="_blank" class="nb-link">📋 監査分析</a>
+              <a href="http://192.168.11.231:8888/lab/tree/notebooks/skill_evolution_dashboard.ipynb" target="_blank" class="nb-link">🌱 スキル進化</a>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -478,14 +606,14 @@
     <button data-page="history" onclick="showPage('history')">
       <span class="nav-icon">💭</span>
     </button>
-    <button data-page="settings" onclick="showPage('settings')">
-      <span class="nav-icon">🎨</span>
+    <button data-page="evolution" onclick="showPage('evolution')">
+      <span class="nav-icon">🌱</span>
+    </button>
+    <button data-page="metrics" onclick="showPage('metrics')">
+      <span class="nav-icon">📊</span>
     </button>
     <button data-page="system" onclick="showPage('system')">
       <span class="nav-icon">⚙️</span>
-    </button>
-    <button data-page="maintenance" onclick="showPage('maintenance')">
-      <span class="nav-icon">🔧</span>
     </button>
   </nav>
 
@@ -519,6 +647,8 @@ const S = {
   statusInterval: null,
   // 履歴ページ展開スレッドID
   historyExpandedId: null,
+  // 履歴モード: 'normal' | 'individual'
+  historyMode: 'normal',
   // 履歴から続きを書く際のフラグ（trueならdashboard遷移時にクリアしない）
   _continuing: false,
 };
@@ -581,8 +711,10 @@ async function loadUI() {
   await loadThreads();
   await loadStatus();
   loadUISettings();
+  loadMetricsSummary();  // ヘッダーKPI初回ロード
   if (S.statusInterval) clearInterval(S.statusInterval);
   S.statusInterval = setInterval(loadStatus, 30000); // 30秒毎にステータス更新
+  setInterval(loadMetricsSummary, 120000); // 2分毎にKPI更新
 }
 
 async function loadModels() {
@@ -804,10 +936,15 @@ function renderMessages(messages = S.currentThread?.messages) {
       ? msg.execution_time.toFixed(0) + 'ms'
       : '';
     const showHeader = msg.role !== 'system' && (agentLabel || timeLabel);
+    // 案2: ルーティングバッジ
+    const routingBadge = (msg.role === 'assistant' && msg.route && msg.routed_by)
+      ? _buildRoutingBadge(msg)
+      : '';
     return `
       <div class="msg ${msg.role === 'user' ? 'user' : msg.role === 'assistant' ? 'assistant' : 'system'}">
         ${showHeader ? `<div class="msg-header"><span class="msg-role">${agentLabel}</span><span class="msg-time">${timeLabel}</span></div>` : ''}
         <div class="msg-content${msg.role === 'assistant' ? ' md-content' : ''}">${content}</div>
+        ${routingBadge}
       </div>
     `;
   }).join('');
@@ -815,10 +952,11 @@ function renderMessages(messages = S.currentThread?.messages) {
   scrollBottom();
 }
 
-function addMessage(role, content, agentRole = null, model = null, executionTime = null) {
+function addMessage(role, content, agentRole = null, model = null, executionTime = null, route = null, routedBy = null) {
   if (!S.currentThread) return;
   S.currentThread.messages.push({
     role, content, agent_role: agentRole, model, execution_time: executionTime,
+    route, routed_by: routedBy,
   });
   renderMessages();
 }
@@ -857,6 +995,232 @@ function parseTags(json) {
   } catch {
     return [];
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 案2: ルーティング透明化バッジ
+// ═══════════════════════════════════════════════════════════════
+function _buildRoutingBadge(msg) {
+  const routedBy = msg.routed_by || '';
+  const route    = (msg.route || '').replace(/_/g, ' ');
+  const icon = routedBy === 'semantic_router' ? '⚡'
+             : routedBy === 'analyze_intent'  ? '🧠'
+             : routedBy === 'forced'           ? '🎯'
+             : '🔀';
+  const label = routedBy === 'semantic_router' ? 'SemanticRouter'
+              : routedBy === 'analyze_intent'  ? '受付分析'
+              : routedBy === 'forced'           ? '手動指定'
+              : 'ルーター';
+  const id = 'rbadge-' + Math.random().toString(36).slice(2,8);
+  return `
+    <div class="routing-badge" onclick="document.getElementById('${id}').classList.toggle('hidden')">
+      ${icon} ${label} → ${route}
+      <span style="font-size:10px; opacity:0.7; margin-left:4px">▼</span>
+    </div>
+    <div id="${id}" class="routing-detail hidden">
+      <div><b>経路:</b> ${escapeHtml(msg.route || '—')}</div>
+      <div><b>担当:</b> ${escapeHtml(msg.agent_role || '—')}</div>
+      <div><b>判定:</b> ${escapeHtml(label)}</div>
+      ${msg.execution_time ? `<div><b>時間:</b> ${msg.execution_time.toFixed ? msg.execution_time.toFixed(0) : msg.execution_time}ms</div>` : ''}
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 案1: 進化提案ページ
+// ═══════════════════════════════════════════════════════════════
+const EV_TYPE_LABEL = {
+  routing_hint:      '🔀 ルーティングヒント',
+  threshold_adjust:  '⚖️ 閾値調整',
+  new_skill:         '🆕 新スキル',
+  prune_skill:       '✂️ スキル削除',
+};
+const EV_RISK_COLOR = { low: 'var(--ok)', medium: 'var(--warn)', high: 'var(--ng)' };
+
+async function loadEvolutionProposals(status = 'pending') {
+  ['pending','approved','dismissed'].forEach(s => {
+    const btn = document.getElementById('evbtn-' + s);
+    if (btn) btn.style.background = s === status ? 'var(--primary)' : 'var(--surface2)';
+    if (btn) btn.style.color      = s === status ? 'var(--bg)'      : '';
+  });
+  const badge = document.getElementById('evolution-badge');
+  const cards = document.getElementById('evolution-cards');
+  if (badge) badge.textContent = '読み込み中...';
+  if (cards) cards.innerHTML = '';
+  try {
+    const res = await fetch(`${S.apiBase}/evolution-proposals?status=${status}`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const proposals = data.proposals || [];
+    if (badge) badge.textContent = `${proposals.length} 件`;
+    if (!proposals.length) {
+      cards.innerHTML = `<div style="text-align:center; color:var(--text-dim); padding:32px; font-size:13px">
+        ${status === 'pending' ? '保留中の提案はありません' : status === 'approved' ? '承認済みの提案はありません' : '却下済みの提案はありません'}
+      </div>`;
+      return;
+    }
+    cards.innerHTML = proposals.map(p => _renderEvolutionCard(p, status)).join('');
+  } catch (e) {
+    if (badge) badge.textContent = '取得エラー: ' + e.message;
+  }
+}
+
+function _renderEvolutionCard(p, status) {
+  const typeLabel = EV_TYPE_LABEL[p.type] || p.type;
+  const riskColor = EV_RISK_COLOR[p.risk_level] || 'var(--text-dim)';
+  const ev = p.evidence || {};
+  const evHtml = Object.entries(ev).length
+    ? '<div class="ev-evidence">' + Object.entries(ev).map(([k,v]) => `<span><b>${escapeHtml(k)}:</b> ${escapeHtml(String(v))}</span>`).join(' · ') + '</div>'
+    : '';
+  const curVal  = p.current_value  != null ? `<div class="ev-diff"><span class="ev-before">${escapeHtml(String(p.current_value))}</span> → <span class="ev-after">${escapeHtml(String(p.proposed_value))}</span></div>` : '';
+  const btnArea = status === 'pending'
+    ? `<div class="ev-actions">
+         <button class="ev-approve" onclick="approveEvolutionProposal('${p.id}')">✅ 承認</button>
+         <button class="ev-dismiss" onclick="dismissEvolutionProposal('${p.id}')">🗑 却下</button>
+       </div>`
+    : `<div style="font-size:11px; color:var(--text-dim); padding:4px 0">${status === 'approved' ? '✅ 承認済み' : '🗑 却下済み'} · ${p.created_at ? new Date(p.created_at).toLocaleDateString('ja-JP') : ''}</div>`;
+  return `
+    <div class="ev-card" id="evc-${p.id}">
+      <div class="ev-header">
+        <span class="ev-type">${typeLabel}</span>
+        <span class="ev-risk" style="color:${riskColor}">リスク: ${p.risk_level || 'low'}</span>
+        <span class="ev-week">${escapeHtml(p.week_label || '')}</span>
+      </div>
+      <div class="ev-target">対象: <b>${escapeHtml(p.target || '—')}</b></div>
+      ${curVal}
+      ${p.rationale ? `<div class="ev-rationale">${escapeHtml(p.rationale)}</div>` : ''}
+      ${evHtml}
+      ${btnArea}
+    </div>`;
+}
+
+async function approveEvolutionProposal(id) {
+  const card = document.getElementById('evc-' + id);
+  if (card) card.style.opacity = '0.5';
+  try {
+    const res = await fetch(`${S.apiBase}/evolution-proposals/${id}/approve`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (card) card.remove();
+      const badge = document.getElementById('evolution-badge');
+      if (badge) {
+        const n = parseInt(badge.textContent) - 1;
+        badge.textContent = Math.max(0, n) + ' 件';
+      }
+    } else {
+      if (card) card.style.opacity = '1';
+      alert('承認失敗: ' + (data.error || 'unknown'));
+    }
+  } catch (e) {
+    if (card) card.style.opacity = '1';
+    alert('エラー: ' + e.message);
+  }
+}
+
+async function dismissEvolutionProposal(id) {
+  const card = document.getElementById('evc-' + id);
+  if (card) card.style.opacity = '0.5';
+  try {
+    const res = await fetch(`${S.apiBase}/evolution-proposals/${id}/dismiss`, {
+      method: 'POST', headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (card) card.remove();
+      const badge = document.getElementById('evolution-badge');
+      if (badge) {
+        const n = parseInt(badge.textContent) - 1;
+        badge.textContent = Math.max(0, n) + ' 件';
+      }
+    } else {
+      if (card) card.style.opacity = '1';
+      alert('却下失敗: ' + (data.error || 'unknown'));
+    }
+  } catch (e) {
+    if (card) card.style.opacity = '1';
+    alert('エラー: ' + e.message);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 案3: メトリクスページ
+// ═══════════════════════════════════════════════════════════════
+async function loadMetricsSummary() {
+  try {
+    const res = await fetch(`${S.apiBase}/metrics/summary`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (!res.ok) return;
+    const d = await res.json();
+    if (!d.available) {
+      document.getElementById('kpi-total-val').textContent = 'N/A';
+      return;
+    }
+    const setKpi = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    };
+    setKpi('kpi-total-val',    d.total ?? '—');
+    setKpi('kpi-success-val',  d.success_rate != null ? d.success_rate + '%' : '—');
+    setKpi('kpi-latency-val',  d.avg_ms != null ? Math.round(d.avg_ms) + 'ms' : '—');
+    setKpi('kpi-errors-val',   d.error_count ?? '—');
+    setKpi('kpi-fallback-val', d.fallback_count ?? '—');
+
+    // 成功率の色
+    const sucEl = document.getElementById('kpi-success-val');
+    if (sucEl && d.success_rate != null) {
+      sucEl.style.color = d.success_rate >= 90 ? 'var(--ok)' : d.success_rate >= 70 ? 'var(--warn)' : 'var(--ng)';
+    }
+
+    // トップロールバー
+    const bar = document.getElementById('top-roles-bar');
+    if (bar && d.top_roles?.length) {
+      const maxCnt = d.top_roles[0].count;
+      bar.innerHTML = d.top_roles.map(r => `
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
+          <span style="font-size:12px; color:var(--text); width:90px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">${escapeHtml(r.role)}</span>
+          <div style="flex:1; background:var(--surface2); border-radius:4px; height:8px; overflow:hidden">
+            <div style="width:${Math.round(r.count/maxCnt*100)}%; background:var(--primary); height:100%; border-radius:4px; transition:width 0.4s"></div>
+          </div>
+          <span style="font-size:11px; color:var(--text-dim); width:28px; text-align:right">${r.count}</span>
+        </div>`).join('');
+    } else if (bar) {
+      bar.innerHTML = '<div style="color:var(--text-dim); font-size:12px">データなし</div>';
+    }
+
+    // ヘッダーにも mini-metrics を反映
+    _updateHeaderKpi(d);
+  } catch (e) {
+    console.error('loadMetricsSummary error:', e);
+  }
+}
+
+function _updateHeaderKpi(d) {
+  let el = document.getElementById('header-kpi');
+  if (!el) return;
+  if (!d.available || d.total == null) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+  const suc = d.success_rate != null ? d.success_rate + '%' : '—';
+  const lat = d.avg_ms != null ? Math.round(d.avg_ms) + 'ms' : '—';
+  const color = d.success_rate != null
+    ? (d.success_rate >= 90 ? 'var(--ok)' : d.success_rate >= 70 ? 'var(--warn)' : 'var(--ng)')
+    : 'var(--text-dim)';
+  el.innerHTML = `<span title="24h 成功率" style="color:${color}">${suc}</span><span style="color:var(--text-dim)"> · </span><span title="平均レイテンシ">${lat}</span>`;
+}
+
+function loadGrafanaFrame() {
+  const frame = document.getElementById('grafana-iframe');
+  const ph    = document.getElementById('grafana-placeholder');
+  if (!frame || !ph) return;
+  frame.src = 'http://192.168.11.231:3000/d/bushidan/overview?orgId=1&kiosk=tv';
+  frame.style.display = '';
+  ph.style.display = 'none';
 }
 
 // ─── ロードマップ表示 ─────────────────────────────────────────
@@ -1091,6 +1455,15 @@ async function handleWSMessage(data) {
         renderMessages();
       }
 
+      // ルーティング情報をメッセージに付加（案2）
+      if (S.currentThread?.messages?.length > 0) {
+        const lastMsg = S.currentThread.messages[S.currentThread.messages.length - 1];
+        if (lastMsg.role === 'assistant') {
+          if (data.route)     lastMsg.route     = data.route;
+          if (data.routed_by) lastMsg.routed_by = data.routed_by;
+        }
+      }
+
       // DB に保存
       if (S.currentThreadId && S.currentThread?.messages?.length > 0) {
         const lastMsg = S.currentThread.messages[S.currentThread.messages.length - 1];
@@ -1280,17 +1653,28 @@ async function _callResume(threadId, response) {
 }
 
 // ─── チャット履歴ページ ───────────────────────────────────
+function setHistoryMode(mode) {
+  S.historyMode = mode;
+  document.querySelectorAll('.hmode-btn').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('hmode-' + mode);
+  if (btn) btn.classList.add('active');
+  S.historyExpandedId = null;
+  renderHistoryList();
+}
+
+function _isIndividualThread(t) {
+  if (t.title && t.title.startsWith('個別:')) return true;
+  try { return JSON.parse(t.tags || '[]').includes('#individual'); }
+  catch { return false; }
+}
+
 function renderHistoryList(threads = S.threads) {
   const list = document.getElementById('history-list');
 
-  // 個別チャット（"個別:" で始まるスレッド）を除外
-  const filteredThreads = threads.filter(t => {
-    if (t.title && t.title.startsWith('個別:')) return false;
-    try {
-      const tags = JSON.parse(t.tags || '[]');
-      return !tags.includes('#individual');
-    } catch { return true; }
-  });
+  // モードに応じてフィルタ
+  const filteredThreads = threads.filter(t =>
+    S.historyMode === 'individual' ? _isIndividualThread(t) : !_isIndividualThread(t)
+  );
 
   if (!filteredThreads.length) {
     list.innerHTML = '<div style="text-align:center; color:var(--text-dim); padding:20px">スレッドがありません</div>';
@@ -1725,15 +2109,34 @@ function showPage(page) {
   // 履歴ページを表示する時に一覧を更新
   if (page === 'history') {
     renderHistoryList();
+    // hmode ボタンの高さを検索欄に合わせる
+    requestAnimationFrame(() => {
+      const inp = document.getElementById('history-search');
+      const btns = document.querySelectorAll('.hmode-btn');
+      if (inp && btns.length) {
+        const h = inp.getBoundingClientRect().height;
+        if (h > 0) btns.forEach(b => { b.style.height = h + 'px'; });
+      }
+    });
   }
   // システム設定ページでフォールバックモードを読み込む
   if (page === 'system') {
     loadClaudeFallbackMode();
+    loadEvolutionAutoConfig();
   }
   // メンテナンスページ: 初回表示時にログを自動ロード
   if (page === 'maintenance') {
     const logBox = document.getElementById('log-content');
     if (logBox && logBox.textContent === 'ログを選択してください') loadLog();
+  }
+  // 進化提案ページ: 自動ロード
+  if (page === 'evolution') {
+    const cards = document.getElementById('evolution-cards');
+    if (cards && !cards.children.length) loadEvolutionProposals('pending');
+  }
+  // メトリクスページ: 自動ロード
+  if (page === 'metrics') {
+    loadMetricsSummary();
   }
 }
 
@@ -1849,6 +2252,62 @@ async function loadClaudeFallbackMode() {
       if (sel) sel.value = data.mode;
     }
   } catch (e) { /* ignore */ }
+}
+
+async function loadEvolutionAutoConfig() {
+  try {
+    const res = await fetch(`${S.apiBase}/v18/evolution-auto-config`, {
+      headers: { 'Authorization': `Bearer ${S.token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const cfg = data.config || {};
+    const chk = document.getElementById('evolution-auto-enabled');
+    const lbl = document.getElementById('evolution-auto-label');
+    const itv = document.getElementById('evolution-interval');
+    const obs = document.getElementById('evolution-min-obs');
+    const sts = document.getElementById('evolution-auto-status');
+    if (chk) chk.checked = !!cfg.enabled;
+    if (lbl) lbl.textContent = cfg.enabled ? '有効' : '無効';
+    if (itv) itv.value = cfg.interval_hours ?? 24;
+    if (obs) obs.value = cfg.min_observations ?? 10;
+    if (sts) {
+      const st = data.status || {};
+      const lr = data.last_run;
+      let msg = st.reason || '';
+      if (lr && lr.run_at) {
+        const d = new Date(lr.run_at);
+        msg += ` | 最終実行: ${d.toLocaleString('ja-JP')} (候補${lr.candidates_created || 0}件, 有効化${lr.skills_activated || 0}件)`;
+      }
+      sts.textContent = msg;
+    }
+  } catch (e) { /* ignore */ }
+}
+
+async function saveEvolutionConfig() {
+  const chk = document.getElementById('evolution-auto-enabled');
+  const lbl = document.getElementById('evolution-auto-label');
+  const itv = document.getElementById('evolution-interval');
+  const obs = document.getElementById('evolution-min-obs');
+  const sts = document.getElementById('evolution-auto-status');
+  if (!chk) return;
+  if (lbl) lbl.textContent = chk.checked ? '有効' : '無効';
+  try {
+    const res = await fetch(`${S.apiBase}/v18/evolution-auto-config`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${S.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: chk.checked,
+        interval_hours: parseInt(itv?.value || '24'),
+        min_observations: parseInt(obs?.value || '10'),
+      }),
+    });
+    const data = await res.json();
+    if (sts) sts.textContent = data.success ? '✅ 設定を保存しました' : `❌ ${data.error}`;
+    setTimeout(() => loadEvolutionAutoConfig(), 800);
+  } catch (e) {
+    if (sts) sts.textContent = `❌ 保存エラー: ${e.message}`;
+  }
 }
 
 async function switchLLMModel(model) {
@@ -2453,21 +2912,106 @@ function filterPackages() {
   renderPkgTable(filtered, false);
 }
 
+function _pkgInfoRow(row) {
+  let infoRow = row.nextElementSibling;
+  if (!infoRow || !infoRow.classList.contains('pkg-info-row')) {
+    infoRow = document.createElement('tr');
+    infoRow.className = 'pkg-info-row';
+    infoRow.innerHTML = `<td colspan="4" style="padding:4px 12px 8px;font-size:11px"></td>`;
+    row.after(infoRow);
+  }
+  return infoRow.querySelector('td');
+}
+
 async function upgradePackage(pkg, btn) {
   btn.disabled = true;
   btn.textContent = '更新中...';
+  const row = btn.closest('tr');
+  const cell = _pkgInfoRow(row);
+  cell.innerHTML = '<span style="color:var(--text-dim)">更新中...</span>';
+
   try {
     const r = await fetch(`${S.apiBase}/maintenance/packages/upgrade?token=${S.token}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${S.token}` },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ package: pkg }),
     });
     const d = await r.json();
-    btn.textContent = d.success ? '✅' : '❌';
-    btn.style.background = d.success ? 'var(--ok)' : 'var(--ng)';
-    if (!d.success) alert(`アップグレード失敗:\n${d.output.slice(0,300)}`);
+
+    if (!d.success) {
+      btn.textContent = '❌'; btn.disabled = false;
+      btn.style.background = 'var(--ng)';
+      const errLine = (d.output || '').split('\n').find(l => /ERROR|error/i.test(l)) || (d.output || '').slice(0, 120);
+      cell.innerHTML = `<span style="color:var(--ng)">❌ ${errLine}</span>`;
+      return;
+    }
+
+    btn.textContent = '✅';
+    btn.style.background = 'var(--ok)';
+
+    if (!d.conflicts) {
+      cell.innerHTML = '<span style="color:var(--ok)">✅ 更新完了・依存関係に問題なし</span>';
+      return;
+    }
+
+    // 依存競合あり → LLM に解決策を問い合わせ
+    cell.innerHTML = `<span style="color:#ffa726">⚠️ 依存競合検出。LLMが解決策を分析中...</span>`;
+    try {
+      const sr = await fetch(`${S.apiBase}/maintenance/packages/suggest-fix?token=${S.token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conflicts: d.conflicts }),
+      });
+      const sd = await sr.json();
+
+      if (sd.error || !sd.packages?.length) {
+        cell.innerHTML = `<span style="color:#ffa726">⚠️ 競合あり (LLM解決策なし): ${sd.explanation || sd.error || d.conflicts.split('\n')[0]}</span>`;
+        return;
+      }
+
+      const pkgList = sd.packages.join(' ');
+      cell.innerHTML = `
+        <div style="color:#ffa726;margin-bottom:6px">⚠️ ${sd.explanation || '依存競合を検出'}</div>
+        <div style="font-family:monospace;background:var(--surface2);padding:6px 8px;border-radius:4px;margin-bottom:6px;font-size:11px;word-break:break-all">
+          pip install ${pkgList}
+        </div>
+        <button onclick='applyConflictFix(${JSON.stringify(sd.packages)}, this)'
+                style="padding:4px 10px;background:var(--primary);color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer">
+          🔧 この解決策を適用する
+        </button>
+      `;
+    } catch {
+      cell.innerHTML = `<span style="color:#ffa726">⚠️ 競合あり: ${d.conflicts.split('\n')[0]}</span>`;
+    }
   } catch (e) {
-    btn.textContent = '❌'; alert('エラー: ' + e.message);
+    btn.textContent = '❌'; btn.disabled = false;
+    cell.innerHTML = `<span style="color:var(--ng)">ネットワークエラー: ${e.message}</span>`;
+  }
+}
+
+async function applyConflictFix(packages, btn) {
+  btn.disabled = true;
+  btn.textContent = '適用中...';
+  const cell = btn.closest('td');
+  try {
+    const r = await fetch(`${S.apiBase}/maintenance/packages/apply-fix?token=${S.token}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packages }),
+    });
+    const d = await r.json();
+    if (d.success && !d.conflicts) {
+      cell.innerHTML = '<span style="color:var(--ok)">✅ 競合解消・依存関係が正常になりました</span>';
+    } else if (d.success && d.conflicts) {
+      cell.innerHTML = `<span style="color:#ffa726">⚠️ 適用済みですが競合が残っています: ${d.conflicts.split('\n')[0]}</span>`;
+    } else {
+      cell.innerHTML = `<span style="color:var(--ng)">❌ 適用失敗: ${(d.output || '').slice(0, 150)}</span>`;
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '🔧 この解決策を適用する';
+    cell.querySelector('div:last-child').insertAdjacentHTML('afterend',
+      `<span style="color:var(--ng);font-size:11px">エラー: ${e.message}</span>`);
   }
 }
 

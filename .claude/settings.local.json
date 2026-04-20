@@ -356,7 +356,10 @@
       "WebFetch(domain:inference-docs.cerebras.ai)",
       "WebFetch(domain:support.cerebras.net)",
       "WebFetch(domain:ai.google.dev)",
-      "WebFetch(domain:swallow-llm.github.io)"
+      "WebFetch(domain:swallow-llm.github.io)",
+      "Bash(ping -c 1 192.168.11.231)",
+      "Bash(kill %1)",
+      "Bash(/mnt/Bushidan-Multi-Agent/venv/bin/pip install *)"
     ]
   },
   "additionalDirectories": [

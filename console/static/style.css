@@ -1475,3 +1475,229 @@ body.dark .maint-logbox { background: #080810; }
   resize: vertical;
   box-sizing: border-box;
 }
+
+/* ══════════════════════════════════════════════════════════════
+   案2: ルーティング透明化バッジ
+   ══════════════════════════════════════════════════════════════ */
+.routing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  padding: 2px 8px;
+  background: var(--primary-glow);
+  border: 1px solid var(--primary);
+  border-radius: 12px;
+  font-size: 10px;
+  color: var(--primary-dim);
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+.routing-badge:hover { opacity: 1; }
+.routing-detail {
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+.routing-detail.hidden { display: none; }
+
+/* ══════════════════════════════════════════════════════════════
+   案1: 進化提案カード
+   ══════════════════════════════════════════════════════════════ */
+.ev-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+  transition: box-shadow 0.2s, opacity 0.3s;
+}
+.ev-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.ev-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.ev-type  { font-size: 12px; font-weight: 700; color: var(--primary); }
+.ev-risk  { font-size: 11px; font-weight: 600; }
+.ev-week  { font-size: 10px; color: var(--text-dim); margin-left: auto; }
+.ev-target { font-size: 12px; color: var(--text); margin-bottom: 6px; }
+.ev-diff {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.ev-before { color: var(--ng); text-decoration: line-through; opacity: 0.7; }
+.ev-after  { color: var(--ok); font-weight: 600; }
+.ev-rationale {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  margin-bottom: 6px;
+  padding: 6px 8px;
+  background: var(--surface2);
+  border-radius: 6px;
+  border-left: 3px solid var(--primary);
+}
+.ev-evidence {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.ev-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.ev-approve {
+  flex: 1;
+  padding: 8px;
+  background: var(--ok);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.ev-dismiss {
+  flex: 1;
+  padding: 8px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.ev-approve:hover { opacity: 0.85; }
+.ev-dismiss:hover { opacity: 0.7; }
+
+/* ══════════════════════════════════════════════════════════════
+   案3: KPI ストリップ / メトリクスページ
+   ══════════════════════════════════════════════════════════════ */
+.kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.kpi-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  text-align: center;
+}
+.kpi-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.kpi-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* JupyterLab ノートブックリンク */
+.nb-link {
+  display: inline-block;
+  padding: 6px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+.nb-link:hover { background: var(--primary-glow); border-color: var(--primary); color: var(--primary-dim); }
+
+/* ══════════════════════════════════════════════════════════════
+   モバイル専用: .mobile-only — デスクトップでは非表示
+   ══════════════════════════════════════════════════════════════ */
+/* .mobile-only — デスクトップでは非表示、モバイルで flex 表示 */
+.mobile-only { display: none !important; }
+
+/* .hmode-btn — role-card と同じスタイルに合わせる */
+.hmode-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-sizing: border-box;
+}
+.hmode-btn.active {
+  background: var(--primary-glow);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.hmode-btn:hover:not(.active) { opacity: 0.8; }
+
+@media (max-width: 600px) {
+  .mobile-only { display: flex !important; }
+
+  #page-history > h2 { border-bottom: none; padding-bottom: 4px; }
+  #page-history > div { padding-top: 8px !important; }
+
+  .history-mode-toggle {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    width: 100%;
+  }
+
+  /* ページタイトル行 (システム設定) */
+  .page-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    gap: 8px;
+  }
+  .page-title-row h2 { margin: 0; flex-shrink: 0; }
+  .page-title-actions { gap: 6px; }
+  .title-action-btn {
+    padding: 6px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .title-action-btn:hover {
+    background: var(--primary-glow);
+    border-color: var(--primary);
+    color: var(--primary-dim);
+  }
+}

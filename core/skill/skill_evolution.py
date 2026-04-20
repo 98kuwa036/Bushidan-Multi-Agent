@@ -37,7 +37,7 @@ _AUDIT_ROOT = Path(
 ) / "v18"
 
 # スキル候補のしきい値
-_CANDIDATE_THRESHOLD = int(os.environ.get("SKILL_EVOLVE_THRESHOLD", "5"))
+_CANDIDATE_THRESHOLD = int(float(os.environ.get("SKILL_EVOLVE_THRESHOLD", "5")))
 
 # DB スキーマ初期化 SQL
 _SCHEMA_SQL = """
@@ -126,12 +126,16 @@ class SkillEvolutionEngine:
         """必要テーブルの作成"""
         try:
             import psycopg
-            # pgvector extension ensure
             async with await psycopg.AsyncConnection.connect(
                 POSTGRES_URL, autocommit=True
             ) as conn:
                 async with conn.cursor() as cur:
-                    await cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                    # pgvector は権限不足で失敗してもテーブル作成は続行する
+                    try:
+                        await cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                    except Exception as e:
+                        logger.debug("pgvector extension skipped (%s)", type(e).__name__)
+
                     for stmt in _SCHEMA_SQL.strip().split(";"):
                         stmt = stmt.strip()
                         if stmt:
@@ -143,13 +147,6 @@ class SkillEvolutionEngine:
             logger.warning("_ensure_schema error: %s", e)
 
     # ── 監査ログからパターン抽出 ─────────────────────────────────────────
-
-    def _parse_audit_yaml_line(self, line: str) -> Optional[dict]:
-        """YAML行からキー・値を簡易抽出"""
-        m = re.match(r'\s+(\w+):\s*(.*)', line)
-        if m:
-            return {"key": m.group(1), "value": m.group(2).strip().strip('"')}
-        return None
 
     async def analyze_audit_logs(self, days: int = 7) -> List[SkillPattern]:
         """監査ログを分析してパターンを抽出"""
@@ -182,19 +179,62 @@ class SkillEvolutionEngine:
     async def _extract_patterns_from_yaml(
         self, content: str, patterns: Dict[str, SkillPattern]
     ) -> None:
-        """YAML コンテンツからパターンを抽出"""
-        # シンプルな行パース
+        """YAML コンテンツからパターンを抽出（ブロックスタイル対応）"""
+        # pyyaml が使える場合はそちらを優先する
+        try:
+            import yaml
+            entries = yaml.safe_load(content)
+            # audit_logger は {"entries": [...]} の dict 形式で出力する
+            if isinstance(entries, dict) and "entries" in entries:
+                entries = entries["entries"]
+            if isinstance(entries, list):
+                for entry in entries:
+                    if isinstance(entry, dict):
+                        await self._process_entry({k: str(v) for k, v in entry.items()}, patterns)
+                return
+        except Exception as e:
+            logger.debug("yaml structured parse skipped: %s", e)  # フォールバック: 行パース
+
+        # フォールバック: YAML ブロックスタイル (|) を考慮した行パース
         current_entry: Dict[str, str] = {}
+        block_key: Optional[str] = None
+        block_lines: List[str] = []
+
         for line in content.split("\n"):
-            parsed = self._parse_audit_yaml_line(line)
-            if parsed:
-                current_entry[parsed["key"]] = parsed["value"]
+            # ブロック値の収集中
+            if block_key is not None:
+                if line.startswith("  ") or line.startswith("\t"):
+                    block_lines.append(line.strip())
+                    continue
+                else:
+                    # ブロック終了 → 値を確定
+                    current_entry[block_key] = " ".join(block_lines).strip()
+                    block_key = None
+                    block_lines = []
 
-            # エントリ境界検出（空行またはネストの終わり）
-            if line.strip() == "" and current_entry:
-                await self._process_entry(current_entry, patterns)
-                current_entry = {}
+            # エントリ境界（空行）
+            if line.strip() == "":
+                if current_entry:
+                    await self._process_entry(current_entry, patterns)
+                    current_entry = {}
+                continue
 
+            # ブロックスタイル開始: `key: |`
+            m_block = re.match(r'\s+(\w+):\s*\|$', line)
+            if m_block:
+                block_key = m_block.group(1)
+                block_lines = []
+                continue
+
+            # 通常のキー: バリュー行
+            m = re.match(r'\s+(\w+):\s*(.*)', line)
+            if m:
+                val = m.group(2).strip().strip('"')
+                current_entry[m.group(1)] = val
+
+        # 残りのブロック確定
+        if block_key and block_lines:
+            current_entry[block_key] = " ".join(block_lines).strip()
         if current_entry:
             await self._process_entry(current_entry, patterns)
 
@@ -286,7 +326,7 @@ class SkillEvolutionEngine:
     # ── PostgreSQL への保存 ──────────────────────────────────────────────
 
     async def save_candidates_to_db(self, candidates: List[EvolvedSkill]) -> int:
-        """skill_candidates テーブルに候補を保存（重複スキップ）"""
+        """skill_candidates テーブルに候補を保存（skill_tracker のスキーマに準拠）"""
         if not candidates:
             return 0
 
@@ -297,55 +337,43 @@ class SkillEvolutionEngine:
                 POSTGRES_URL, autocommit=True
             ) as conn:
                 async with conn.cursor() as cur:
-                    # skill_candidates テーブルが存在しない場合は作成
-                    await cur.execute("""
-                        CREATE TABLE IF NOT EXISTS skill_candidates (
-                            id TEXT PRIMARY KEY,
-                            pattern TEXT,
-                            keywords TEXT[],
-                            route_hint TEXT DEFAULT 'auto',
-                            system_prompt_hint TEXT DEFAULT '',
-                            occurrence_count INTEGER DEFAULT 1,
-                            status TEXT DEFAULT 'pending',
-                            proposed_at TIMESTAMP DEFAULT NOW(),
-                            resolved_at TIMESTAMP,
-                            skill_name TEXT DEFAULT '',
-                            category TEXT DEFAULT '',
-                            role_confidence FLOAT DEFAULT 0.7
-                        )
-                    """)
+                    # skill_tracker.ensure_schema() が作るテーブルに合わせる
+                    # （重複 CREATE は IF NOT EXISTS により安全）
+                    from utils.skill_tracker import _SCHEMA_SQL as _tracker_schema
+                    for stmt in _tracker_schema.strip().split(";"):
+                        stmt = stmt.strip()
+                        if stmt:
+                            try:
+                                await cur.execute(stmt)
+                            except Exception as e:
+                                logger.debug("schema stmt skipped: %s", e)
 
                     for c in candidates:
                         cid = f"evolved-{c.source_pattern}"
-                        # 既存チェック
                         await cur.execute(
-                            "SELECT id FROM skill_candidates WHERE id = %s",
-                            (cid,),
+                            "SELECT id FROM skill_candidates WHERE id = %s", (cid,)
                         )
                         if await cur.fetchone():
-                            # 出現回数のみ更新
                             await cur.execute(
                                 "UPDATE skill_candidates SET occurrence_count = %s WHERE id = %s",
                                 (c.occurrence_count, cid),
                             )
                             continue
 
+                        # skill_tracker スキーマ準拠: keywords は JSON 文字列
                         await cur.execute(
                             """
                             INSERT INTO skill_candidates
-                                (id, pattern, keywords, route_hint, occurrence_count,
-                                 status, skill_name, category, role_confidence)
-                            VALUES (%s, %s, %s, %s, %s, 'pending', %s, %s, %s)
+                                (id, pattern_hash, keywords, typical_role,
+                                 occurrence_count, status, proposed_at)
+                            VALUES (%s, %s, %s, %s, %s, 'pending', NOW())
                             """,
                             (
                                 cid,
                                 c.source_pattern,
-                                c.trigger_keywords,
+                                json.dumps(c.trigger_keywords, ensure_ascii=False),
                                 c.recommended_role,
                                 c.occurrence_count,
-                                c.name,
-                                c.category,
-                                c.role_confidence,
                             ),
                         )
                         count += 1

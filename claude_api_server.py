@@ -14,11 +14,9 @@ bushidan-honjin LXC からは HTTP API 経由でアクセス。
 """
 
 import asyncio
-import json
 import logging
 import os
 import subprocess
-import sys
 from pathlib import Path
 from typing import Optional
 
@@ -134,8 +132,8 @@ class ClaudeClient:
                 # CLIが警告行をstdoutに混入する場合があるため除去
                 _WARN_PREFIXES = ("balance", "credit", "usage limit", "your account")
                 lines = [
-                    l for l in result.stdout.splitlines()
-                    if not any(l.lower().strip().startswith(p) for p in _WARN_PREFIXES)
+                    line for line in result.stdout.splitlines()
+                    if not any(line.lower().strip().startswith(p) for p in _WARN_PREFIXES)
                 ]
                 content = "\n".join(lines).strip()
                 return {

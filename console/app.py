@@ -21,6 +21,8 @@ v15: 分散Claude処理 + 10役職体制
 import asyncio
 import datetime
 import json
+import re
+import os
 import time
 import uuid
 from typing import Optional
@@ -29,7 +31,7 @@ import urllib.error
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -82,7 +84,6 @@ app.add_middleware(
 )
 
 # ── 静的ファイル ────────────────────────────────────────────────────────
-import os
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 if os.path.isdir(_STATIC_DIR):
     app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -146,6 +147,14 @@ async def startup_init_db_and_switch():
                 # インデックス
                 await cur.execute("CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);")
                 await cur.execute("CREATE INDEX IF NOT EXISTS idx_threads_updated ON threads(updated_at DESC);")
+                # system_config テーブル (key-value 設定ストア)
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS system_config (
+                        key TEXT PRIMARY KEY,
+                        value TEXT NOT NULL,
+                        updated_at TIMESTAMP DEFAULT NOW()
+                    );
+                """)
                 logger.info("✅ Console startup: DB schema initialized")
 
                 # Phase 1.5: テストデータ初期化
@@ -222,8 +231,8 @@ async def startup_init_db_and_switch():
                     method='POST'
                 )
                 with urllib.request.urlopen(http_req, timeout=10) as response:
-                    result = json.loads(response.read().decode('utf-8'))
-                    logger.info(f"✅ Console startup: LLM server switched to Gemma4 MoE")
+                    response.read()
+                    logger.info("✅ Console startup: LLM server switched to Gemma4 MoE")
                     return
             except Exception as e:
                 if attempt < 2:
@@ -232,6 +241,112 @@ async def startup_init_db_and_switch():
                 logger.warning(f"⚠️ Failed to switch LLM to Gemma4 after 3 attempts: {e}")
     except Exception as e:
         logger.warning(f"⚠️ LLM auto-switch failed: {e}")
+
+    # Phase 3: LangGraph Router 事前初期化（初回チャットのレイテンシを削減）
+    _fire(_prewarm_router(), name="router_prewarm")
+    # Phase 4: スキル自動進化バックグラウンドループ起動（デフォルト無効）
+    _fire(_skill_evolution_loop(), name="skill_evolution_loop")
+
+
+async def _prewarm_router():
+    """LangGraph Router を起動時にバックグラウンド初期化する。
+    DB 接続が確立されるまでポーリングしてから Router を初期化する。
+    """
+    # DB が応答するまで最大30秒ポーリング（sleep(N) マジックナンバーを避ける）
+    for _attempt in range(10):
+        try:
+            import psycopg
+            async with await psycopg.AsyncConnection.connect(
+                POSTGRES_URL, autocommit=True, connect_timeout=3
+            ) as _c:
+                await _c.execute("SELECT 1")
+            break  # DB 応答確認できたら即抜ける
+        except Exception:
+            await asyncio.sleep(3)
+    try:
+        await _get_router()
+        logger.info("🔥 Router pre-warm 完了 — 初回チャットは即時応答")
+    except Exception as e:
+        logger.warning("⚠️ Router pre-warm 失敗 (遅延初期化にフォールバック): %s", e)
+
+
+# ── スキル自動進化ループ ──────────────────────────────────────────────────
+_EVOLUTION_CHECK_INTERVAL = 3600  # 1時間ごとにチェック
+
+
+async def _get_evolution_config() -> dict:
+    """system_config からスキル進化の設定を取得する。"""
+    try:
+        import psycopg
+        async with await psycopg.AsyncConnection.connect(POSTGRES_URL, autocommit=True) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT key, value FROM system_config WHERE key LIKE 'skill_evolution_%'"
+                )
+                rows = await cur.fetchall()
+                cfg = {r[0]: r[1] for r in rows}
+        return {
+            "enabled": cfg.get("skill_evolution_auto_enabled", "false").lower() == "true",
+            "interval_hours": int(cfg.get("skill_evolution_interval_hours", "24")),
+            "min_observations": int(cfg.get("skill_evolution_min_observations", "10")),
+        }
+    except Exception as e:
+        logger.warning("⚠️ evolution config read failed: %s", e)
+        return {"enabled": False, "interval_hours": 24, "min_observations": 10}
+
+
+async def _should_run_evolution(cfg: dict) -> tuple[bool, str]:
+    """進化を実行すべきか判定する。(実行可否, 理由) を返す。"""
+    if not cfg["enabled"]:
+        return False, "自動実行が無効です"
+    try:
+        import psycopg
+        async with await psycopg.AsyncConnection.connect(POSTGRES_URL, autocommit=True) as conn:
+            async with conn.cursor() as cur:
+                # 最終実行時刻を取得
+                await cur.execute(
+                    "SELECT run_at FROM skill_evolution_log ORDER BY run_at DESC LIMIT 1"
+                )
+                row = await cur.fetchone()
+                last_run = row[0] if row else None
+
+                if last_run:
+                    elapsed_hours = (datetime.datetime.now() - last_run).total_seconds() / 3600
+                    if elapsed_hours < cfg["interval_hours"]:
+                        remaining = cfg["interval_hours"] - elapsed_hours
+                        return False, f"前回実行から {elapsed_hours:.1f}h 経過 (次回まで {remaining:.1f}h)"
+
+                # 最終実行以降の新規 observation 数を確認
+                since = last_run or datetime.datetime.now() - datetime.timedelta(days=365)
+                await cur.execute(
+                    "SELECT COUNT(*) FROM skill_observations WHERE created_at > %s", (since,)
+                )
+                count_row = await cur.fetchone()
+                new_obs = count_row[0] if count_row else 0
+                if new_obs < cfg["min_observations"]:
+                    return False, f"新規観測数 {new_obs} < 閾値 {cfg['min_observations']}"
+                return True, f"実行条件充足 (新規観測: {new_obs}件)"
+    except Exception as e:
+        return False, f"判定エラー: {e}"
+
+
+async def _skill_evolution_loop():
+    """スキル自動進化バックグラウンドループ。デフォルトは無効状態で起動。"""
+    await asyncio.sleep(60)  # 起動直後の実行を避ける
+    while True:
+        try:
+            cfg = await _get_evolution_config()
+            should_run, reason = await _should_run_evolution(cfg)
+            if should_run:
+                logger.info("🧬 スキル自動進化: 実行開始 (%s)", reason)
+                from core.skill import evolve_skills_from_audit
+                result = await evolve_skills_from_audit(days=cfg["interval_hours"] // 24 or 1)
+                logger.info("🧬 スキル自動進化: 完了 %s", result)
+            else:
+                logger.debug("🧬 スキル自動進化: スキップ (%s)", reason)
+        except Exception as e:
+            logger.warning("⚠️ スキル自動進化ループエラー: %s", e)
+        await asyncio.sleep(_EVOLUTION_CHECK_INTERVAL)
 
 
 # ── ルーター (遅延初期化) ──────────────────────────────────────────────
@@ -328,7 +443,7 @@ async def chat(req: ChatRequest):
             source="console",
             forced_role=forced_role,
         )
-    except Exception as e:
+    except Exception:
         if _HAS_PROMETHEUS:
             _req_errors.labels(source="console").inc()
         raise
@@ -889,7 +1004,7 @@ async def ws_chat(ws: WebSocket):
                         thread_id=thread_id,
                         human_response=human_response,
                     )
-                except Exception as e:
+                except Exception:
                     if _HAS_PROMETHEUS:
                         _req_errors.labels(source="console_ws").inc()
                     raise
@@ -965,7 +1080,7 @@ async def ws_chat(ws: WebSocket):
                     "thread_id": thread_id,
                 })
                 continue
-            except Exception as e:
+            except Exception:
                 if _HAS_PROMETHEUS:
                     _req_errors.labels(source="console_ws").inc()
                 raise
@@ -1171,6 +1286,109 @@ async def get_approved_skills():
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+# ── 進化提案 API ─────────────────────────────────────────────────────────────
+
+@app.get("/api/evolution-proposals")
+async def get_evolution_proposals(status: str = "pending"):
+    """週次進化サイクルで生成された型付き提案書一覧"""
+    try:
+        from utils.evolution_proposals import list_evolution_proposals
+        proposals = await list_evolution_proposals(status=status)
+        return {"proposals": proposals, "count": len(proposals)}
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/evolution-proposals/{proposal_id}/approve")
+async def approve_evolution_proposal(proposal_id: str):
+    """進化提案を承認して適用する"""
+    try:
+        from utils.evolution_proposals import approve_evolution_proposal as _approve
+        result = await _approve(proposal_id)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/evolution-proposals/{proposal_id}/dismiss")
+async def dismiss_evolution_proposal(proposal_id: str):
+    """進化提案を却下する"""
+    try:
+        from utils.evolution_proposals import dismiss_evolution_proposal as _dismiss
+        result = await _dismiss(proposal_id)
+        return result
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.get("/api/evolution-reports/latest")
+async def get_latest_evolution_report():
+    """最新の週次レポートを返す"""
+    from pathlib import Path
+    latest = Path.home() / "bushidan_reports" / "evolution" / "latest.txt"
+    if not latest.exists():
+        return JSONResponse({"error": "レポートがまだありません"}, status_code=404)
+    return {"report": latest.read_text(encoding="utf-8")}
+
+
+# ── v18: KPI サマリーメトリクス API ─────────────────────────────────────────
+
+@app.get("/api/metrics/summary")
+async def get_metrics_summary():
+    """直近24時間のKPIサマリーを返す（ヘッダースパークライン用）"""
+    if not POSTGRES_URL:
+        return JSONResponse({"error": "POSTGRES_URL未設定"}, status_code=503)
+    try:
+        import psycopg
+        async with await psycopg.AsyncConnection.connect(POSTGRES_URL) as conn:
+            async with conn.cursor() as cur:
+                # 直近24時間の観測データが存在するか確認
+                await cur.execute(
+                    "SELECT to_regclass('public.skill_observations')"
+                )
+                if not (await cur.fetchone())[0]:
+                    return {"available": False}
+
+                await cur.execute("""
+                    SELECT
+                        COUNT(*)                                                 AS total,
+                        ROUND(AVG(CASE WHEN success THEN 1.0 ELSE 0 END) * 100, 1) AS success_rate,
+                        ROUND(AVG(execution_time)::numeric, 0)                  AS avg_ms,
+                        SUM(CASE WHEN used_fallback THEN 1 ELSE 0 END)          AS fallback_count,
+                        SUM(CASE WHEN NOT COALESCE(success, TRUE) THEN 1 ELSE 0 END) AS error_count
+                    FROM skill_observations
+                    WHERE created_at >= NOW() - INTERVAL '24 hours'
+                """)
+                row = await cur.fetchone()
+                if not row or not row[0]:
+                    return {"available": True, "total": 0, "success_rate": None,
+                            "avg_ms": None, "fallback_count": 0, "error_count": 0}
+
+                # 直近6時間のロール別集計（スパークライン用）
+                await cur.execute("""
+                    SELECT role_used, COUNT(*) as cnt
+                    FROM skill_observations
+                    WHERE created_at >= NOW() - INTERVAL '6 hours'
+                    GROUP BY role_used
+                    ORDER BY cnt DESC
+                    LIMIT 5
+                """)
+                top_roles = [{"role": r[0], "count": r[1]} for r in await cur.fetchall()]
+
+        return {
+            "available":    True,
+            "total":        row[0],
+            "success_rate": float(row[1]) if row[1] is not None else None,
+            "avg_ms":       float(row[2]) if row[2] is not None else None,
+            "fallback_count": int(row[3] or 0),
+            "error_count":  int(row[4] or 0),
+            "top_roles":    top_roles,
+        }
+    except Exception as e:
+        logger.debug("metrics/summary error: %s", e)
+        return {"available": False, "error": str(e)}
+
+
 # ── v18 監査ログヘルパー ──────────────────────────────────────────────────
 
 async def _write_v18_audit(**kwargs) -> None:
@@ -1318,7 +1536,7 @@ async def v2_chat(req: V2ChatRequest):
             source="console_v2",
             forced_role=forced_role,
         )
-    except Exception as e:
+    except Exception:
         if _HAS_PROMETHEUS:
             _req_errors.labels(source="console_v2").inc()
         raise
@@ -1472,6 +1690,12 @@ class ServiceActionRequest(BaseModel):
 class PackageUpgradeRequest(BaseModel):
     package: str
 
+class ConflictFixRequest(BaseModel):
+    conflicts: str  # pip check の出力テキスト
+
+class ApplyFixRequest(BaseModel):
+    packages: list[str]  # ["name==version", ...]
+
 
 @app.get("/api/maintenance/logs")
 async def maintenance_logs(
@@ -1540,6 +1764,62 @@ async def maintenance_package_upgrade(req: PackageUpgradeRequest, token: str = "
     return JSONResponse(result)
 
 
+@app.post("/api/maintenance/packages/suggest-fix")
+async def maintenance_suggest_fix(req: ConflictFixRequest, token: str = ""):
+    """依存競合を LLM (Gemini Flash-Lite) に分析させて解決案を返す"""
+    _check_auth(token)
+    if not req.conflicts.strip():
+        return JSONResponse({"packages": [], "explanation": "競合なし"})
+    try:
+        from utils.client_registry import ClientRegistry
+        client = (
+            ClientRegistry.get().get_client("uketuke")
+            or ClientRegistry.get().get_client("seppou")
+        )
+        if not client:
+            return JSONResponse({"error": "LLMクライアント未初期化"}, status_code=503)
+
+        prompt = (
+            "以下は `pip check` の出力です。依存関係の競合を解決するために "
+            "インストールすべきパッケージのバージョンを JSON で返してください。\n\n"
+            f"```\n{req.conflicts[:2000]}\n```\n\n"
+            "返答は必ず次の JSON **のみ** で返してください。余分なテキスト不要。\n"
+            '{"packages": ["package_name==x.y.z", ...], "explanation": "1行の説明"}\n\n'
+            "注意:\n"
+            "- 競合を起こしているパッケージの **どちらか** を互換バージョンに下げる提案を優先\n"
+            "- インストール済みパッケージ名と完全一致させること (例: pydantic-core ではなく pydantic_core)\n"
+            "- 解決不可能な場合は packages を空配列にして explanation に理由を書く"
+        )
+        raw = await client.generate(
+            messages=[{"role": "user", "content": prompt}],
+            system="あなたは Python パッケージ依存関係の専門家です。JSON のみ返してください。",
+            max_tokens=300,
+        )
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        if not m:
+            return JSONResponse({"error": "LLM応答のパース失敗", "raw": raw[:200]}, status_code=500)
+        result = json.loads(m.group())
+        # パッケージ名のサニタイズ: name==version 形式のみ許可
+        _valid = re.compile(r'^[a-zA-Z0-9_\-\.]+==[\d\w\.\-\+]+$')
+        result["packages"] = [p for p in result.get("packages", []) if _valid.match(p)]
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/api/maintenance/packages/apply-fix")
+async def maintenance_apply_fix(req: ApplyFixRequest, token: str = ""):
+    """LLM 提案のパッケージをバリデーション後にインストール"""
+    _check_auth(token)
+    _valid = __import__('re').compile(r'^[a-zA-Z0-9_\-\.]+==[\d\w\.\-\+]+$')
+    invalid = [p for p in req.packages if not _valid.match(p)]
+    if invalid:
+        return JSONResponse({"success": False, "output": f"無効なパッケージ指定: {invalid}"})
+    from console.maintenance import upgrade_package_list
+    result = await upgrade_package_list(req.packages)
+    return JSONResponse(result)
+
+
 @app.get("/api/maintenance/update/stream")
 async def maintenance_update_stream(stage: str = "check", token: str = ""):
     """
@@ -1573,3 +1853,67 @@ async def maintenance_service(req: ServiceActionRequest, token: str = ""):
     from console.maintenance import service_action
     result = await service_action(req.service, req.action)
     return JSONResponse(result)
+
+
+# ── スキル自動進化 設定 API ──────────────────────────────────────────────
+
+class EvolutionAutoConfig(BaseModel):
+    enabled: bool
+    interval_hours: int = 24
+    min_observations: int = 10
+
+
+@app.get("/api/v18/evolution-auto-config")
+async def get_evolution_auto_config(token: str = ""):
+    """スキル自動進化の現在設定と状態を返す"""
+    _check_auth(token)
+    cfg = await _get_evolution_config()
+    should_run, reason = await _should_run_evolution(cfg)
+    try:
+        import psycopg
+        async with await psycopg.AsyncConnection.connect(POSTGRES_URL, autocommit=True) as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    "SELECT run_at, candidates_created, skills_activated FROM skill_evolution_log ORDER BY run_at DESC LIMIT 1"
+                )
+                row = await cur.fetchone()
+                last_run_info = {
+                    "run_at": row[0].isoformat() if row and row[0] else None,
+                    "candidates_created": row[1] if row else 0,
+                    "skills_activated": row[2] if row else 0,
+                } if row else None
+    except Exception as e:
+        last_run_info = None
+        logger.warning("evolution config status error: %s", e)
+    return {
+        "config": cfg,
+        "status": {"will_run_next_check": should_run, "reason": reason},
+        "last_run": last_run_info,
+    }
+
+
+@app.post("/api/v18/evolution-auto-config")
+async def update_evolution_auto_config(req: EvolutionAutoConfig, token: str = ""):
+    """スキル自動進化の設定を更新する"""
+    _check_auth(token)
+    try:
+        import psycopg
+        async with await psycopg.AsyncConnection.connect(POSTGRES_URL, autocommit=True) as conn:
+            async with conn.cursor() as cur:
+                updates = {
+                    "skill_evolution_auto_enabled": str(req.enabled).lower(),
+                    "skill_evolution_interval_hours": str(req.interval_hours),
+                    "skill_evolution_min_observations": str(req.min_observations),
+                }
+                for key, value in updates.items():
+                    await cur.execute("""
+                        INSERT INTO system_config (key, value, updated_at)
+                        VALUES (%s, %s, NOW())
+                        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+                    """, (key, value))
+        logger.info("🧬 スキル自動進化設定更新: enabled=%s interval=%dh min_obs=%d",
+                    req.enabled, req.interval_hours, req.min_observations)
+        return {"success": True, "config": req.dict()}
+    except Exception as e:
+        logger.error("evolution config update error: %s", e)
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)

@@ -67,7 +67,6 @@ class SeppouRole(BaseRole):
         try:
             msg = state.get("message", "")
             is_code = _has_code_request(msg)
-            language = _detect_language(msg) if is_code else "python"
 
             system = self._build_system_prompt(
                 state,

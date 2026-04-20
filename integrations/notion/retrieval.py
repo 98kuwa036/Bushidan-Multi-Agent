@@ -203,8 +203,8 @@ async def _query_kb_db(client, query: str, limit: int) -> list:
                 results = results + extra
                 if len(results) >= limit:
                     break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("notion extra query skipped: %s", e)
 
     return results
 

@@ -84,8 +84,17 @@ CREATE TABLE IF NOT EXISTS skill_observations (
     pattern_hash TEXT,
     keywords    TEXT,           -- JSON array
     execution_time FLOAT,
+    success     BOOLEAN DEFAULT TRUE,
+    error_msg   TEXT DEFAULT '',
+    had_hitl    BOOLEAN DEFAULT FALSE,
+    used_fallback BOOLEAN DEFAULT FALSE,
     created_at  TIMESTAMP DEFAULT NOW()
 );
+
+ALTER TABLE skill_observations ADD COLUMN IF NOT EXISTS success BOOLEAN DEFAULT TRUE;
+ALTER TABLE skill_observations ADD COLUMN IF NOT EXISTS error_msg TEXT DEFAULT '';
+ALTER TABLE skill_observations ADD COLUMN IF NOT EXISTS had_hitl BOOLEAN DEFAULT FALSE;
+ALTER TABLE skill_observations ADD COLUMN IF NOT EXISTS used_fallback BOOLEAN DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS skill_candidates (
     id              TEXT PRIMARY KEY,  -- pattern_hash
@@ -94,12 +103,23 @@ CREATE TABLE IF NOT EXISTS skill_candidates (
     sample_messages TEXT,              -- JSON array (最大5件)
     typical_role    TEXT,
     occurrence_count INT DEFAULT 0,
+    success_count   INT DEFAULT 0,
+    failure_count   INT DEFAULT 0,
+    hitl_count      INT DEFAULT 0,
+    fallback_count  INT DEFAULT 0,
+    avg_execution_ms FLOAT DEFAULT 0.0,
     status          TEXT DEFAULT 'pending',  -- pending|approved|dismissed
     proposed_at     TIMESTAMP DEFAULT NOW(),
     approved_at     TIMESTAMP,
     skill_name      TEXT,
     skill_file      TEXT
 );
+
+ALTER TABLE skill_candidates ADD COLUMN IF NOT EXISTS success_count INT DEFAULT 0;
+ALTER TABLE skill_candidates ADD COLUMN IF NOT EXISTS failure_count INT DEFAULT 0;
+ALTER TABLE skill_candidates ADD COLUMN IF NOT EXISTS hitl_count INT DEFAULT 0;
+ALTER TABLE skill_candidates ADD COLUMN IF NOT EXISTS fallback_count INT DEFAULT 0;
+ALTER TABLE skill_candidates ADD COLUMN IF NOT EXISTS avg_execution_ms FLOAT DEFAULT 0.0;
 
 CREATE INDEX IF NOT EXISTS idx_obs_hash ON skill_observations(pattern_hash);
 CREATE INDEX IF NOT EXISTS idx_obs_created ON skill_observations(created_at DESC);
@@ -129,6 +149,10 @@ async def observe(
     message: str,
     role_used: str,
     execution_time: float,
+    success: bool = True,
+    error: str = "",
+    had_hitl: bool = False,
+    used_fallback: bool = False,
 ) -> None:
     """
     チャット実行後に呼ぶ。パターンを記録し、候補生成を検討する。
@@ -138,6 +162,10 @@ async def observe(
         message:        ユーザーのメッセージ
         role_used:      実際に処理したロール (handled_by または agent_role)
         execution_time: 応答時間 (秒)
+        success:        タスクが正常完了したか
+        error:          エラーメッセージ（あれば）
+        had_hitl:       Human-in-the-loop が発生したか
+        used_fallback:  フォールバックが発動したか
     """
     if not message or len(message) < _MIN_OBS_LEN:
         return
@@ -155,8 +183,9 @@ async def observe(
                 # 観察記録
                 await cur.execute(
                     """INSERT INTO skill_observations
-                       (thread_id, message, role_used, pattern_hash, keywords, execution_time)
-                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                       (thread_id, message, role_used, pattern_hash, keywords, execution_time,
+                        success, error_msg, had_hitl, used_fallback)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (
                         thread_id,
                         message[:300],
@@ -164,6 +193,10 @@ async def observe(
                         phash,
                         json.dumps(keywords, ensure_ascii=False),
                         round(execution_time, 2),
+                        success,
+                        error[:200] if error else "",
+                        had_hitl,
+                        used_fallback,
                     ),
                 )
 
@@ -176,7 +209,11 @@ async def observe(
                 count = row[0] if row else 0
 
                 if count >= SKILL_PROPOSE_THRESHOLD:
-                    await _maybe_create_candidate(cur, phash, keywords, role_used, count)
+                    await _maybe_create_candidate(
+                        cur, phash, keywords, role_used, count,
+                        success=success, had_hitl=had_hitl,
+                        used_fallback=used_fallback, execution_time=execution_time,
+                    )
 
             await conn.commit()
 
@@ -184,24 +221,35 @@ async def observe(
         logger.error("SkillTracker.observe 失敗: %s", e)
 
 
-async def _maybe_create_candidate(cur, phash: str, keywords: list[str], role: str, count: int) -> None:
-    """候補が未存在 or pending の場合、件数を更新/挿入する"""
+async def _maybe_create_candidate(
+    cur, phash: str, keywords: list[str], role: str, count: int,
+    success: bool = True, had_hitl: bool = False, used_fallback: bool = False,
+    execution_time: float = 0.0,
+) -> None:
+    """候補が未存在 or pending の場合、件数・成功率を更新/挿入する"""
     await cur.execute(
-        "SELECT id, status FROM skill_candidates WHERE pattern_hash = %s",
+        "SELECT id, status, success_count, failure_count, hitl_count, fallback_count, avg_execution_ms FROM skill_candidates WHERE pattern_hash = %s",
         (phash,),
     )
     existing = await cur.fetchone()
 
     if existing:
-        # dismissed はスキップ、pending/approved は件数更新のみ
         if existing[1] == "dismissed":
             return
+        sc = (existing[2] or 0) + (1 if success else 0)
+        fc = (existing[3] or 0) + (0 if success else 1)
+        hc = (existing[4] or 0) + (1 if had_hitl else 0)
+        flc = (existing[5] or 0) + (1 if used_fallback else 0)
+        prev_avg = existing[6] or 0.0
+        new_avg = (prev_avg * (count - 1) + execution_time * 1000) / count if count > 0 else 0.0
         await cur.execute(
-            "UPDATE skill_candidates SET occurrence_count = %s WHERE pattern_hash = %s",
-            (count, phash),
+            """UPDATE skill_candidates
+               SET occurrence_count = %s, success_count = %s, failure_count = %s,
+                   hitl_count = %s, fallback_count = %s, avg_execution_ms = %s
+               WHERE pattern_hash = %s""",
+            (count, sc, fc, hc, flc, round(new_avg, 1), phash),
         )
     else:
-        # サンプルメッセージ (最新5件) を取得
         await cur.execute(
             """SELECT message FROM skill_observations
                WHERE pattern_hash = %s ORDER BY created_at DESC LIMIT 5""",
@@ -212,20 +260,24 @@ async def _maybe_create_candidate(cur, phash: str, keywords: list[str], role: st
         await cur.execute(
             """INSERT INTO skill_candidates
                (id, pattern_hash, keywords, sample_messages, typical_role,
-                occurrence_count, status, proposed_at)
-               VALUES (%s, %s, %s, %s, %s, %s, 'pending', NOW())""",
+                occurrence_count, success_count, failure_count, hitl_count,
+                fallback_count, avg_execution_ms, status, proposed_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', NOW())""",
             (
-                phash,
-                phash,
+                phash, phash,
                 json.dumps(keywords, ensure_ascii=False),
                 json.dumps(samples, ensure_ascii=False),
-                role,
-                count,
+                role, count,
+                1 if success else 0,
+                0 if success else 1,
+                1 if had_hitl else 0,
+                1 if used_fallback else 0,
+                round(execution_time * 1000, 1),
             ),
         )
         logger.info(
-            "💡 スキル候補を提案: hash=%s keywords=%s (出現%d回)",
-            phash, keywords[:3], count,
+            "💡 スキル候補を提案: hash=%s keywords=%s (出現%d回, 成功=%s)",
+            phash, keywords[:3], count, success,
         )
 
 
