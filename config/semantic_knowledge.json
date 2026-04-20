@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "updated_at": "2026-04-19",
+  "roles": {
+    "groq_qa": {
+      "examples": [
+        "今日の天気は？ 今何時？ 計算して。 雑談したい。 クイズ出して。",
+        "簡単な質問に答えて。 事実を教えて。 ちょっと聞きたいことがある。",
+        "What time is it? Quick question. Tell me a fact. Let's chat."
+      ],
+      "learned_examples": []
+    },
+    "yuhitsu_jp": {
+      "examples": [
+        "日本語に翻訳して。 英語に翻訳して。 文章を清書して。 敬語に直して。",
+        "この文章を要約して。 文体を変えて。 メールの文章を書いて。 校正して。",
+        "Translate to Japanese. Rewrite this text. Proofread my writing."
+      ],
+      "learned_examples": []
+    },
+    "metsuke_proc": {
+      "examples": [
+        "技術的に説明して。 比較して教えて。 レビューして。 ドキュメントを書いて。",
+        "わかりやすく解説して。 メリットとデメリットを教えて。 報告書を作って。",
+        "Explain technically. Compare these. Write documentation. Give a review."
+      ],
+      "learned_examples": []
+    },
+    "gunshi_haiku": {
+      "examples": [
+        "アーキテクチャを設計して。 戦略を立てて。 深く分析して。 ビジネス計画を作って。",
+        "複雑な問題を解決して。 システム設計の相談。 多角的に考えて。 推論して。",
+        "Design the architecture. Plan a strategy. Deep analysis. Business logic."
+      ],
+      "learned_examples": []
+    },
+    "gaiji_rag": {
+      "examples": [
+        "最新ニュースを検索して。 今の情報を教えて。 ウェブで調べて。 最近どうなっている？",
+        "インターネットで検索して。 外部情報を調べて。 ニュース記事を探して。",
+        "Search the web. Find latest news. Look up current information. Browse internet."
+      ],
+      "learned_examples": []
+    },
+    "sanbo_mcp": {
+      "examples": [
+        "Pythonコードを実行して。 ファイルを操作して。 Gitコマンドを実行して。 コードを書いて。",
+        "スクリプトを実行して。 ファイルを読んで。 GitHubにプッシュして。 コードを動かして。",
+        "Run Python code. Execute script. File operation. Git commit. Write and run code."
+      ],
+      "learned_examples": []
+    },
+    "kengyo_vision": {
+      "examples": [
+        "この画像を解析して。 スクリーンショットを見て。 画像に何が写っている？ 図を読み取って。",
+        "写真を説明して。 グラフを解析して。 画像認識して。 ビジュアルを分析して。",
+        "Analyze this image. Read the screenshot. What is in this picture? Describe the chart."
+      ],
+      "learned_examples": []
+    },
+    "onmitsu_local": {
+      "examples": [
+        "機密情報を処理して。 プライベートなデータ。 社外秘の内容。 ローカルで処理して。",
+        "外部に送らないで。 秘密の情報。 個人情報を扱って。 オフラインで処理して。",
+        "Process confidential data. Private information. Secret content. Local only processing."
+      ],
+      "learned_examples": []
+    },
+    "shogun_plan": {
+      "examples": [
+        "大規模プロジェクトを計画して。 ロードマップを作って。 長期計画を立てて。",
+        "システム開発全体を管理して。 プロジェクト計画書を作って。 工程表を作成して。",
+        "Plan a large project. Create roadmap. Long-term planning. Full software development plan."
+      ],
+      "learned_examples": []
+    }
+  }
+}
