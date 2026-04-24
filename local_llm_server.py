@@ -25,8 +25,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
+import secrets
+
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -42,6 +44,19 @@ PORT         = int(os.environ.get("LOCAL_LLM_PORT", "8082"))
 N_GPU_LAYERS = int(os.environ.get("LLM_N_GPU_LAYERS", "0"))   # CPU専用
 N_THREADS    = int(os.environ.get("LLM_N_THREADS", "6"))       # i5-8500: 6物理コア
 N_CTX        = int(os.environ.get("LLM_N_CTX", "2048"))
+
+# API キー認証 (未設定時は認証スキップ、設定時は X-API-Key ヘッダー必須)
+_API_KEY = os.environ.get("LLM_API_KEY", "")
+
+
+def _check_api_key(x_api_key: Optional[str] = Header(default=None)) -> None:
+    """LLM_API_KEY 設定時のみ X-API-Key ヘッダーを検証する"""
+    if not _API_KEY:
+        return  # 未設定時はスキップ（ローカル開発用）
+    if not x_api_key or not secrets.compare_digest(x_api_key, _API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing X-API-Key")
+
+_auth = Depends(_check_api_key)
 
 GEMMA_PATH = os.environ.get(
     "GEMMA_MODEL_PATH",
@@ -86,7 +101,7 @@ app = FastAPI(title="Bushidan Local LLM Server", version="1.1.0", lifespan=lifes
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,  # credentials=True + origins=["*"] は CORS 仕様違反
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -137,7 +152,7 @@ async def _load_gemma() -> bool:
         from llama_cpp import Llama
         logger.info("🎌 Loading Gemma4 MoE: %s", GEMMA_PATH)
         t0 = time.time()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         _gemma_model = await loop.run_in_executor(None, lambda: Llama(
             model_path=GEMMA_PATH,
             n_gpu_layers=N_GPU_LAYERS,
@@ -178,7 +193,7 @@ async def _load_nemotron() -> bool:
         from llama_cpp import Llama
         logger.info("🐉 Loading Nemotron: %s", NEMOTRON_PATH)
         t0 = time.time()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         _nemotron_model = await loop.run_in_executor(None, lambda: Llama(
             model_path=NEMOTRON_PATH,
             n_gpu_layers=N_GPU_LAYERS,
@@ -236,7 +251,7 @@ def status():
     }
 
 @app.post("/generate/gemma")
-async def generate_gemma(req: GenerateRequest):
+async def generate_gemma(req: GenerateRequest, _: None = _auth):
     """Gemma4 MoE で推論（チャットテンプレート適用）"""
     async with _model_lock:
         if _active_model == "nemotron":
@@ -250,7 +265,7 @@ async def generate_gemma(req: GenerateRequest):
             if req.system:
                 messages.append({"role": "system", "content": req.system})
             messages.append({"role": "user", "content": req.prompt})
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, lambda: _gemma_model.create_chat_completion(
                 messages=messages,
                 max_tokens=req.max_tokens,
@@ -273,7 +288,7 @@ async def generate_gemma(req: GenerateRequest):
             raise HTTPException(500, str(e))
 
 @app.post("/generate/nemotron")
-async def generate_nemotron(req: GenerateRequest):
+async def generate_nemotron(req: GenerateRequest, _: None = _auth):
     """Nemotron で推論（ChatML テンプレート適用）"""
     async with _model_lock:
         if _nemotron_model is None:
@@ -284,7 +299,7 @@ async def generate_nemotron(req: GenerateRequest):
             if req.system:
                 messages.append({"role": "system", "content": req.system})
             messages.append({"role": "user", "content": req.prompt})
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, lambda: _nemotron_model.create_chat_completion(
                 messages=messages,
                 max_tokens=req.max_tokens,
@@ -307,7 +322,7 @@ async def generate_nemotron(req: GenerateRequest):
             raise HTTPException(500, str(e))
 
 @app.post("/generate/structured")
-async def generate_structured(req: StructuredRequest):
+async def generate_structured(req: StructuredRequest, _: None = _auth):
     """GBNF 文法制約付き構造化 JSON 生成（Uchu/Karasu 分析向け）"""
     async with _model_lock:
         if _active_model == "nemotron":
@@ -319,7 +334,7 @@ async def generate_structured(req: StructuredRequest):
             from llama_cpp import LlamaGrammar
             grammar = LlamaGrammar.from_string(req.grammar)
             t0 = time.time()
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, lambda: _gemma_model.create_completion(
                 prompt=req.prompt,
                 grammar=grammar,
@@ -341,7 +356,7 @@ async def generate_structured(req: StructuredRequest):
             raise HTTPException(500, str(e))
 
 @app.post("/switch/nemotron", response_model=SwitchResponse)
-async def switch_to_nemotron():
+async def switch_to_nemotron(_: None = _auth):
     """Gemma4 → Nemotron 排他切り替え"""
     async with _model_lock:
         if _active_model == "nemotron":
@@ -358,7 +373,7 @@ async def switch_to_nemotron():
             return SwitchResponse(success=False, active_model=_active_model, message=str(e))
 
 @app.post("/switch/gemma", response_model=SwitchResponse)
-async def switch_to_gemma():
+async def switch_to_gemma(_: None = _auth):
     """Nemotron → Gemma4 MoE 排他切り替え"""
     async with _model_lock:
         if _active_model == "gemma":
@@ -375,14 +390,14 @@ async def switch_to_gemma():
             return SwitchResponse(success=False, active_model=_active_model, message=str(e))
 
 @app.post("/benchmark")
-async def benchmark():
+async def benchmark(_: None = _auth):
     """推論速度ベンチマーク（50トークン生成）"""
     async with _model_lock:
         if _gemma_model is None:
             raise HTTPException(503, "Gemma4 not loaded")
         try:
             t0 = time.time()
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, lambda: _gemma_model.create_chat_completion(
                 messages=[{"role": "user", "content": "日本語で1から10まで数えてください。"}],
                 max_tokens=50,
