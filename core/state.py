@@ -41,7 +41,7 @@ class BushidanState(TypedDict):
     # ── MCP ──────────────────────────────────────────────────────
     available_tools: list       # ツール名リスト
     tool_schemas: dict
-    mcp_tools: list             # LangChain BaseTool オブジェクト (ロールが直接実行可)
+    mcp_tools: list             # ツール名リスト (BaseTool オブジェクトは DB 永続化不可のため名前のみ格納)
 
     # ── 実行結果 ─────────────────────────────────────────────────────
     response: Optional[str]

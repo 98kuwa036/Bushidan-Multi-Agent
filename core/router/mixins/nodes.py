@@ -6,6 +6,7 @@ core/router/mixins/nodes.py — 実行・特殊ノード群 Mixin
 バッチ並列 (_batch_parallel_node)、コード検証 (_sandbox_verify_node) を提供する。
 """
 import asyncio
+import copy
 import time
 from typing import TYPE_CHECKING
 from utils.logger import get_logger
@@ -156,7 +157,7 @@ class NodesMixin:
             task_desc  = s.get("task", "")
             role_key   = assigned if assigned in self._roles else self._CAP_TO_ROLE.get(capability, "gunshi")
             role       = self._roles.get(role_key) or self._roles.get("gunshi")
-            sub_state  = dict(state)
+            sub_state  = copy.copy(state)
             sub_state["message"] = task_desc
             sub_state["_step_task"] = task_desc
             if prev_ctx:
@@ -167,8 +168,9 @@ class NodesMixin:
                 from core.mcp_sdk import MCPToolRegistry
                 lc_tools = MCPToolRegistry.get().get_tools_for_role(role_key)
                 if lc_tools:
-                    sub_state["available_tools"] = [t.name for t in lc_tools]
-                    sub_state["mcp_tools"] = lc_tools
+                    tool_names = [t.name for t in lc_tools]
+                    sub_state["available_tools"] = tool_names
+                    sub_state["mcp_tools"] = tool_names  # BaseTool オブジェクトは DB 非永続化対象のため名前のみ
             except Exception as e:
                 logger.debug("mcp_tools load skipped: %s", e)
             try:
@@ -310,10 +312,14 @@ class NodesMixin:
             )
             elapsed = time.time() - start
             logger.info("⚔️ [大元帥監査] 完了 %.1fs", elapsed)
+            # LLM レスポンスから承認/却下を判定（キーワードベース）
+            _resp_lower = response.lower()
+            _rejected_kw = ["却下", "拒否", "不承認", "問題あり", "修正が必要", "reject", "denied"]
+            _verdict = "rejected" if any(kw in _resp_lower for kw in _rejected_kw) else "approved"
             _alog = self._audit_logs.get(state.get("thread_id") or "default")
             if _alog:
                 try:
-                    _alog.add_audit(verdict="approved", comments=response[:500], execution_time=elapsed)
+                    _alog.add_audit(verdict=_verdict, comments=response[:500], execution_time=elapsed)
                 except Exception as e:
                     logger.debug("audit_log audit skipped: %s", e)
             return {
@@ -347,7 +353,7 @@ class NodesMixin:
                     "sub_queries": sub_queries, "sub_responses": []}
 
         async def _run_sub(q: str) -> str:
-            sub_state = dict(state)
+            sub_state = copy.copy(state)
             sub_state["message"] = q + "?"
             try:
                 res = await asyncio.wait_for(role.execute(sub_state), timeout=30)
@@ -425,7 +431,7 @@ class NodesMixin:
                 capability = s.get("capability", "analysis")
                 role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
                 role       = self._roles.get(role_key) or self._roles.get("gunshi")
-                sub_state  = dict(state)
+                sub_state  = copy.copy(state)
                 sub_state["message"] = s.get("task", "")
                 try:
                     res = await asyncio.wait_for(role.execute(sub_state), timeout=timeout_val)
@@ -506,7 +512,7 @@ class NodesMixin:
                 capability = s.get("capability", "analysis")
                 role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
                 role       = self._roles.get(role_key) or self._roles.get("gunshi")
-                sub_state  = dict(state)
+                sub_state  = copy.copy(state)
                 sub_state["message"] = s.get("task", "")
                 try:
                     res = await asyncio.wait_for(role.execute(sub_state), timeout=timeout_val)
@@ -570,7 +576,7 @@ class NodesMixin:
                 async def _run_anth(idx: int, s: dict):
                     rk   = s.get("assigned_role") or self._CAP_TO_ROLE.get(s.get("capability", ""), "shogun")
                     role = self._roles.get(rk) or self._roles.get("gunshi")
-                    sub  = dict(state)
+                    sub  = copy.copy(state)
                     sub["message"] = s.get("task", "")
                     try:
                         res = await asyncio.wait_for(role.execute(sub), timeout=timeout_val)
@@ -598,7 +604,7 @@ class NodesMixin:
             async def _run_anth_direct(idx: int, s: dict):
                 rk   = s.get("assigned_role") or self._CAP_TO_ROLE.get(s.get("capability", ""), "shogun")
                 role = self._roles.get(rk) or self._roles.get("gunshi")
-                sub  = dict(state)
+                sub  = copy.copy(state)
                 sub["message"] = s.get("task", "")
                 try:
                     res = await asyncio.wait_for(role.execute(sub), timeout=timeout_val)

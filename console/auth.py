@@ -20,6 +20,22 @@ logger = get_logger(__name__)
 
 _SESSIONS: dict[str, float] = {}  # token → expiry timestamp
 _SESSION_TTL = 86400  # 24 hours
+_LAST_CLEANUP: float = 0.0
+
+
+def _cleanup_expired() -> None:
+    """期限切れセッションを定期削除してメモリリークを防ぐ"""
+    global _LAST_CLEANUP
+    import time as _time
+    now = _time.time()
+    if now - _LAST_CLEANUP < 3600:  # 1時間に1回
+        return
+    expired = [t for t, exp in _SESSIONS.items() if now > exp]
+    for t in expired:
+        _SESSIONS.pop(t, None)
+    _LAST_CLEANUP = now
+    if expired:
+        logger.debug("🧹 期限切れセッション %d件を削除", len(expired))
 
 
 def _get_hash() -> Optional[str]:
@@ -61,6 +77,7 @@ def create_session() -> str:
 
 def validate_session(token: str) -> bool:
     """セッショントークンを検証"""
+    _cleanup_expired()
     # 認証が設定されていない場合はスキップ
     if not _get_hash() and not _get_plaintext():
         return True

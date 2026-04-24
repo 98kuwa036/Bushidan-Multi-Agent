@@ -119,10 +119,11 @@ class MessagingMixin:
             _tid = thread_id or "default"
             _h = hashlib.md5(f"{_tid}:{message}".encode()).hexdigest()
             _cache_key = _h
-            _entry = self._RESP_CACHE.get(_h)
-            if _entry and (time.time() - _entry[1]) < self._RESP_CACHE_TTL:
-                logger.debug("⚡ 応答キャッシュヒット: %s", message[:40])
-                return _entry[0]
+            async with self._cache_lock:
+                _entry = self._RESP_CACHE.get(_h)
+                if _entry and (time.time() - _entry[1]) < self._RESP_CACHE_TTL:
+                    logger.debug("⚡ 応答キャッシュヒット: %s", message[:40])
+                    return _entry[0]
 
         # ── SemanticRouter 事前チェック (INTERACTIVE + 添付・強制ロールなし時のみ) ──
         if not forced_role and not attachments and not is_batch:
@@ -216,7 +217,8 @@ class MessagingMixin:
                 and not final.get("is_action_task")
                 and not final.get("requires_followup")
             ):
-                self._RESP_CACHE[_cache_key] = (result_dict, time.time())
+                async with self._cache_lock:
+                  self._RESP_CACHE[_cache_key] = (result_dict, time.time())
                 if len(self._RESP_CACHE) > 500:
                     now = time.time()
                     self._RESP_CACHE = {

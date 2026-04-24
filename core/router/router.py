@@ -37,10 +37,6 @@ class LangGraphRouter(
 ):
     """LangGraph StateGraph v16 — タイムアウト + ヘルスチェック + HITL + Batch モード"""
 
-    # ── 応答キャッシュ (TTL 5分、シンプルQ&A専用) ─────────────────────
-    _RESP_CACHE: dict = {}
-    _RESP_CACHE_TTL: float = 300.0
-
     def __init__(self, orchestrator: Any = None):
         self.orchestrator = orchestrator
         self._roles: dict = {}
@@ -53,6 +49,10 @@ class LangGraphRouter(
         self._pg_reconnect_task: Optional[asyncio.Task] = None
         self._memory_fallback: Optional[MemorySaver] = None
         self._audit_logs: dict = {}
+        # 応答キャッシュ: クラス変数を共有すると複数インスタンスで競合するためインスタンスに分離
+        self._RESP_CACHE: dict = {}
+        self._RESP_CACHE_TTL: float = 300.0
+        self._cache_lock: asyncio.Lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         logger.info("🔗 LangGraph Router v16 初期化開始")
