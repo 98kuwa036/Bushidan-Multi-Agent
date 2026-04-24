@@ -102,7 +102,7 @@ class SystemOrchestrator:
 
         try:
             from mcp_servers.filesystem_mcp import FilesystemMCP
-            self.mcps["filesystem"] = FilesystemMCP("/home/claude/Bushidan")
+            self.mcps["filesystem"] = FilesystemMCP("/mnt/Bushidan-Multi-Agent")
         except Exception as e:
             logger.warning("⚠️ Filesystem MCP: %s", e)
 

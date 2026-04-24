@@ -28,7 +28,7 @@ BATCH_CONFIG = {
     "anthropic_batch_poll_interval": 5.0, # ポーリング間隔 (秒); 本番は 60 以上推奨
     "anthropic_batch_max_wait":  3600.0,  # 最大待機 (秒)
     # ── 並列実行 ────────────────────────────────────────────────────────────
-    "max_parallel_batch_steps":  0,       # 0 = 上限なし (BATCH: 全 can_parallel ステップを一括)
+    "max_parallel_batch_steps":  8,       # 並列上限 (0 = 無制限は LLM バックエンドを飽和させるリスクあり)
     # ── 完了通知 ────────────────────────────────────────────────────────────
     "notify_on_completion":      True,    # バッチ完了時に通知 (BATCH_NOTIFY_WEBHOOK)
 }

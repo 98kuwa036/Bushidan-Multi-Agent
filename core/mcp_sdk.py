@@ -218,19 +218,24 @@ class MCPToolRegistry:
         await asyncio.gather(*[self._ensure_server(s) for s in allowed], return_exceptions=True)
         return self.get_tools_for_role(role_key)
 
-    async def call_tool(self, name: str, args: dict) -> Any:
-        """ツール名で実行。未接続サーバーがあれば遅延接続してから検索。"""
+    async def call_tool(self, name: str, args: dict, role_key: Optional[str] = None) -> Any:
+        """ツール名で実行。role_key を指定すると許可サーバーのみ遅延接続。"""
         # まず接続済みツールを検索
         for tool in self._all_tools:
             if tool.name == name:
                 logger.info("🔧 MCP tool: %s(%s)", name, str(args)[:100])
                 return await tool.ainvoke(args)
 
-        # 見つからなければ未接続サーバーを遅延接続してリトライ
         if not self._initialized or not self._client:
             raise ValueError(f"MCPToolRegistry 未初期化 — tool: {name}")
 
-        unready = [s for s, ok in self._server_ready.items() if not ok]
+        # role_key がある場合は許可サーバーのみ、なければ全未接続サーバーを試みる
+        if role_key:
+            allowed = self._role_servers.get(role_key, [])
+            unready = [s for s in allowed if not self._server_ready.get(s)]
+        else:
+            unready = [s for s, ok in self._server_ready.items() if not ok]
+
         if unready:
             await asyncio.gather(*[self._ensure_server(s) for s in unready], return_exceptions=True)
             for tool in self._all_tools:

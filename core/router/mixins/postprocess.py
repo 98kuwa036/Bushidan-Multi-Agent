@@ -39,11 +39,11 @@ class PostprocessMixin:
         if not state.get("requires_followup", False):
             return updates
 
-        # 最大反復回数チェック
+        # 最大反復回数に達した場合のみ強制終了
         if iteration >= max_iter:
             logger.info("⚠️ 最大反復回数到達 (%d) — 強制終了", max_iter)
+            updates["requires_followup"] = False
 
-        updates["requires_followup"] = False
         return updates
 
     def _followup_decision(self, state: "BushidanState") -> Literal["human", "loop", "done"]:

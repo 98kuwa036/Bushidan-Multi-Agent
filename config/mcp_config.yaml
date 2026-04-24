@@ -1,4 +1,3 @@
-```yaml
 # MCP Configuration for Bushidan System v10.1
 #
 # This file contains configuration parameters for the Management Control Point (MCP)
@@ -31,4 +30,3 @@ logging:
 alerts:
   enabled: true
   webhook_url: ""
-```

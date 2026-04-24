@@ -1,4 +1,3 @@
-```yaml
 # MCP Status Check Configuration for Bushidan System v10.1
 
 # Network settings
@@ -33,4 +32,3 @@ services:
 logging:
   level: INFO
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-```

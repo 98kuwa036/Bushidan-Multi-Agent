@@ -131,10 +131,13 @@ class SkillEvolutionEngine:
             ) as conn:
                 async with conn.cursor() as cur:
                     # pgvector は権限不足で失敗してもテーブル作成は続行する
+                    _pgvector_ok = False
                     try:
                         await cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                        _pgvector_ok = True
                     except Exception as e:
                         logger.debug("pgvector extension skipped (%s)", type(e).__name__)
+                    self._pgvector_available = _pgvector_ok
 
                     for stmt in _SCHEMA_SQL.strip().split(";"):
                         stmt = stmt.strip()
@@ -389,13 +392,13 @@ class SkillEvolutionEngine:
         """approved 状態のスキル候補を notion_skills に投入して embedding を生成"""
         try:
             import psycopg
-            from pgvector.psycopg import register_vector
-
             activated = 0
             async with await psycopg.AsyncConnection.connect(
                 POSTGRES_URL, autocommit=True
             ) as conn:
-                await register_vector(conn)
+                if getattr(self, "_pgvector_available", False):
+                    from pgvector.psycopg import register_vector
+                    await register_vector(conn)
                 async with conn.cursor() as cur:
                     # 承認済みで未投入のもの (notion_skills.name で重複チェック)
                     await cur.execute("""

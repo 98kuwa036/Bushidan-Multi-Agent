@@ -221,7 +221,7 @@ class RoutingMixin:
                 "requires_followup": result.requires_followup,
                 "routed_to":         node_name,
                 "available_tools":   state.get("available_tools", []),
-                "conversation_history": [
+                "conversation_history": state.get("conversation_history", []) + [
                     {"role": "user",      "content": state.get("message", "")},
                     {"role": "assistant", "content": result.response},
                 ],

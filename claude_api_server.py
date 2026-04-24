@@ -167,7 +167,7 @@ class ClaudeClient:
 
             client = anthropic.Anthropic(api_key=self.api_key)
             response = client.messages.create(
-                model="claude-opus-4-6",
+                model=model or "claude-opus-4-7",
                 max_tokens=max_tokens,
                 system=system or "",
                 messages=[{"role": "user", "content": prompt}],

@@ -12,9 +12,15 @@ on:
 
 jobs:
   claude-response:
+    # Bot・外部投稿者（author_association=NONE）からのトリガーを除外
+    if: |
+      github.actor != 'dependabot[bot]' &&
+      github.event.sender.type == 'User' &&
+      (github.event_name != 'issue_comment' || github.event.issue.author_association != 'NONE') &&
+      (github.event_name != 'pull_request_review_comment' || github.event.comment.author_association != 'NONE')
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       issues: write
       pull-requests: write
 

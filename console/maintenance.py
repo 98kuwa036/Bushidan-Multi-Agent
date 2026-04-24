@@ -81,6 +81,8 @@ def get_log_journal(service: str = "bushidan-console", lines: int = 200) -> str:
 def get_audit_dates() -> List[str]:
     """監査ログが存在する日付リストを返す (新しい順)"""
     audit_dir = _APP_DIR / "audit"
+    if not audit_dir.exists():
+        return []
     dates = []
     for d in sorted(audit_dir.iterdir(), reverse=True):
         if d.is_dir() and re.match(r"\d{4}-\d{2}-\d{2}", d.name):
@@ -408,7 +410,14 @@ async def stream_update(stage: str) -> AsyncIterator[str]:
     elif stage == "apply":
         yield _msg("🚀 本番環境にアップデートを適用します...")
 
-        yield _msg("\n  ① pip install -r requirements.txt...")
+        yield _msg("\n  ① git pull origin main...")
+        rc, out = await _run(["git", "pull", "origin", "main"], timeout=60)
+        if rc != 0:
+            yield _msg(f"⚠️ git pull 失敗 (ローカル変更がある場合は手動マージが必要):\n{out[:500]}", "warn")
+        else:
+            yield _msg(f"  └ コード更新完了\n{out[:300]}", "success")
+
+        yield _msg("\n  ② pip install -r requirements.txt...")
         rc, out = await _run([_PIP, "install", "-r", "requirements.txt", "-q"], timeout=180)
         if rc != 0:
             yield _msg(f"⚠️ パッケージインストール警告:\n{out[:500]}", "warn")

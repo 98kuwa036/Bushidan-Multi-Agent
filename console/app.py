@@ -219,26 +219,28 @@ async def startup_init_db_and_switch():
         llm_url = os.environ.get("LOCAL_LLM_URL")
         if not llm_url:
             logger.warning("LOCAL_LLM_URL 未設定: LLM 切り替えスキップ")
-            return
-
-        # 3回リトライ
-        for attempt in range(3):
-            try:
-                http_req = urllib.request.Request(
-                    f"{llm_url}/switch/gemma",
-                    data=b'',
-                    headers={'Content-Type': 'application/json'},
-                    method='POST'
-                )
-                with urllib.request.urlopen(http_req, timeout=10) as response:
-                    response.read()
-                    logger.info("✅ Console startup: LLM server switched to Gemma4 MoE")
-                    return
-            except Exception as e:
-                if attempt < 2:
-                    await asyncio.sleep(2)
-                    continue
-                logger.warning(f"⚠️ Failed to switch LLM to Gemma4 after 3 attempts: {e}")
+        else:
+            # 3回リトライ
+            switched = False
+            for attempt in range(3):
+                try:
+                    http_req = urllib.request.Request(
+                        f"{llm_url}/switch/gemma",
+                        data=b'',
+                        headers={'Content-Type': 'application/json'},
+                        method='POST'
+                    )
+                    with urllib.request.urlopen(http_req, timeout=10) as response:
+                        response.read()
+                        logger.info("✅ Console startup: LLM server switched to Gemma4 MoE")
+                        switched = True
+                        break
+                except Exception as e:
+                    if attempt < 2:
+                        await asyncio.sleep(2)
+                        continue
+                    logger.warning(f"⚠️ Failed to switch LLM to Gemma4 after 3 attempts: {e}")
+            _ = switched  # 結果はログ済み
     except Exception as e:
         logger.warning(f"⚠️ LLM auto-switch failed: {e}")
 

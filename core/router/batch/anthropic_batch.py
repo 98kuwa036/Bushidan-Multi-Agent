@@ -152,7 +152,7 @@ class AnthropicBatchProcessor:
         client  = anthropic.AsyncAnthropic(api_key=self._api_key)
         results: dict[str, str] = {}
 
-        async for item in await client.messages.batches.results(batch_id):
+        async for item in client.messages.batches.results(batch_id):
             cid    = item.custom_id
             result = item.result
 

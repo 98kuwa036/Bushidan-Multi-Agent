@@ -47,8 +47,8 @@ def check_password(password: str) -> bool:
     if plain:
         return secrets.compare_digest(password, plain)
 
-    # どちらも未設定 → 認証スキップ（開発環境用）
-    logger.warning("CONSOLE_PASSWORD_HASH 未設定: 認証をスキップします")
+    # どちらも未設定 → 認証スキップ（開発環境用: 本番では必ず CONSOLE_PASSWORD_HASH を設定すること）
+    logger.error("🚨 CONSOLE_PASSWORD_HASH 未設定: 認証をスキップしています！本番環境では危険です")
     return True
 
 
