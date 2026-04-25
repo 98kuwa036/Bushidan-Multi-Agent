@@ -28,6 +28,17 @@ import uuid
 from typing import Optional
 import httpx
 
+_HTTP_CLIENT: httpx.AsyncClient | None = None
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is None:
+        _HTTP_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=5.0, read=180.0, write=10.0),
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        )
+    return _HTTP_CLIENT
+
 from dotenv import load_dotenv
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
@@ -562,10 +573,10 @@ async def llm_test(req: LLMTestRequest, token: str = ""):
     try:
         llm_url = os.environ.get("LOCAL_LLM_URL", "")
         endpoint = req.endpoint or "/generate/gemma"
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=180.0, write=10.0)) as client:
-            response = await client.post(f"{llm_url}{endpoint}", json=req.body)
-            response.raise_for_status()
-            return response.json()
+        client = _get_http_client()
+        response = await client.post(f"{llm_url}{endpoint}", json=req.body)
+        response.raise_for_status()
+        return response.json()
     except httpx.HTTPStatusError as e:
         try:
             error_data = e.response.json()
@@ -590,10 +601,10 @@ async def llm_switch(model: str, token: str = ""):
         return JSONResponse({"error": "Invalid model. Use 'gemma' or 'nemotron'"}, status_code=400)
     try:
         llm_url = os.environ.get("LOCAL_LLM_URL", "")
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(f"{llm_url}/switch/{model}")
-            response.raise_for_status()
-            result = response.json()
+        client = _get_http_client()
+        response = await client.post(f"{llm_url}/switch/{model}")
+        response.raise_for_status()
+        result = response.json()
         logger.info("LLM model switched to: %s", model)
         if result.get("success"):
             try:
@@ -980,6 +991,11 @@ async def sandbox_run(req: SandboxRequest, token: str = ""):
 @app.websocket("/ws/chat")
 async def ws_chat(ws: WebSocket):
     """WebSocket チャット"""
+    token = ws.query_params.get("token", "")
+    from console.auth import validate_session
+    if not validate_session(token):
+        await ws.close(code=4001, reason="Unauthorized")
+        return
     await ws.accept()
     if _HAS_PROMETHEUS:
         _active_ws.inc()
@@ -1931,3 +1947,11 @@ async def update_evolution_auto_config(req: EvolutionAutoConfig, token: str = ""
     except Exception as e:
         logger.error("evolution config update error: %s", e)
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+
+@app.on_event("shutdown")
+async def _shutdown_http_client():
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is not None:
+        await _HTTP_CLIENT.aclose()
+        _HTTP_CLIENT = None

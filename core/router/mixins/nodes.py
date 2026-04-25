@@ -342,6 +342,7 @@ class NodesMixin:
                 "response": response, "agent_role": "大元帥",
                 "handled_by": "daigensui_audit", "execution_time": elapsed,
                 "routed_to": "daigensui_audit", "mcp_tools_used": [],
+                "iteration": state.get("iteration", 0) + 1,
                 **({"error": "audit_rejected"} if _verdict == "rejected" else {}),
             }
         except Exception as e:

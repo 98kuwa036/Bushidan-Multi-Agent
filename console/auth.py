@@ -84,10 +84,11 @@ def validate_session(token: str) -> bool:
     # 認証が設定されていない場合はスキップ
     if not _get_hash() and not _get_plaintext():
         return True
-    expiry = _SESSIONS.get(token)
-    if not expiry:
-        return False
-    if time.time() > expiry:
-        _SESSIONS.pop(token, None)
-        return False
-    return True
+    with _sessions_lock:
+        expiry = _SESSIONS.get(token)
+        if not expiry:
+            return False
+        if time.time() > expiry:
+            _SESSIONS.pop(token, None)
+            return False
+        return True
