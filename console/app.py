@@ -602,7 +602,7 @@ async def llm_switch(model: str, token: str = ""):
     try:
         llm_url = os.environ.get("LOCAL_LLM_URL", "")
         client = _get_http_client()
-        response = await client.post(f"{llm_url}/switch/{model}")
+        response = await client.post(f"{llm_url}/switch/{model}", timeout=60.0)
         response.raise_for_status()
         result = response.json()
         logger.info("LLM model switched to: %s", model)
