@@ -743,7 +743,7 @@ class NodesMixin:
     async def _sandbox_verify_node(self, state: "BushidanState") -> dict:
         """生成コードブロックを抽出して実行検証する。BATCH モードはスキップ。"""
         mode = ProcessingMode(state.get("processing_mode", ProcessingMode.INTERACTIVE))
-        if mode == ProcessingMode.BATCH and not BATCH_CONFIG["sandbox_verify_enabled"]:
+        if mode == ProcessingMode.BATCH and not BATCH_CONFIG.get("sandbox_verify_enabled", True):
             return {"code_verified": False, "code_verify_result": "skipped_batch"}
 
         response = state.get("response", "") or ""

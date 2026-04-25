@@ -40,6 +40,11 @@ def _verify_api_key() -> bool:
     """X-API-Key ヘッダーを検証。CLAUDE_API_KEY 未設定時はスキップ。"""
     import secrets as _secrets
     if not CLAUDE_API_KEY:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "⚠️ CLAUDE_API_KEY unset: /api/claude is open to all callers on 0.0.0.0:%s — set CLAUDE_API_KEY in .env",
+            os.environ.get("PORT", "8070"),
+        )
         return True
     key = request.headers.get("X-API-Key", "")
     return bool(key) and _secrets.compare_digest(key, CLAUDE_API_KEY)

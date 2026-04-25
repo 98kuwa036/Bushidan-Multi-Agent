@@ -27,17 +27,7 @@ import time
 import uuid
 from typing import Optional
 import httpx
-
-_HTTP_CLIENT: httpx.AsyncClient | None = None
-
-def _get_http_client() -> httpx.AsyncClient:
-    global _HTTP_CLIENT
-    if _HTTP_CLIENT is None:
-        _HTTP_CLIENT = httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=5.0, read=180.0, write=10.0),
-            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
-        )
-    return _HTTP_CLIENT
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -81,6 +71,19 @@ except ImportError:
 load_dotenv()
 
 logger = get_logger(__name__)
+
+_HTTP_CLIENT: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _HTTP_CLIENT
+    if _HTTP_CLIENT is None:
+        _HTTP_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=5.0, read=180.0, write=10.0),
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        )
+    return _HTTP_CLIENT
+
 
 app = FastAPI(title="武士団コンソール", version="18")
 
@@ -1234,8 +1237,7 @@ async def get_audit_log_content(path: str, token: str = ""):
             raise HTTPException(status_code=403, detail="アクセス拒否")
         if not _os.path.isfile(abs_path):
             raise HTTPException(status_code=404, detail="ファイルが見つかりません")
-        from pathlib import Path as _Path
-        content = _Path(abs_path).read_text(encoding="utf-8")
+        content = Path(abs_path).read_text(encoding="utf-8")
         return {"path": path, "content": content}
     except HTTPException:
         raise
