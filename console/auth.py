@@ -11,6 +11,7 @@ console/auth.py — セッションベース認証
 
 import os
 import secrets
+import threading
 import time
 from typing import Optional
 
@@ -21,19 +22,20 @@ logger = get_logger(__name__)
 _SESSIONS: dict[str, float] = {}  # token → expiry timestamp
 _SESSION_TTL = 86400  # 24 hours
 _LAST_CLEANUP: float = 0.0
+_sessions_lock = threading.Lock()
 
 
 def _cleanup_expired() -> None:
-    """期限切れセッションを定期削除してメモリリークを防ぐ"""
+    """期限切れセッションを定期削除してメモリリークを防ぐ（スレッドセーフ）"""
     global _LAST_CLEANUP
-    import time as _time
-    now = _time.time()
+    now = time.time()
     if now - _LAST_CLEANUP < 3600:  # 1時間に1回
         return
-    expired = [t for t, exp in _SESSIONS.items() if now > exp]
-    for t in expired:
-        _SESSIONS.pop(t, None)
-    _LAST_CLEANUP = now
+    with _sessions_lock:
+        expired = [t for t, exp in _SESSIONS.items() if now > exp]
+        for t in expired:
+            _SESSIONS.pop(t, None)
+        _LAST_CLEANUP = now
     if expired:
         logger.debug("🧹 期限切れセッション %d件を削除", len(expired))
 
@@ -71,7 +73,8 @@ def check_password(password: str) -> bool:
 def create_session() -> str:
     """新しいセッショントークンを生成"""
     token = secrets.token_urlsafe(32)
-    _SESSIONS[token] = time.time() + _SESSION_TTL
+    with _sessions_lock:
+        _SESSIONS[token] = time.time() + _SESSION_TTL
     return token
 
 

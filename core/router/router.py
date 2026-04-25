@@ -159,7 +159,14 @@ class LangGraphRouter(
                 "done":      "check_followup",
             },
         )
-        graph.add_edge("daigensui_audit", "sandbox_verify")
+        graph.add_conditional_edges(
+            "daigensui_audit",
+            self._audit_decision,
+            {
+                "replan": "shogun_plan",
+                "verify": "sandbox_verify",
+            },
+        )
         graph.add_edge("sandbox_verify",  "check_followup")
 
         graph.add_conditional_edges(

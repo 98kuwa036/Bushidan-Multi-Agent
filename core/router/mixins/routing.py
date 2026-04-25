@@ -180,7 +180,7 @@ class RoutingMixin:
                 if lc_tools:
                     state = dict(state)
                     state["available_tools"] = [t.name for t in lc_tools]
-                    state["mcp_tools"] = lc_tools
+                    state["mcp_tools"] = [t.name for t in lc_tools]
             except Exception:
                 pass
 

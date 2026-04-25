@@ -157,9 +157,15 @@ class NodesMixin:
             task_desc  = s.get("task", "")
             role_key   = assigned if assigned in self._roles else self._CAP_TO_ROLE.get(capability, "gunshi")
             role       = self._roles.get(role_key) or self._roles.get("gunshi")
-            sub_state  = copy.copy(state)
-            sub_state["message"] = task_desc
-            sub_state["_step_task"] = task_desc
+            sub_state  = {
+                **state,
+                "message":            task_desc,
+                "_step_task":         task_desc,
+                "conversation_history": [],
+                "roadmap_results":    [],
+                "sub_queries":        [],
+                "sub_responses":      [],
+            }
             if prev_ctx:
                 sub_state["context_summary"] = (
                     f"ロードマップ目標: {roadmap.get('goal', '')}\n完了済みステップ:\n{prev_ctx}"
@@ -282,6 +288,16 @@ class NodesMixin:
             return "verify"
         return "done"
 
+    def _audit_decision(self, state: "BushidanState") -> str:
+        """大元帥監査後の遷移: 却下かつ反復余地あり → shogun_plan 再計画"""
+        if (
+            state.get("error") == "audit_rejected"
+            and state.get("iteration", 0) < state.get("max_iterations", 3) - 1
+        ):
+            logger.info("⚔️ 大元帥が却下 — 将軍へ差し戻し (iteration=%d)", state.get("iteration", 0))
+            return "replan"
+        return "verify"
+
     async def _daigensui_audit_node(self, state: "BushidanState") -> dict:
         """大元帥 (Claude Opus) がロードマップ全体を監査し最終判断を下す。"""
         start = time.time()
@@ -326,6 +342,7 @@ class NodesMixin:
                 "response": response, "agent_role": "大元帥",
                 "handled_by": "daigensui_audit", "execution_time": elapsed,
                 "routed_to": "daigensui_audit", "mcp_tools_used": [],
+                **({"error": "audit_rejected"} if _verdict == "rejected" else {}),
             }
         except Exception as e:
             logger.warning("大元帥監査失敗: %s", e)
@@ -353,8 +370,13 @@ class NodesMixin:
                     "sub_queries": sub_queries, "sub_responses": []}
 
         async def _run_sub(q: str) -> str:
-            sub_state = copy.copy(state)
-            sub_state["message"] = q + "?"
+            sub_state = {
+                **state,
+                "message": q + "?",
+                "conversation_history": [],
+                "sub_queries":          [],
+                "sub_responses":        [],
+            }
             try:
                 res = await asyncio.wait_for(role.execute(sub_state), timeout=30)
                 return res.response
@@ -431,8 +453,14 @@ class NodesMixin:
                 capability = s.get("capability", "analysis")
                 role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
                 role       = self._roles.get(role_key) or self._roles.get("gunshi")
-                sub_state  = copy.copy(state)
-                sub_state["message"] = s.get("task", "")
+                sub_state  = {
+                    **state,
+                    "message":            s.get("task", ""),
+                    "conversation_history": [],
+                    "roadmap_results":    [],
+                    "sub_queries":        [],
+                    "sub_responses":      [],
+                }
                 try:
                     res = await asyncio.wait_for(role.execute(sub_state), timeout=timeout_val)
                 except asyncio.TimeoutError:
@@ -512,8 +540,14 @@ class NodesMixin:
                 capability = s.get("capability", "analysis")
                 role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
                 role       = self._roles.get(role_key) or self._roles.get("gunshi")
-                sub_state  = copy.copy(state)
-                sub_state["message"] = s.get("task", "")
+                sub_state  = {
+                    **state,
+                    "message":            s.get("task", ""),
+                    "conversation_history": [],
+                    "roadmap_results":    [],
+                    "sub_queries":        [],
+                    "sub_responses":      [],
+                }
                 try:
                     res = await asyncio.wait_for(role.execute(sub_state), timeout=timeout_val)
                 except asyncio.TimeoutError:
@@ -576,8 +610,14 @@ class NodesMixin:
                 async def _run_anth(idx: int, s: dict):
                     rk   = s.get("assigned_role") or self._CAP_TO_ROLE.get(s.get("capability", ""), "shogun")
                     role = self._roles.get(rk) or self._roles.get("gunshi")
-                    sub  = copy.copy(state)
-                    sub["message"] = s.get("task", "")
+                    sub  = {
+                        **state,
+                        "message":            s.get("task", ""),
+                        "conversation_history": [],
+                        "roadmap_results":    [],
+                        "sub_queries":        [],
+                        "sub_responses":      [],
+                    }
                     try:
                         res = await asyncio.wait_for(role.execute(sub), timeout=timeout_val)
                     except asyncio.TimeoutError:
@@ -604,8 +644,14 @@ class NodesMixin:
             async def _run_anth_direct(idx: int, s: dict):
                 rk   = s.get("assigned_role") or self._CAP_TO_ROLE.get(s.get("capability", ""), "shogun")
                 role = self._roles.get(rk) or self._roles.get("gunshi")
-                sub  = copy.copy(state)
-                sub["message"] = s.get("task", "")
+                sub  = {
+                    **state,
+                    "message":            s.get("task", ""),
+                    "conversation_history": [],
+                    "roadmap_results":    [],
+                    "sub_queries":        [],
+                    "sub_responses":      [],
+                }
                 try:
                     res = await asyncio.wait_for(role.execute(sub), timeout=timeout_val)
                 except asyncio.TimeoutError:
