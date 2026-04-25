@@ -221,13 +221,13 @@ class MessagingMixin:
                 and not final.get("requires_followup")
             ):
                 async with self._cache_lock:
-                  self._RESP_CACHE[_cache_key] = (result_dict, time.time())
-                if len(self._RESP_CACHE) > 500:
-                    now = time.time()
-                    self._RESP_CACHE = {
-                        k: v for k, v in self._RESP_CACHE.items()
-                        if now - v[1] < self._RESP_CACHE_TTL
-                    }
+                    self._RESP_CACHE[_cache_key] = (result_dict, time.time())
+                    if len(self._RESP_CACHE) > 500:
+                        now = time.time()
+                        self._RESP_CACHE = {
+                            k: v for k, v in self._RESP_CACHE.items()
+                            if now - v[1] < self._RESP_CACHE_TTL
+                        }
 
             _tid_key = thread_id or "default"
             _alog = self._audit_logs.pop(_tid_key, None)

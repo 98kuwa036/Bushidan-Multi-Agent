@@ -26,8 +26,7 @@ import os
 import time
 import uuid
 from typing import Optional
-import urllib.request
-import urllib.error
+import httpx
 
 from dotenv import load_dotenv
 
@@ -429,8 +428,9 @@ async def login(req: LoginRequest):
 
 
 @app.post("/api/chat")
-async def chat(req: ChatRequest):
+async def chat(req: ChatRequest, token: str = ""):
     """同期チャット"""
+    _check_auth(token)
     router = await _get_router()
     # 無効化されたロールは auto にフォールバック
     effective_role = req.model if req.model not in _DISABLED_ROLES else "auto"
@@ -487,8 +487,9 @@ async def models():
 
 
 @app.get("/api/settings/claude-fallback")
-async def get_claude_fallback():
+async def get_claude_fallback(token: str = ""):
     """現在のClaudeインシデントフォールバックモードを返す"""
+    _check_auth(token)
     from utils.claude_cli_client import get_incident_fallback_mode
     return {"mode": get_incident_fallback_mode()}
 
@@ -497,10 +498,11 @@ class FallbackModeRequest(BaseModel):
     mode: str  # "gemini" または "bedrock"
 
 @app.post("/api/settings/claude-fallback")
-async def set_claude_fallback(req: FallbackModeRequest):
+async def set_claude_fallback(req: FallbackModeRequest, token: str = ""):
     """Claudeインシデント時のフォールバックモードを切り替える。
     mode: "gemini" (デフォルト: Gemini 3.1 Pro) / "bedrock" (AWS Bedrock)
     """
+    _check_auth(token)
     if req.mode not in ("gemini", "bedrock"):
         return {"error": "mode は 'gemini' または 'bedrock' を指定してください"}
     from utils.claude_cli_client import set_incident_fallback_mode
@@ -526,8 +528,9 @@ async def resume(req: ResumeRequest, token: str = ""):
 
 
 @app.get("/api/history")
-async def history(thread_id: str = ""):
+async def history(thread_id: str = "", token: str = ""):
     """指定スレッドの会話履歴を返す"""
+    _check_auth(token)
     if not thread_id:
         return {"history": []}
     router = await _get_router()
@@ -542,8 +545,9 @@ async def history(thread_id: str = ""):
 
 
 @app.get("/api/llm-status")
-async def llm_status():
+async def llm_status(token: str = ""):
     """ローカルLLM排他制御ステータス"""
+    _check_auth(token)
     try:
         from utils.local_model_manager import LocalModelManager
         return await LocalModelManager.get().get_status()
@@ -552,83 +556,65 @@ async def llm_status():
 
 
 @app.post("/api/llm/test")
-async def llm_test(req: LLMTestRequest):
+async def llm_test(req: LLMTestRequest, token: str = ""):
     """ローカルLLMサーバーのプロキシエンドポイント（CORS対応） v16"""
+    _check_auth(token)
     try:
-        import os
-        llm_url = os.environ.get("LOCAL_LLM_URL")
+        llm_url = os.environ.get("LOCAL_LLM_URL", "")
         endpoint = req.endpoint or "/generate/gemma"
-        full_url = f"{llm_url}{endpoint}"
-
-        # urllib でリクエスト送信
-        data = json.dumps(req.body).encode('utf-8')
-        http_req = urllib.request.Request(
-            full_url,
-            data=data,
-            headers={'Content-Type': 'application/json'},
-            method='POST'
-        )
-
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=180.0, write=10.0)) as client:
+            response = await client.post(f"{llm_url}{endpoint}", json=req.body)
+            response.raise_for_status()
+            return response.json()
+    except httpx.HTTPStatusError as e:
         try:
-            with urllib.request.urlopen(http_req, timeout=180) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                return result
-        except urllib.error.HTTPError as e:
-            error_data = json.loads(e.read().decode('utf-8')) if e.headers.get('Content-Type', '').startswith('application/json') else {}
-            return JSONResponse(
-                {"error": error_data.get('error') or f"LLM server returned {e.code}"},
-                status_code=e.code
-            )
+            error_data = e.response.json()
+        except Exception:
+            error_data = {}
+        return JSONResponse(
+            {"error": error_data.get("error") or f"LLM server returned {e.response.status_code}"},
+            status_code=e.response.status_code,
+        )
+    except httpx.TimeoutException:
+        return JSONResponse({"error": "LLM server timeout"}, status_code=504)
     except Exception as e:
-        logger.error(f"LLM test proxy error: {e}")
+        logger.error("LLM test proxy error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
 @app.post("/api/llm/switch/{model}")
-async def llm_switch(model: str):
+async def llm_switch(model: str, token: str = ""):
     """ローカルLLMサーバーのモデル切り替え (Gemma4 ↔ Nemotron) v16"""
+    _check_auth(token)
+    if model not in ["gemma", "nemotron"]:
+        return JSONResponse({"error": "Invalid model. Use 'gemma' or 'nemotron'"}, status_code=400)
     try:
-        import os
-        llm_url = os.environ.get("LOCAL_LLM_URL")
-
-        # モデル検証
-        if model not in ["gemma", "nemotron"]:
-            return JSONResponse({"error": "Invalid model. Use 'gemma' or 'nemotron'"}, status_code=400)
-
-        switch_endpoint = f"/switch/{model}"
-        full_url = f"{llm_url}{switch_endpoint}"
-
-        # urllib で POST リクエスト
-        http_req = urllib.request.Request(
-            full_url,
-            data=b'',
-            headers={'Content-Type': 'application/json'},
-            method='POST'
-        )
-
+        llm_url = os.environ.get("LOCAL_LLM_URL", "")
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(f"{llm_url}/switch/{model}")
+            response.raise_for_status()
+            result = response.json()
+        logger.info("LLM model switched to: %s", model)
+        if result.get("success"):
+            try:
+                from utils.local_model_manager import LocalModelManager
+                LocalModelManager.get()._active_model = model
+            except Exception as sync_err:
+                logger.warning("LocalModelManager sync failed (non-fatal): %s", sync_err)
+        return result
+    except httpx.HTTPStatusError as e:
         try:
-            with urllib.request.urlopen(http_req, timeout=60) as response:
-                result = json.loads(response.read().decode('utf-8'))
-                logger.info(f"✅ LLM model switched to: {model}")
-                # local_model_manager の内部状態も同期する
-                # (WebUI直接スイッチ後にチャットしても状態不整合が起きないように)
-                if result.get("success"):
-                    try:
-                        from utils.local_model_manager import LocalModelManager
-                        mgr = LocalModelManager.get()
-                        mgr._active_model = model
-                        logger.info(f"✅ LocalModelManager._active_model synced to: {model}")
-                    except Exception as sync_err:
-                        logger.warning(f"LocalModelManager sync failed (non-fatal): {sync_err}")
-                return result
-        except urllib.error.HTTPError as e:
-            error_data = json.loads(e.read().decode('utf-8')) if e.headers.get('Content-Type', '').startswith('application/json') else {}
-            return JSONResponse(
-                {"error": error_data.get('error') or f"Switch failed: {e.code}"},
-                status_code=e.code
-            )
+            error_data = e.response.json()
+        except Exception:
+            error_data = {}
+        return JSONResponse(
+            {"error": error_data.get("error") or f"Switch failed: {e.response.status_code}"},
+            status_code=e.response.status_code,
+        )
+    except httpx.TimeoutException:
+        return JSONResponse({"error": "LLM switch timeout"}, status_code=504)
     except Exception as e:
-        logger.error(f"LLM switch error: {e}")
+        logger.error("LLM switch error: %s", e)
         return JSONResponse({"error": str(e)}, status_code=503)
 
 
@@ -674,8 +660,9 @@ async def health():
 # ── v17: Thread/Message CRUD API (PostgreSQL backed) ────────────────────────
 
 @app.get("/api/threads")
-async def get_threads(limit: int = 50, offset: int = 0):
+async def get_threads(limit: int = 50, offset: int = 0, token: str = ""):
     """スレッド一覧を取得 (最新順)"""
+    _check_auth(token)
     try:
         import psycopg
         async with await psycopg.AsyncConnection.connect(POSTGRES_URL) as conn:
@@ -705,8 +692,9 @@ async def get_threads(limit: int = 50, offset: int = 0):
 
 
 @app.post("/api/threads")
-async def create_thread(title: str = "新しい会話"):
+async def create_thread(title: str = "新しい会話", token: str = ""):
     """新しいスレッドを作成"""
+    _check_auth(token)
     try:
         import psycopg
         thread_id = str(uuid.uuid4())
@@ -723,8 +711,9 @@ async def create_thread(title: str = "新しい会話"):
 
 
 @app.put("/api/threads/{thread_id}")
-async def update_thread(thread_id: str, body: ThreadUpdateRequest):
+async def update_thread(thread_id: str, body: ThreadUpdateRequest, token: str = ""):
     """スレッドのタイトルまたはタグを更新"""
+    _check_auth(token)
     try:
         import psycopg
         updates = []
@@ -756,8 +745,9 @@ async def update_thread(thread_id: str, body: ThreadUpdateRequest):
 
 
 @app.delete("/api/threads/all")
-async def delete_all_threads():
+async def delete_all_threads(token: str = ""):
     """全スレッドをアーカイブ（論理削除）"""
+    _check_auth(token)
     try:
         import psycopg
         async with await psycopg.AsyncConnection.connect(POSTGRES_URL, autocommit=True) as conn:
@@ -770,8 +760,9 @@ async def delete_all_threads():
 
 
 @app.get("/api/settings/roles")
-async def get_role_settings():
+async def get_role_settings(token: str = ""):
     """ロールの有効/無効状態を返す"""
+    _check_auth(token)
     from utils.client_registry import ClientRegistry
     all_roles = ClientRegistry.get().available_roles
     return {"roles": {r: r not in _DISABLED_ROLES for r in all_roles}}
@@ -782,8 +773,9 @@ class RoleEnabledRequest(BaseModel):
 
 
 @app.post("/api/settings/roles/{role_key}")
-async def set_role_enabled(role_key: str, req: RoleEnabledRequest):
+async def set_role_enabled(role_key: str, req: RoleEnabledRequest, token: str = ""):
     """ロールの有効/無効を切り替える"""
+    _check_auth(token)
     if req.enabled:
         _DISABLED_ROLES.discard(role_key)
     else:
@@ -793,8 +785,9 @@ async def set_role_enabled(role_key: str, req: RoleEnabledRequest):
 
 
 @app.delete("/api/threads/{thread_id}")
-async def delete_thread(thread_id: str):
+async def delete_thread(thread_id: str, token: str = ""):
     """スレッドを削除 (アーカイブ)"""
+    _check_auth(token)
     try:
         import psycopg
         async with await psycopg.AsyncConnection.connect(POSTGRES_URL, autocommit=True) as conn:
@@ -811,8 +804,9 @@ async def delete_thread(thread_id: str):
 
 
 @app.get("/api/threads/{thread_id}/messages")
-async def get_messages(thread_id: str, limit: int = 100, offset: int = 0):
+async def get_messages(thread_id: str, limit: int = 100, offset: int = 0, token: str = ""):
     """スレッドのメッセージを取得"""
+    _check_auth(token)
     try:
         import psycopg
         async with await psycopg.AsyncConnection.connect(POSTGRES_URL) as conn:
@@ -853,8 +847,9 @@ class MessageRequest(BaseModel):
 
 
 @app.post("/api/threads/{thread_id}/messages")
-async def save_message(thread_id: str, msg: MessageRequest):
+async def save_message(thread_id: str, msg: MessageRequest, token: str = ""):
     """メッセージをスレッドに保存"""
+    _check_auth(token)
     try:
         import psycopg
         async with await psycopg.AsyncConnection.connect(POSTGRES_URL, autocommit=True) as conn:
@@ -877,8 +872,9 @@ class RewindRequest(BaseModel):
 
 
 @app.get("/api/threads/{thread_id}/checkpoints")
-async def get_checkpoints(thread_id: str):
+async def get_checkpoints(thread_id: str, token: str = ""):
     """LangGraph チェックポイント履歴を返す（タイムトラベル用）"""
+    _check_auth(token)
     try:
         router = await _get_router()
         checkpointer = getattr(router, "_checkpointer", None)
@@ -908,8 +904,9 @@ async def get_checkpoints(thread_id: str):
 
 
 @app.post("/api/threads/{thread_id}/rewind")
-async def rewind_thread(thread_id: str, req: RewindRequest):
+async def rewind_thread(thread_id: str, req: RewindRequest, token: str = ""):
     """指定チェックポイントに巻き戻して再実行（タイムトラベル）"""
+    _check_auth(token)
     try:
         router = await _get_router()
         if router._compiled is None:
@@ -966,8 +963,9 @@ class SandboxRequest(BaseModel):
 
 
 @app.post("/api/sandbox/run")
-async def sandbox_run(req: SandboxRequest):
+async def sandbox_run(req: SandboxRequest, token: str = ""):
     """Python コードをサンドボックスで安全に実行"""
+    _check_auth(token)
     try:
         from utils.code_sandbox import run_code
         if req.timeout > 30:
@@ -1200,8 +1198,9 @@ async def _broadcast_message(ws: WebSocket, router, message: str, thread_id: str
 # ── v18: YAML 監査ログ API ───────────────────────────────────────────────
 
 @app.get("/api/audit-logs")
-async def get_audit_logs(days: int = 7):
+async def get_audit_logs(days: int = 7, token: str = ""):
     """直近 N 日分の YAML 監査ログ一覧を返す"""
+    _check_auth(token)
     try:
         from utils.audit_log import list_audit_logs
         logs = list_audit_logs(days=days)
@@ -1211,8 +1210,9 @@ async def get_audit_logs(days: int = 7):
 
 
 @app.get("/api/audit-logs/content")
-async def get_audit_log_content(path: str):
+async def get_audit_log_content(path: str, token: str = ""):
     """指定パスの YAML ファイル内容を返す"""
+    _check_auth(token)
     import os as _os
     try:
         from utils.audit_log import _AUDIT_DIR
@@ -1234,8 +1234,9 @@ async def get_audit_log_content(path: str):
 # ── v18: スキル提案 API ──────────────────────────────────────────────────
 
 @app.get("/api/skill-proposals")
-async def get_skill_proposals(status: str = "pending"):
+async def get_skill_proposals(status: str = "pending", token: str = ""):
     """スキル候補一覧を返す (status: pending | approved | dismissed)"""
+    _check_auth(token)
     try:
         from utils.skill_tracker import list_proposals
         proposals = await list_proposals(status=status)
@@ -1251,8 +1252,9 @@ class SkillApproveRequest(BaseModel):
 
 
 @app.post("/api/skill-proposals/{proposal_id}/approve")
-async def approve_skill_proposal(proposal_id: str, req: SkillApproveRequest):
+async def approve_skill_proposal(proposal_id: str, req: SkillApproveRequest, token: str = ""):
     """スキル候補を承認し、skills/*.yaml に書き出す"""
+    _check_auth(token)
     try:
         from utils.skill_tracker import approve_proposal
         result = await approve_proposal(
@@ -1267,8 +1269,9 @@ async def approve_skill_proposal(proposal_id: str, req: SkillApproveRequest):
 
 
 @app.post("/api/skill-proposals/{proposal_id}/dismiss")
-async def dismiss_skill_proposal(proposal_id: str):
+async def dismiss_skill_proposal(proposal_id: str, token: str = ""):
     """スキル候補を却下する"""
+    _check_auth(token)
     try:
         from utils.skill_tracker import dismiss_proposal
         result = await dismiss_proposal(proposal_id)
@@ -1278,8 +1281,9 @@ async def dismiss_skill_proposal(proposal_id: str):
 
 
 @app.get("/api/skills")
-async def get_approved_skills():
+async def get_approved_skills(token: str = ""):
     """承認済みスキル一覧を返す"""
+    _check_auth(token)
     try:
         from utils.skill_tracker import list_proposals
         skills = await list_proposals(status="approved")
@@ -1291,8 +1295,9 @@ async def get_approved_skills():
 # ── 進化提案 API ─────────────────────────────────────────────────────────────
 
 @app.get("/api/evolution-proposals")
-async def get_evolution_proposals(status: str = "pending"):
+async def get_evolution_proposals(status: str = "pending", token: str = ""):
     """週次進化サイクルで生成された型付き提案書一覧"""
+    _check_auth(token)
     try:
         from utils.evolution_proposals import list_evolution_proposals
         proposals = await list_evolution_proposals(status=status)
@@ -1302,8 +1307,9 @@ async def get_evolution_proposals(status: str = "pending"):
 
 
 @app.post("/api/evolution-proposals/{proposal_id}/approve")
-async def approve_evolution_proposal(proposal_id: str):
+async def approve_evolution_proposal(proposal_id: str, token: str = ""):
     """進化提案を承認して適用する"""
+    _check_auth(token)
     try:
         from utils.evolution_proposals import approve_evolution_proposal as _approve
         result = await _approve(proposal_id)
@@ -1313,8 +1319,9 @@ async def approve_evolution_proposal(proposal_id: str):
 
 
 @app.post("/api/evolution-proposals/{proposal_id}/dismiss")
-async def dismiss_evolution_proposal(proposal_id: str):
+async def dismiss_evolution_proposal(proposal_id: str, token: str = ""):
     """進化提案を却下する"""
+    _check_auth(token)
     try:
         from utils.evolution_proposals import dismiss_evolution_proposal as _dismiss
         result = await _dismiss(proposal_id)
@@ -1324,8 +1331,9 @@ async def dismiss_evolution_proposal(proposal_id: str):
 
 
 @app.get("/api/evolution-reports/latest")
-async def get_latest_evolution_report():
+async def get_latest_evolution_report(token: str = ""):
     """最新の週次レポートを返す"""
+    _check_auth(token)
     from pathlib import Path
     latest = Path.home() / "bushidan_reports" / "evolution" / "latest.txt"
     if not latest.exists():
@@ -1336,8 +1344,9 @@ async def get_latest_evolution_report():
 # ── v18: KPI サマリーメトリクス API ─────────────────────────────────────────
 
 @app.get("/api/metrics/summary")
-async def get_metrics_summary():
+async def get_metrics_summary(token: str = ""):
     """直近24時間のKPIサマリーを返す（ヘッダースパークライン用）"""
+    _check_auth(token)
     if not POSTGRES_URL:
         return JSONResponse({"error": "POSTGRES_URL未設定"}, status_code=503)
     try:
@@ -1488,8 +1497,9 @@ class V2ChatResponse(BaseModel):
 
 
 @app.post("/api/v2/chat", response_model=V2ChatResponse)
-async def v2_chat(req: V2ChatRequest):
+async def v2_chat(req: V2ChatRequest, token: str = ""):
     """v18 Phase 1 パイプライン統合チャット"""
+    _check_auth(token)
     thread_id = req.thread_id or str(uuid.uuid4())[:8]
     t0 = time.time()
 
@@ -1612,8 +1622,9 @@ async def v18_evolve_skills(days: int = 7, token: str = ""):
 
 
 @app.get("/api/v18/audit-logs")
-async def v18_audit_logs(days: int = 3):
+async def v18_audit_logs(days: int = 3, token: str = ""):
     """v18 時刻別 YAML 監査ログ一覧"""
+    _check_auth(token)
     try:
         from core.audit import AuditLogger
         logs = AuditLogger.get().list_logs(days=days)
@@ -1623,8 +1634,9 @@ async def v18_audit_logs(days: int = 3):
 
 
 @app.post("/api/v2/pipeline/analyze")
-async def v2_pipeline_analyze(req: V2ChatRequest):
+async def v2_pipeline_analyze(req: V2ChatRequest, token: str = ""):
     """Phase 1 パイプライン診断 — LangGraph を呼ばずに分析結果のみ返す"""
+    _check_auth(token)
     try:
         karasu_out, uchu_out, notion_out, route_decision = await _run_phase1_pipeline(req.message)
         return {
@@ -1712,13 +1724,13 @@ async def maintenance_logs(
         get_log_console, get_log_maintenance, get_audit_log, get_log_journal,
     )
     if source == "console":
-        text = get_log_console(lines)
+        text = await asyncio.to_thread(get_log_console, lines)
     elif source == "audit":
-        text = get_audit_log(date or None)
+        text = await asyncio.to_thread(get_audit_log, date or None)
     elif source == "maintenance":
-        text = get_log_maintenance(lines)
+        text = await asyncio.to_thread(get_log_maintenance, lines)
     elif source.startswith("journal-"):
-        text = get_log_journal(source[len("journal-"):], lines)
+        text = await asyncio.to_thread(get_log_journal, source[len("journal-"):], lines)
     else:
         raise HTTPException(status_code=400, detail=f"不明なソース: {source}")
     return JSONResponse({"text": text, "source": source})
@@ -1729,7 +1741,7 @@ async def maintenance_audit_dates(token: str = ""):
     """監査ログが存在する日付一覧"""
     _check_auth(token)
     from console.maintenance import get_audit_dates
-    return JSONResponse({"dates": get_audit_dates()})
+    return JSONResponse({"dates": await asyncio.to_thread(get_audit_dates)})
 
 
 @app.get("/api/maintenance/system")
@@ -1737,7 +1749,7 @@ async def maintenance_system(token: str = ""):
     """システム情報 (CPU・メモリ・ディスク・サービス・git)"""
     _check_auth(token)
     from console.maintenance import get_system_info
-    return JSONResponse(get_system_info())
+    return JSONResponse(await asyncio.to_thread(get_system_info))
 
 
 @app.get("/api/maintenance/packages")
@@ -1745,7 +1757,7 @@ async def maintenance_packages(token: str = ""):
     """インストール済みパッケージ一覧"""
     _check_auth(token)
     from console.maintenance import get_packages
-    return JSONResponse({"packages": get_packages()})
+    return JSONResponse({"packages": await asyncio.to_thread(get_packages)})
 
 
 @app.get("/api/maintenance/packages/outdated")
