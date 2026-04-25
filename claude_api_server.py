@@ -34,6 +34,16 @@ logger = logging.getLogger("claude_api_server")
 
 app = Flask(__name__)
 API_PORT = int(os.environ.get("CLAUDE_API_PORT", "8070"))
+CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")  # 未設定時は認証スキップ
+
+
+def _verify_api_key() -> bool:
+    """X-API-Key ヘッダーを検証。CLAUDE_API_KEY 未設定時はスキップ。"""
+    import secrets as _secrets
+    if not CLAUDE_API_KEY:
+        return True
+    key = request.headers.get("X-API-Key", "")
+    return bool(key) and _secrets.compare_digest(key, CLAUDE_API_KEY)
 
 
 class ClaudeClient:
@@ -81,7 +91,7 @@ class ClaudeClient:
         logger.warning(f"⚠️  Claude CLI 失敗: {cli_result['error']} → API フォールバック")
 
         # API でフォールバック
-        api_result = await self._call_api(prompt, system, max_tokens)
+        api_result = await self._call_api(prompt, system, max_tokens, model=model)
         if api_result["success"]:
             logger.info("✅ Anthropic API で応答")
             return {
@@ -156,17 +166,21 @@ class ClaudeClient:
             return {"success": False, "error": str(e)[:100]}
 
     async def _call_api(
-        self, prompt: str, system: Optional[str], max_tokens: int
+        self, prompt: str, system: Optional[str], max_tokens: int,
+        model: Optional[str] = None,
     ) -> dict:
-        """Anthropic API でフォールバック"""
+        """AsyncAnthropic API でフォールバック (シングルトン、ノンブロッキング)"""
         try:
             if not self.api_key:
                 return {"success": False, "error": "ANTHROPIC_API_KEY not set"}
 
             import anthropic
 
-            client = anthropic.Anthropic(api_key=self.api_key)
-            response = client.messages.create(
+            # シングルトン AsyncAnthropic クライアント (リクエストごとに生成しない)
+            if not hasattr(self, "_async_client") or self._async_client is None:
+                self._async_client = anthropic.AsyncAnthropic(api_key=self.api_key)
+
+            response = await self._async_client.messages.create(
                 model=model or "claude-opus-4-7",
                 max_tokens=max_tokens,
                 system=system or "",
@@ -216,6 +230,8 @@ async def call_claude():
       "error": null or エラーメッセージ
     }
     """
+    if not _verify_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
     try:
         data = request.get_json()
         if not data or "prompt" not in data:
