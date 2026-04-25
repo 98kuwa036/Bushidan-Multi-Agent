@@ -234,17 +234,13 @@ async def startup_init_db_and_switch():
             switched = False
             for attempt in range(3):
                 try:
-                    http_req = urllib.request.Request(
-                        f"{llm_url}/switch/gemma",
-                        data=b'',
-                        headers={'Content-Type': 'application/json'},
-                        method='POST'
+                    resp = await _get_http_client().post(
+                        f"{llm_url}/switch/gemma", timeout=10.0
                     )
-                    with urllib.request.urlopen(http_req, timeout=10) as response:
-                        response.read()
-                        logger.info("✅ Console startup: LLM server switched to Gemma4 MoE")
-                        switched = True
-                        break
+                    resp.raise_for_status()
+                    logger.info("✅ Console startup: LLM server switched to Gemma4 MoE")
+                    switched = True
+                    break
                 except Exception as e:
                     if attempt < 2:
                         await asyncio.sleep(2)
@@ -1234,7 +1230,7 @@ async def get_audit_log_content(path: str, token: str = ""):
         from utils.audit_log import _AUDIT_DIR
         # パストラバーサル防止: audit ディレクトリ以下のみ許可
         abs_path = _os.path.realpath(path)
-        if not abs_path.startswith(str(_AUDIT_DIR.resolve())):
+        if not Path(abs_path).is_relative_to(_AUDIT_DIR.resolve()):
             raise HTTPException(status_code=403, detail="アクセス拒否")
         if not _os.path.isfile(abs_path):
             raise HTTPException(status_code=404, detail="ファイルが見つかりません")

@@ -165,6 +165,9 @@ class NodesMixin:
                 "roadmap_results":    [],
                 "sub_queries":        [],
                 "sub_responses":      [],
+                "notion_chunks":      list(state.get("notion_chunks", [])),
+                "attachments":        list(state.get("attachments", [])),
+                "mcp_tools_used":     [],
             }
             if prev_ctx:
                 sub_state["context_summary"] = (
@@ -377,6 +380,9 @@ class NodesMixin:
                 "conversation_history": [],
                 "sub_queries":          [],
                 "sub_responses":        [],
+                "notion_chunks":        list(state.get("notion_chunks", [])),
+                "attachments":          list(state.get("attachments", [])),
+                "mcp_tools_used":       [],
             }
             try:
                 res = await asyncio.wait_for(role.execute(sub_state), timeout=30)
@@ -461,6 +467,9 @@ class NodesMixin:
                     "roadmap_results":    [],
                     "sub_queries":        [],
                     "sub_responses":      [],
+                    "notion_chunks":      list(state.get("notion_chunks", [])),
+                    "attachments":        list(state.get("attachments", [])),
+                    "mcp_tools_used":     [],
                 }
                 try:
                     res = await asyncio.wait_for(role.execute(sub_state), timeout=timeout_val)
@@ -548,6 +557,9 @@ class NodesMixin:
                     "roadmap_results":    [],
                     "sub_queries":        [],
                     "sub_responses":      [],
+                    "notion_chunks":      list(state.get("notion_chunks", [])),
+                    "attachments":        list(state.get("attachments", [])),
+                    "mcp_tools_used":     [],
                 }
                 try:
                     res = await asyncio.wait_for(role.execute(sub_state), timeout=timeout_val)
@@ -618,6 +630,9 @@ class NodesMixin:
                         "roadmap_results":    [],
                         "sub_queries":        [],
                         "sub_responses":      [],
+                        "notion_chunks":      list(state.get("notion_chunks", [])),
+                        "attachments":        list(state.get("attachments", [])),
+                        "mcp_tools_used":     [],
                     }
                     try:
                         res = await asyncio.wait_for(role.execute(sub), timeout=timeout_val)
@@ -652,6 +667,9 @@ class NodesMixin:
                     "roadmap_results":    [],
                     "sub_queries":        [],
                     "sub_responses":      [],
+                    "notion_chunks":      list(state.get("notion_chunks", [])),
+                    "attachments":        list(state.get("attachments", [])),
+                    "mcp_tools_used":     [],
                 }
                 try:
                     res = await asyncio.wait_for(role.execute(sub), timeout=timeout_val)
