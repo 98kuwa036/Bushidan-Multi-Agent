@@ -437,7 +437,7 @@ class TestAnthropicBatchProcessor:
         mock_client = MagicMock()
         mock_client.messages.batches.create = AsyncMock(return_value=mock_batch_created)
         mock_client.messages.batches.retrieve = AsyncMock(return_value=mock_batch_processing)
-        mock_client.messages.batches.results = AsyncMock(return_value=_async_iter_results())
+        mock_client.messages.batches.results = MagicMock(return_value=_async_iter_results())
 
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             result = await proc.run([{
@@ -471,7 +471,7 @@ class TestAnthropicBatchProcessor:
         mock_client = MagicMock()
         mock_client.messages.batches.create = AsyncMock(return_value=mock_batch_created)
         mock_client.messages.batches.retrieve = AsyncMock(return_value=mock_batch_ended)
-        mock_client.messages.batches.results = AsyncMock(return_value=_async_iter_error())
+        mock_client.messages.batches.results = MagicMock(return_value=_async_iter_error())
 
         with patch("anthropic.AsyncAnthropic", return_value=mock_client):
             result = await proc.run([{

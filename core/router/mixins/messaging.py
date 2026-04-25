@@ -80,11 +80,14 @@ def _make_initial_state(
 
 class MessagingMixin:
 
+    def __init__(self):
+        self._RESP_CACHE: dict = {}
+        self._RESP_CACHE_TTL: float = 300.0
+        self._cache_lock: asyncio.Lock = asyncio.Lock()
+
     if TYPE_CHECKING:
         _compiled: object
         _compiled_fast: object
-        _RESP_CACHE: dict
-        _RESP_CACHE_TTL: float
         _audit_logs: dict
 
         async def initialize(self): ...
