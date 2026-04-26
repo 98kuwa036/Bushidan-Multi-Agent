@@ -7,6 +7,13 @@ from typing import Annotated, Optional
 from typing_extensions import TypedDict, NotRequired
 
 
+def _reduce_roadmap_results(left: list, right: list | None) -> list:
+    """operator.add と同様だが None を受け取ったとき全リセット（監査却下→再計画用）。"""
+    if right is None:
+        return []
+    return left + right
+
+
 class BushidanState(TypedDict):
     """LangGraph v15 ステート — HITL + コンテキスト要約"""
 
@@ -83,7 +90,7 @@ class BushidanState(TypedDict):
     # ── v16: 将軍ロードマップ実行 ─────────────────────────────────────
     roadmap: dict                   # {goal, steps:[{id,task,capability,assigned_role,status,result}], needs_audit}
     roadmap_step: int               # 現在実行中のステップインデックス
-    roadmap_results: Annotated[list, operator.add]  # 各ステップ結果の累積リスト
+    roadmap_results: Annotated[list, _reduce_roadmap_results]  # 累積リスト (None送信でリセット可)
     needs_audit: bool               # 大元帥監査フラグ
 
     # ── v18: ステップ実行コンテキスト ─────────────────────────────────

@@ -346,7 +346,7 @@ class NodesMixin:
                 "handled_by": "daigensui_audit", "execution_time": elapsed,
                 "routed_to": "daigensui_audit", "mcp_tools_used": [],
                 "iteration": state.get("iteration", 0) + 1,
-                **({"error": "audit_rejected"} if _verdict == "rejected" else {}),
+                **({"error": "audit_rejected", "roadmap_results": None} if _verdict == "rejected" else {}),
             }
         except Exception as e:
             logger.warning("大元帥監査失敗: %s", e)
@@ -743,7 +743,7 @@ class NodesMixin:
     async def _sandbox_verify_node(self, state: "BushidanState") -> dict:
         """生成コードブロックを抽出して実行検証する。BATCH モードはスキップ。"""
         mode = ProcessingMode(state.get("processing_mode", ProcessingMode.INTERACTIVE))
-        if mode == ProcessingMode.BATCH and not BATCH_CONFIG.get("sandbox_verify_enabled", True):
+        if mode == ProcessingMode.BATCH and not BATCH_CONFIG.get("sandbox_verify_enabled", False):
             return {"code_verified": False, "code_verify_result": "skipped_batch"}
 
         response = state.get("response", "") or ""

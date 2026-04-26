@@ -242,9 +242,13 @@ async def call_claude():
             return jsonify({"error": "Missing 'prompt' in request"}), 400
 
         prompt = data["prompt"]
+        if not isinstance(prompt, str) or not prompt.strip():
+            return jsonify({"error": "'prompt' must be a non-empty string"}), 400
         system = data.get("system")
         model = data.get("model")
         max_tokens = data.get("max_tokens", 2000)
+        if not isinstance(max_tokens, int) or not (1 <= max_tokens <= 8192):
+            return jsonify({"error": "'max_tokens' must be an integer between 1 and 8192"}), 400
 
         result = await claude.call(
             prompt=prompt,
