@@ -6,7 +6,6 @@ core/router/mixins/nodes.py — 実行・特殊ノード群 Mixin
 バッチ並列 (_batch_parallel_node)、コード検証 (_sandbox_verify_node) を提供する。
 """
 import asyncio
-import copy
 import time
 from typing import TYPE_CHECKING
 from utils.logger import get_logger
@@ -82,7 +81,8 @@ class NodesMixin:
                 max_tokens=800,
             )
 
-            import re as _re, json as _json
+            import re as _re
+            import json as _json
             m = _re.search(r'\{.*\}', raw, _re.DOTALL)
             if m:
                 roadmap = _json.loads(m.group())
