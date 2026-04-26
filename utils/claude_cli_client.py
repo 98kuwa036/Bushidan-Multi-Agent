@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # リモート Claude API Server の設定（オプション）
 REMOTE_CLAUDE_API_URL = os.environ.get("CLAUDE_API_SERVER_URL")
+_REMOTE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
 
 # AWS Bedrock 設定
 AWS_ACCESS_KEY_ID = os.environ.get("AWS_ACCESS_KEY_ID")
@@ -112,6 +113,7 @@ async def _try_remote_claude_api(
     try:
         import httpx
 
+        headers = {"X-API-Key": _REMOTE_API_KEY} if _REMOTE_API_KEY else {}
         async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(
                 f"{REMOTE_CLAUDE_API_URL}/api/claude",
@@ -121,6 +123,7 @@ async def _try_remote_claude_api(
                     "model": model,
                     "max_tokens": max_tokens,
                 },
+                headers=headers,
             )
 
             if response.status_code == 200:

@@ -16,10 +16,14 @@ bushidan-honjin LXC からは HTTP API 経由でアクセス。
 import asyncio
 import logging
 import os
+import re
 import subprocess
 from typing import Optional
 
+from dotenv import load_dotenv
 from flask import Flask, jsonify, request
+
+load_dotenv()
 
 # ── ロギング ────────────────────────────────────────────────────────
 
@@ -33,19 +37,17 @@ logger = logging.getLogger("claude_api_server")
 
 app = Flask(__name__)
 API_PORT = int(os.environ.get("CLAUDE_API_PORT", "8070"))
-CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")  # 未設定時は認証スキップ
+CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
 
 
 def _verify_api_key() -> bool:
-    """X-API-Key ヘッダーを検証。CLAUDE_API_KEY 未設定時はスキップ。"""
+    """X-API-Key ヘッダーを検証。CLAUDE_API_KEY 未設定時は拒否。"""
     import secrets as _secrets
     if not CLAUDE_API_KEY:
-        import logging as _logging
-        _logging.getLogger(__name__).warning(
-            "⚠️ CLAUDE_API_KEY unset: /api/claude is open to all callers on 0.0.0.0:%s — set CLAUDE_API_KEY in .env",
-            os.environ.get("PORT", "8070"),
+        logger.error(
+            "🚨 CLAUDE_API_KEY unset — rejecting request. Set CLAUDE_API_KEY in .env to enable the API.",
         )
-        return True
+        return False
     key = request.headers.get("X-API-Key", "")
     return bool(key) and _secrets.compare_digest(key, CLAUDE_API_KEY)
 
@@ -143,11 +145,16 @@ class ClaudeClient:
             )
 
             if result.returncode == 0:
-                # CLIが警告行をstdoutに混入する場合があるため除去
-                _WARN_PREFIXES = ("balance", "credit", "usage limit", "your account")
+                # CLI warning lines (account/credit notices) を除去するが、
+                # 正当なレスポンスを誤って除去しないよう具体的なパターンのみ対象とする
+                _WARN_RE = re.compile(
+                    r"^(balance remaining[:\s]|credit remaining[:\s]|"
+                    r"usage limit (reached|reset)|your (account|claude) (balance|credit|plan|usage))",
+                    re.IGNORECASE,
+                )
                 lines = [
                     line for line in result.stdout.splitlines()
-                    if not any(line.lower().strip().startswith(p) for p in _WARN_PREFIXES)
+                    if not _WARN_RE.match(line.strip())
                 ]
                 content = "\n".join(lines).strip()
                 return {
