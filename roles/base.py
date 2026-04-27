@@ -91,6 +91,16 @@ class BaseRole(ABC):
         # 認識論的謙虚さを全ロールに注入
         prompt += _EPISTEMIC_HUMILITY
 
+        # 訂正モード: ユーザーが前の回答の誤りを指摘した場合の追加指示
+        if state.get("is_correction"):
+            prompt += (
+                "\n\n【訂正モード】\n"
+                "ユーザーが直前の回答の誤りを指摘しています。\n"
+                "まず「〜の点が誤りでした。訂正します」と明示的に誤りを認め、\n"
+                "修正した正しい内容を提示してください。\n"
+                "謝罪は1文で簡潔に、修正内容に比重を置いてください。"
+            )
+
         # Notion RAG コンテキスト注入
         notion_chunks = state.get("notion_chunks", [])
         if notion_chunks:

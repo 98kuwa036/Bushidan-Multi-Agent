@@ -94,6 +94,15 @@ class RoutingMixin:
         if state.get("attachments"):
             return _check_health("kengyo_vision")
 
+        # 訂正ルート: ユーザーが前の回答の誤りを指摘 → 将軍 or 大元帥に昇格
+        if state.get("is_correction"):
+            complexity_now = state.get("complexity", "medium")
+            if complexity_now in ("strategic", "complex"):
+                logger.info("🔄 Route: daigensui_audit (is_correction + complexity=%s)", complexity_now)
+                return _check_health("daigensui_audit")
+            logger.info("🔄 Route: shogun_plan (is_correction)")
+            return _check_health("shogun_plan")
+
         intent       = state.get("intent_structured", {})
         intent_type  = intent.get("intent_type", "")
         required_caps = intent.get("required_capabilities", [])

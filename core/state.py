@@ -40,6 +40,7 @@ class BushidanState(TypedDict):
     is_simple_qa: bool
     is_japanese_priority: bool
     is_confidential: bool
+    is_correction: bool  # ユーザーが前の回答の誤りを訂正している場合 True
 
     # ── ルーティング ─────────────────────────────────────────────────
     forced_role: Optional[str]

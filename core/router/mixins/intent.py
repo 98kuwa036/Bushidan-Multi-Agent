@@ -194,7 +194,8 @@ class IntentMixin:
                     '  "is_action_task": true|false,\n'
                     '  "is_simple_qa": true|false,\n'
                     '  "is_japanese_priority": true|false,\n'
-                    '  "is_confidential": true|false\n'
+                    '  "is_confidential": true|false,\n'
+                    '  "is_correction": true|false\n'
                     "}\n\n"
                     "判断基準:\n"
                     "- simple: 短い質問・挨拶・事実確認\n"
@@ -207,6 +208,8 @@ class IntentMixin:
                     "- web_search: 最新情報・外部情報が必要な場合\n"
                     "- tools: git/ファイル/shell操作が必要な場合\n"
                     "- is_confidential: 機密・社外秘・オフライン指定の場合 true\n"
+                    "- is_correction: 前の回答の誤りをユーザーが指摘・訂正している場合 true\n"
+                    "  (例: 違います/それは間違い/そうじゃなくて/正しくは〜/ではないです)\n"
                     "⚠️重要: is_japanese_priority は日本語で書かれているだけでは true にしない。"
                     "翻訳・添削・ビジネスメール・敬語変換など日本語文章処理が明示的に求められる場合のみ true。"
                 )
@@ -225,6 +228,7 @@ class IntentMixin:
                     is_simple_qa       = bool(parsed.get("is_simple_qa", False))
                     is_japanese        = bool(parsed.get("is_japanese_priority", False))
                     is_confidential    = bool(parsed.get("is_confidential", False))
+                    is_correction      = bool(parsed.get("is_correction", False))
                     intent_structured  = {
                         "intent_type":           parsed.get("intent_type", "general"),
                         "domain":                parsed.get("domain", "general"),
@@ -237,6 +241,7 @@ class IntentMixin:
                         "complexity": complexity, "is_multi_step": is_multi,
                         "is_action_task": is_action, "is_simple_qa": is_simple_qa,
                         "is_japanese_priority": is_japanese, "is_confidential": is_confidential,
+                        "is_correction": is_correction,
                         "attachments": state.get("attachments", []),
                         "forced_role": forced,
                         "intent_structured": intent_structured,
@@ -266,11 +271,16 @@ class IntentMixin:
         is_simple_qa    = any(kw in content_lower for kw in ["とは", "って何", "ですか", "what is", "explain"]) and not is_action
         is_japanese     = any(kw in message for kw in ["日本語で書いて", "和訳", "添削", "翻訳", "ビジネスメール", "敬語で"])
         is_confidential = any(kw in content_lower for kw in ["機密", "秘密", "confidential", "オフライン", "社外秘"])
+        _CORRECTION_KWS = ["違います", "違う", "それは間違", "間違ってい", "そうじゃなくて",
+                           "そうじゃない", "正しくは", "ではないです", "ではなく",
+                           "誤りです", "誤っています", "not correct", "incorrect"]
+        is_correction = any(kw in message for kw in _CORRECTION_KWS)
         logger.info("🚪 [受付] フォールバック分析: complexity=%s", complexity)
         _ret = {
             "complexity": complexity, "is_multi_step": is_multi,
             "is_action_task": is_action, "is_simple_qa": is_simple_qa,
             "is_japanese_priority": is_japanese, "is_confidential": is_confidential,
+            "is_correction": is_correction,
             "attachments": state.get("attachments", []),
             "forced_role": forced,
             "intent_structured": {"intent_type": "general", "domain": "general",
