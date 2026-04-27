@@ -10,6 +10,10 @@ from roles.base import BaseRole, RoleResult
 PERSONA = (
     "あなたは大元帥（Claude Opus 4.6）、武士団マルチエージェントシステムの総司令官です。"
     "最高難度の判断を下す最高意思決定者として、深く洞察に富んだ回答を日本語でしてください。"
+    "\n\n【クロスチェック責務】\n"
+    "回答に「確信度: 低」または「要確認」を含む場合、または戦略・セキュリティ判断の場合、"
+    "自身の推論に異なる視点からの反証を試みてから最終判断を下してください。"
+    "異なる訓練データ由来のモデルが同じ結論に至る場合のみ高確信度とみなします。"
 )
 
 
@@ -81,6 +85,18 @@ class DaigensuiRole(BaseRole):
 
             messages = self._format_messages(state)
             response = await client.generate(messages=messages, system=system, max_tokens=4000)
+
+            # ── Groq クロスチェック (低確信度 or 戦略・セキュリティ判断) ──
+            _LOW_CONF = ("確信度: 低", "要確認", "不確か", "推測", "わかりません")
+            _HIGH_STAKES = ("セキュリティ", "アーキテクチャ", "認証", "脆弱性", "本番", "削除", "権限")
+            _needs_xcheck = (
+                any(s in response for s in _LOW_CONF)
+                or any(s in msg for s in _HIGH_STAKES)
+                or state.get("risk_level") in ("HIGH", "CRITICAL")
+            )
+            if _needs_xcheck:
+                response = await self._groq_crosscheck(msg, response, mcp_used)
+
             return RoleResult(
                 response=response, agent_role=self.role_name,
                 handled_by=self.default_handled_by, execution_time=time.time() - start,
@@ -94,3 +110,33 @@ class DaigensuiRole(BaseRole):
                 handled_by=self.default_handled_by, execution_time=time.time() - start,
                 error=str(e), status="failed",
             )
+
+    async def _groq_crosscheck(self, question: str, primary_answer: str, mcp_used: list) -> str:
+        """Gemini 3.1 Pro Preview (異なる訓練バイアス) で一次回答を検証し、差異を付記して返す。"""
+        try:
+            from utils.client_registry import ClientRegistry
+            gemini_client = ClientRegistry.get().get_client("claude_fallback")  # gemini-3.1-pro-preview
+            if not gemini_client:
+                return primary_answer
+
+            xcheck_prompt = (
+                f"以下の質問に対する回答案を批判的に検証してください。\n"
+                f"事実の誤り・論理的矛盾・重要な見落としがあれば具体的に指摘してください。\n"
+                f"問題がなければ「検証OK」とだけ答えてください。\n\n"
+                f"【質問】{question[:500]}\n\n【回答案】{primary_answer[:1000]}"
+            )
+            verdict = await gemini_client.generate(
+                messages=[{"role": "user", "content": xcheck_prompt}],
+                system="あなたは批判的検証AIです。回答案の誤りを見つけることに特化してください。",
+                max_tokens=600,
+            )
+            if verdict and "検証OK" not in verdict:
+                self.logger.info("👑 大元帥: Gemini 3.1 Pro クロスチェックで差異検出")
+                mcp_used.append("gemini_crosscheck")
+                return (
+                    primary_answer
+                    + f"\n\n---\n**【クロスチェック指摘 (Gemini 3.1 Pro)】**\n{verdict.strip()}"
+                )
+        except Exception as e:
+            self.logger.debug("Geminiクロスチェックスキップ: %s", e)
+        return primary_answer

@@ -18,6 +18,17 @@ from typing import Any, Optional
 
 from utils.logger import get_logger
 
+# ── 認識論的謙虚さ: 全ロール共通注入テキスト ─────────────────────────
+_EPISTEMIC_HUMILITY = (
+    "\n\n【認識論的謙虚さの原則】\n"
+    "- 不確実な情報は「〜の可能性があります」「〜と推測されますが確認が必要です」と明示する\n"
+    "- 知識カットオフ（2025年8月）以降の情報は推測であることを述べる\n"
+    "- 推論と事実を明確に区別し、「〜と思われる」「〜かもしれない」を適切に使う\n"
+    "- 確信が低い場合は「確信度: 低」と添え、ユーザーに確認を促す\n"
+    "- 「わからない」「要確認」は正直な回答であり、不確かな推測より優れている\n"
+    "- ユーザーや他エージェントから誤りを指摘された場合は素直に受け入れ修正する"
+)
+
 # ── read_graph TTLキャッシュ (30秒、プロセス全体で共有) ───────────────
 _GRAPH_CACHE: Optional[str] = None
 _GRAPH_CACHE_AT: float = 0.0
@@ -76,6 +87,9 @@ class BaseRole(ABC):
             f"あなたは{self.role_name}（{self.model_name}）、武士団マルチエージェントシステムの"
             f"{self.role_key}担当です。明確・実用的な日本語で回答してください。"
         )
+
+        # 認識論的謙虚さを全ロールに注入
+        prompt += _EPISTEMIC_HUMILITY
 
         # Notion RAG コンテキスト注入
         notion_chunks = state.get("notion_chunks", [])
