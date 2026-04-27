@@ -288,7 +288,6 @@ def get_status():
             "status": "ok",
             "claude_cli_available": cli_available,
             "anthropic_api_available": api_available,
-            "cli_path": claude.cli_path,
         }
     )
 
