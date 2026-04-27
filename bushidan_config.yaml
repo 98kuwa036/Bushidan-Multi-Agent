@@ -1,0 +1,24 @@
+# Bushidan System Configuration for MCP Monitoring
+system:
+  name: "Bushidan v10.1"
+  version: "10.1.0"
+
+mcp:
+  endpoints:
+    - url: "http://localhost:8080/api/mcp/health"
+      name: "Primary MCP"
+      timeout: 30
+    - url: "http://localhost:8081/api/mcp/health"
+      name: "Secondary MCP"
+      timeout: 30
+  max_retries: 3
+  retry_delay_seconds: 5
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+  file: "./logs/bushidan_mcp_monitor.log"
+
+monitoring:
+  check_interval_seconds: 60
+  enable_alerts: true

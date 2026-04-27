@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "bushidan-multi-agent"
+version = "18.0"
+description = "武士団マルチエージェントシステム v18: 11役職 + LangGraph PostgreSQL永続化 + HITL + ローカルLLM統合 + 高速筆耕3段階パイプライン"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "httpx>=0.27.0",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+cloud = ["anthropic>=0.40.0", "openai>=1.50.0"]
+groq = ["groq>=0.4.1"]
+notion = ["notion-client>=2.2.1"]
+rag = ["qdrant-client>=1.7.0", "sentence-transformers>=2.2.2"]
+sandbox = ["docker>=6.1.0", "psutil>=5.9.0"]
+gemini = ["google-genai>=1.0.0"]
+dev = ["pytest", "pytest-asyncio", "ruff", "black", "mypy"]
+all = [
+    "anthropic>=0.40.0",
+    "openai>=1.50.0",
+    "groq>=0.4.1",
+    "notion-client>=2.2.1",
+    "qdrant-client>=1.7.0",
+    "sentence-transformers>=2.2.2",
+    "docker>=6.1.0",
+    "psutil>=5.9.0",
+    "google-genai>=1.0.0"
+]
+
+[project.scripts]
+bushidan = "bushidan.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bushidan*", "core*", "utils*", "ashigaru*", "mcp*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint.per-file-ignores]
+"notebooks/*.py" = ["E402", "F401"]
+"local_llm_server.py" = ["E402"]
+"**/.jupyter/*.py" = ["E402", "F821"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

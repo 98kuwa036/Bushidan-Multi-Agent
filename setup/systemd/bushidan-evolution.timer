@@ -1,0 +1,13 @@
+[Unit]
+Description=武士団 週次スキル進化バッチ タイマー
+Requires=bushidan-evolution.service
+
+[Timer]
+# 毎週日曜 03:00 に実行
+OnCalendar=Sun *-*-* 03:00:00
+# システム起動時に前回実行が6日以上前なら即時実行
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

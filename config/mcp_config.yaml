@@ -1,0 +1,32 @@
+# MCP Configuration for Bushidan System v10.1
+#
+# This file contains configuration parameters for the Management Control Point (MCP)
+# monitoring and status checking system.
+
+mcp:
+  endpoint: "http://localhost:8080/api/health"
+  version: "v10.1"
+  timeout: 5
+  polling_interval: 30
+
+database:
+  connection_string: "mongodb://localhost:27017/bushidan_db"
+  timeout: 5000
+  max_pool_size: 50
+  min_pool_size: 5
+
+system:
+  alert_thresholds:
+    cpu_usage_percent: 85
+    memory_usage_percent: 90
+    disk_usage_percent: 95
+  monitoring_interval: 60
+
+logging:
+  level: "INFO"
+  file: "/var/log/bushidan/mcp_status.log"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+alerts:
+  enabled: true
+  webhook_url: ""
