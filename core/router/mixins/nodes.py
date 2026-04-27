@@ -221,7 +221,9 @@ class NodesMixin:
                     s = batch_steps[ri]
                     err_res = RoleResult(response=f"❌ エラー: {raw}", agent_role="unknown",
                                          handled_by="execute_step", error=str(raw), status="failed")
-                    batch_results.append((s.get("capability", ""), s.get("capability", ""),
+                    _role_key = (s.get("assigned_role")
+                                 or self._CAP_TO_ROLE.get(s.get("capability", ""), "gunshi"))
+                    batch_results.append((_role_key, s.get("capability", ""),
                                           s.get("task", ""), err_res, step_idx + ri))
                 else:
                     batch_results.append(raw)
@@ -489,7 +491,9 @@ class NodesMixin:
                                        return_exceptions=True)
             return [
                 r if not isinstance(r, BaseException)
-                else (batch_steps[ri].get("capability", ""), batch_steps[ri].get("capability", ""),
+                else ((batch_steps[ri].get("assigned_role")
+                       or self._CAP_TO_ROLE.get(batch_steps[ri].get("capability", ""), "gunshi")),
+                      batch_steps[ri].get("capability", ""),
                       batch_steps[ri].get("task", ""),
                       RoleResult(response=f"❌ {r}", agent_role="unknown",
                                   handled_by="execute_step", error=str(r), status="failed"),
@@ -504,14 +508,13 @@ class NodesMixin:
             capability = s.get("capability", "analysis")
             role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
             task_desc  = s.get("task", "")
-            text       = results_map.get(cid, "❌ 結果なし")
-            is_error   = text.startswith("❌")
+            _text, _err = results_map.get(cid, ("", "結果なし"))
             fake_result = RoleResult(
-                response=text,
+                response=_text or (f"❌ {_err}" if _err else ""),
                 agent_role=role_key,
                 handled_by="anthropic_batch",
-                error=text if is_error else None,
-                status="failed" if is_error else "completed",
+                error=_err,
+                status="failed" if _err else "completed",
             )
             batch_results.append((role_key, capability, task_desc, fake_result, step_idx + i))
 

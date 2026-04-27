@@ -62,7 +62,7 @@ class AnthropicBatchProcessor:
 
     # ── public API ───────────────────────────────────────────────────────────
 
-    async def run(self, requests: list[dict]) -> dict[str, str]:
+    async def run(self, requests: list[dict]) -> dict[str, tuple[str, str | None]]:
         """
         複数リクエストを Batch API に送信し、全て完了したら結果を返す。
 
@@ -75,7 +75,8 @@ class AnthropicBatchProcessor:
                 - max_tokens (int, optional): デフォルト 2000
 
         Returns:
-            {custom_id: response_text} — エラー時は "❌ ..." 文字列
+            {custom_id: (response_text, error_msg | None)}
+            error_msg は失敗時のみ設定、成功時は None
         """
         if not requests:
             return {}
@@ -86,7 +87,7 @@ class AnthropicBatchProcessor:
         await self._wait_for_completion(batch_id)
 
         results = await self._fetch_results(batch_id)
-        success = sum(1 for v in results.values() if not v.startswith("❌"))
+        success = sum(1 for _t, _e in results.values() if _e is None)
         logger.info("📦 Anthropic Batch 取得完了: id=%s success=%d/%d",
                     batch_id, success, len(results))
         return results
@@ -145,12 +146,12 @@ class AnthropicBatchProcessor:
             f"Anthropic Batch タイムアウト: id={batch_id} elapsed={elapsed:.0f}s"
         )
 
-    async def _fetch_results(self, batch_id: str) -> dict[str, str]:
-        """`results()` ストリームを消費して {custom_id: text} を返す。"""
+    async def _fetch_results(self, batch_id: str) -> dict[str, tuple[str, str | None]]:
+        """`results()` ストリームを消費して {custom_id: (text, error|None)} を返す。"""
         import anthropic
 
         client  = anthropic.AsyncAnthropic(api_key=self._api_key)
-        results: dict[str, str] = {}
+        results: dict[str, tuple[str, str | None]] = {}
 
         async for item in client.messages.batches.results(batch_id):
             cid    = item.custom_id
@@ -164,17 +165,17 @@ class AnthropicBatchProcessor:
                     text  = first.text if hasattr(first, "text") else str(first)
                 elif isinstance(content, str):
                     text = content
-                results[cid] = text
+                results[cid] = (text, None)
 
             elif result.type == "errored":
                 err = getattr(result, "error", {})
                 err_type = getattr(err, "type", "?") if hasattr(err, "type") else err.get("type", "?")
                 err_msg  = getattr(err, "message", "") if hasattr(err, "message") else err.get("message", "")
-                results[cid] = f"❌ バッチエラー [{err_type}]: {err_msg}"
+                results[cid] = ("", f"バッチエラー [{err_type}]: {err_msg}")
                 logger.warning("📦 Batch 個別エラー: cid=%s type=%s msg=%s", cid, err_type, err_msg)
 
             else:
-                results[cid] = f"❌ {result.type}: custom_id={cid}"
+                results[cid] = ("", f"{result.type}: custom_id={cid}")
                 logger.warning("📦 Batch 非成功: cid=%s type=%s", cid, result.type)
 
         return results
