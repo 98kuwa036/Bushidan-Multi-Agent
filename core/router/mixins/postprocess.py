@@ -227,10 +227,11 @@ class PostprocessMixin:
             states: BushidanState dict のリスト
 
         Returns:
-            {"saved": int, "failed": int, "errors": list[str]}
+            {"saved": int, "failed": int, "skipped": int, "errors": list[str]}
         """
-        saved  = 0
-        failed = 0
+        saved   = 0
+        failed  = 0
+        skipped = 0
         errors: list[str] = []
 
         try:
@@ -239,10 +240,10 @@ class PostprocessMixin:
             logger.warning("batch_bulk_notion_store: notion モジュール未ロード: %s", e)
             return {"saved": 0, "failed": len(states), "errors": [str(e)]}
 
-        async def _save_one(state: dict) -> bool:
+        async def _save_one(state: dict):
             try:
                 if not state.get("should_save", True):
-                    return False
+                    return None
                 await save_task_result_bg(state)
                 return True
             except Exception as e_inner:
@@ -254,7 +255,7 @@ class PostprocessMixin:
         # 並列保存（最大 5 並列）
         semaphore = asyncio.Semaphore(5)
 
-        async def _guarded(s: dict) -> bool:
+        async def _guarded(s: dict):
             async with semaphore:
                 return await _save_one(s)
 
@@ -262,10 +263,12 @@ class PostprocessMixin:
         for r in results:
             if r is True:
                 saved += 1
+            elif r is None:
+                skipped += 1
             else:
                 failed += 1
                 if isinstance(r, BaseException):
                     errors.append(str(r))
 
-        logger.info("📋 batch_bulk_notion_store: saved=%d failed=%d", saved, failed)
-        return {"saved": saved, "failed": failed, "errors": errors}
+        logger.info("📋 batch_bulk_notion_store: saved=%d failed=%d skipped=%d", saved, failed, skipped)
+        return {"saved": saved, "failed": failed, "skipped": skipped, "errors": errors}

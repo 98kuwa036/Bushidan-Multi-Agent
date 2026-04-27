@@ -221,10 +221,12 @@ class IntentMixin:
                 import json
 
                 def _find_json(s: str) -> "dict | None":
+                    if not isinstance(s, str):
+                        return None
                     start = s.find('{')
                     if start == -1:
                         return None
-                    depth = i = 0
+                    depth = 0
                     i, in_str, esc = start, False, False
                     while i < len(s):
                         ch = s[i]

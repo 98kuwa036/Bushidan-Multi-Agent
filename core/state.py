@@ -16,9 +16,14 @@ def _reduce_roadmap_results(left: list, right: list | None) -> list:
 _HISTORY_MAX_MESSAGES = 40  # 20ターン × 2メッセージ
 
 
-def _bounded_history(current: list, new: list) -> list:
-    """会話履歴を最大 _HISTORY_MAX_MESSAGES 件に制限するレデューサー。"""
-    combined = (current or []) + (new or [])
+def _bounded_history(current: list, new: "list | None") -> list:
+    """会話履歴を最大 _HISTORY_MAX_MESSAGES 件に制限するレデューサー。
+
+    `new` が None の場合は履歴をリセット（_reduce_roadmap_results と同パターン）。
+    """
+    if new is None:
+        return []
+    combined = (current or []) + new
     return combined[-_HISTORY_MAX_MESSAGES:]
 
 
