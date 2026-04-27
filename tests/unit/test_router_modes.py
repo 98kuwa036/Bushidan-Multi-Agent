@@ -8,10 +8,9 @@ tests/unit/test_router_modes.py — インタラクティブ/バッチモード�
   - NodesMixin: _sandbox_verify_node スキップ / _batch_parallel_node
   - AnthropicBatchProcessor: submit / poll / fetch_results (モック)
 """
-import asyncio
 import os
 import sys
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -334,10 +333,11 @@ class TestMessagingCacheBypass:
 
         mixin = MessagingMixin()
         # キャッシュにヒットするエントリを事前設定
-        import hashlib, time
+        import hashlib
+        import time
         _tid = "thread-x"
         msg  = "こんにちは"
-        _h   = hashlib.md5(f"{_tid}:{msg}".encode()).hexdigest()
+        _h   = hashlib.md5(f"{_tid}:0:{msg}".encode()).hexdigest()
         mixin._RESP_CACHE = {_h: ({"status": "completed", "response": "CACHED!"}, time.time())}
         mixin._RESP_CACHE_TTL = 300.0
         mixin._compiled = True
@@ -378,7 +378,8 @@ class TestMessagingCacheBypass:
         from core.router.batch.mode import ProcessingMode
 
         mixin = MessagingMixin()
-        import hashlib, time
+        import hashlib
+        import time
         _tid = "thread-y"
         msg  = "テスト"
         _h   = hashlib.md5(f"{_tid}:{msg}".encode()).hexdigest()
@@ -447,7 +448,7 @@ class TestAnthropicBatchProcessor:
                 "max_tokens": 100,
             }])
 
-        assert result == {"req-1": "テスト応答"}
+        assert result == {"req-1": ("テスト応答", None)}
 
     @pytest.mark.asyncio
     async def test_run_error_result(self):
@@ -481,7 +482,8 @@ class TestAnthropicBatchProcessor:
             }])
 
         assert "req-err" in result
-        assert result["req-err"].startswith("❌")
+        _text, _err = result["req-err"]
+        assert _err is not None
 
     @pytest.mark.asyncio
     async def test_timeout_raises(self):

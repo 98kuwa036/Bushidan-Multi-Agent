@@ -7,7 +7,6 @@ Bushidan Multi-Agent System v18 - Main Entry Point
 """
 
 import asyncio
-import logging
 
 from utils.config import load_config
 from utils.logger import setup_logger

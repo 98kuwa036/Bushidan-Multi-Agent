@@ -6,7 +6,6 @@ core/router/router.py — LangGraph Router v16 (Mixin 統合版)
 は旧 core/langgraph_router.py と完全互換。
 """
 import asyncio
-import os
 from typing import Any, Optional
 
 from langgraph.graph import StateGraph, END

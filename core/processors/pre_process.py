@@ -8,7 +8,7 @@ import asyncio
 import os
 import re
 import time
-from typing import List, Optional
+from typing import List
 
 from utils.logger import get_logger
 from core.models.karasu import KarasuOutput, SearchResult

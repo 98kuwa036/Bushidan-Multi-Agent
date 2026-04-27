@@ -18,7 +18,6 @@ Usage Context (運用黄金律):
 """
 
 import asyncio
-import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from dataclasses import dataclass

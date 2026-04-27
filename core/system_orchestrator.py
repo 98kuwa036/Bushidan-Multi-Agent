@@ -10,10 +10,8 @@ MCP サーバー初期化 / LangGraph Router 初期化 / ヘルスチェック /
   大元帥(Claude Opus 4.6)
 """
 
-import asyncio
-import logging
 from typing import Any, Dict, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 from utils.logger import get_logger

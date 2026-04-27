@@ -218,7 +218,8 @@ class IntentMixin:
                     system=system,
                     max_tokens=120,
                 )
-                import re, json
+                import re
+                import json
                 m = re.search(r'\{[^}]+\}', raw, re.DOTALL)
                 if m:
                     parsed = json.loads(m.group())

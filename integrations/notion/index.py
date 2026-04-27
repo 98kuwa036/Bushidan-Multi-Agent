@@ -16,7 +16,7 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 # fire-and-forget タスク参照保持（GC 対策）
 _bg_tasks: set = set()

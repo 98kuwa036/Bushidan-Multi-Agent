@@ -16,7 +16,6 @@ Multi-Agent Shogun の「ボトムアップスキル発見」を Bushidan に統
   - 同一ハッシュが threshold 回以上 → 候補生成
 """
 
-import asyncio
 import datetime
 import hashlib
 import json
@@ -422,28 +421,28 @@ def _write_skill_yaml(
 
     now = datetime.datetime.now().isoformat()
     lines = [
-        f"# 武士団 Bushidan v18 — 自動生成スキル",
+        "# 武士団 Bushidan v18 — 自動生成スキル",
         f"# 承認日時: {now}",
         f"# 出現回数: {occurrence_count}",
-        f"---",
+        "---",
         f"id: \"{proposal_id}\"",
         f"name: \"{skill_name}\"",
         f"created_at: \"{now}\"",
         f"occurrence_count: {occurrence_count}",
-        f"",
-        f"# このスキルが発動するキーワード (いずれか1つ以上含む場合)",
-        f"trigger_keywords:",
+        "",
+        "# このスキルが発動するキーワード (いずれか1つ以上含む場合)",
+        "trigger_keywords:",
     ]
     for kw in keywords:
         lines.append(f'  - "{kw}"')
 
     lines += [
-        f"",
-        f"# 推奨ルーティング先ロール",
+        "",
+        "# 推奨ルーティング先ロール",
         f"route_hint: \"{route_hint}\"",
-        f"",
-        f"# システムプロンプトへの追加インジェクション (空白可)",
-        f"system_prompt_hint: |",
+        "",
+        "# システムプロンプトへの追加インジェクション (空白可)",
+        "system_prompt_hint: |",
     ]
     if system_prompt_hint.strip():
         for line in system_prompt_hint.strip().split("\n"):
@@ -452,9 +451,9 @@ def _write_skill_yaml(
         lines.append("  # (なし)")
 
     lines += [
-        f"",
-        f"# 学習に使ったサンプルメッセージ",
-        f"sample_messages:",
+        "",
+        "# 学習に使ったサンプルメッセージ",
+        "sample_messages:",
     ]
     for msg in sample_messages[:3]:
         safe_msg = msg.replace('"', "'")[:120]

@@ -16,7 +16,7 @@ LangGraph の notion_retrieve ノードから呼び出す。
 import asyncio
 import logging
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 
 from integrations.notion.client import get_notion_client

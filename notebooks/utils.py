@@ -1,6 +1,7 @@
 """武士団 JupyterLab 共通ユーティリティ v18"""
 from __future__ import annotations
-import sys, os
+import sys
+import os
 from pathlib import Path
 
 # プロジェクトルートを sys.path に追加（project モジュールの import 用）
@@ -16,7 +17,6 @@ import psycopg
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import japanize_matplotlib  # noqa: F401  日本語フォント自動設定
 
 # ── matplotlib スタイル ────────────────────────────────────────────

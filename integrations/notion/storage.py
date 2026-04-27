@@ -9,7 +9,6 @@ LangGraph の notion_store ノードから呼び出す。
   - fire-and-forget: asyncio.create_task で非ブロッキングに実行可能
 """
 
-import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, Optional

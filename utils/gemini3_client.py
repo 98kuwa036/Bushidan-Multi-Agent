@@ -14,10 +14,8 @@ v15 役割: 受付(Flash-Lite) / 検校(Flash-Image) / 右筆(Flash-Lite)
 """
 
 import asyncio
-import logging
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
-from datetime import datetime
 
 from utils.logger import get_logger
 

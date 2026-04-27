@@ -11,8 +11,6 @@ utils/cerebras_client.py — Cerebras Cloud API クライアント
 """
 
 import os
-import asyncio
-import logging
 from typing import List, Dict, Optional, Any
 
 from utils.logger import get_logger

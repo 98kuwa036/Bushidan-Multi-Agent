@@ -20,6 +20,8 @@ import time
 from pathlib import Path
 from typing import AsyncIterator, Dict, List, Optional
 
+import psutil  # psutil は requirements に追加済み (v7.x)
+
 # fire-and-forget タスク参照保持（GC 対策）
 _bg_tasks: set = set()
 
@@ -30,7 +32,6 @@ def _fire(coro, *, name: str = None) -> "asyncio.Task":
     t.add_done_callback(_bg_tasks.discard)
     return t
 
-import psutil  # psutil は requirements に追加済み (v7.x)
 
 _APP_DIR   = Path("/mnt/Bushidan-Multi-Agent")
 _VENV      = Path("/home/claude/Bushidan-Multi-Agent/venv")

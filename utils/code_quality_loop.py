@@ -156,7 +156,7 @@ def format_review_summary(history: list[dict]) -> str:
 
     details = []
     for h in history:
-        status = "✅ LGTM" if h["lgtm"] else f"📋 指摘あり"
+        status = "✅ LGTM" if h["lgtm"] else "📋 指摘あり"
         details.append(f"  Round {h['round']} [{h['reviewer']}]: {status}")
 
     return summary + "\n" + "\n".join(details)

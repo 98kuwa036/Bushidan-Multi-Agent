@@ -39,7 +39,7 @@ class TestModuleImports:
         assert callable(validate_session)
 
     def test_import_anthropic_batch(self):
-        from core.router.batch.anthropic_batch import AnthropicBatchProcessor, ANTHROPIC_ROLES
+        from core.router.batch.anthropic_batch import ANTHROPIC_ROLES
         assert "shogun" in ANTHROPIC_ROLES
         assert "daigensui" in ANTHROPIC_ROLES
 

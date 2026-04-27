@@ -7,7 +7,6 @@ import os
 import sys
 import time
 
-import pytest
 
 
 def _load_auth(env: dict):
@@ -42,8 +41,13 @@ class TestCheckPassword:
         auth = _load_auth({"CONSOLE_PASSWORD_HASH": "", "CONSOLE_PASSWORD": "secret"})
         assert auth.check_password("bad") is False
 
-    def test_no_password_set_returns_true(self):
+    def test_no_password_set_returns_false(self):
         auth = _load_auth({"CONSOLE_PASSWORD_HASH": "", "CONSOLE_PASSWORD": ""})
+        assert auth.check_password("anything") is False
+
+    def test_auth_bypass_flag_allows_access(self):
+        auth = _load_auth({"CONSOLE_PASSWORD_HASH": "", "CONSOLE_PASSWORD": "",
+                           "CONSOLE_AUTH_BYPASS": "true"})
         assert auth.check_password("anything") is True
 
 

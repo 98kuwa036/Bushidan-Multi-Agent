@@ -5,9 +5,8 @@ Mistral Large 3 を非同期で呼び出す。
 環境変数: MISTRAL_API_KEY
 """
 
-import asyncio
 import logging
-from typing import List, Optional
+from typing import List
 
 logger = logging.getLogger("utils.mistral_client")
 

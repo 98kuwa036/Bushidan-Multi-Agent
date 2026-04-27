@@ -122,7 +122,7 @@ class RoutingMixin:
         is_simple  = state.get("is_simple_qa", False)
 
         # BATCH モード: 複雑・戦略タスク → batch_parallel で全ステップ一括処理
-        from core.router.batch.mode import ProcessingMode, BATCH_CONFIG as _BC
+        from core.router.batch.mode import ProcessingMode
         _mode = ProcessingMode(state.get("processing_mode", ProcessingMode.INTERACTIVE))
         if (
             _mode == ProcessingMode.BATCH

@@ -7,8 +7,6 @@ role_key → BaseLLMClient のキャッシュ付きシングルトン。
 ヘルスチェック結果は5分間キャッシュされる。
 """
 
-import asyncio
-import logging
 import os
 import time
 from typing import Dict, Optional
