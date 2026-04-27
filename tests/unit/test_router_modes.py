@@ -382,11 +382,14 @@ class TestMessagingCacheBypass:
         import time
         _tid = "thread-y"
         msg  = "テスト"
-        _h   = hashlib.md5(f"{_tid}:{msg}".encode()).hexdigest()
+        _h   = hashlib.md5(f"{_tid}:0:{msg}".encode()).hexdigest()
         cached_resp = {"status": "completed", "response": "CACHED!", "execution_time": 0.0}
         mixin._RESP_CACHE = {_h: (cached_resp, time.time())}
         mixin._RESP_CACHE_TTL = 300.0
         mixin._compiled = MagicMock()  # 呼ばれないはず
+        state_mock = MagicMock()
+        state_mock.values = {}
+        mixin._compiled.get_state.return_value = state_mock
         mixin._compiled_fast = None
         mixin._audit_logs = {}
 
