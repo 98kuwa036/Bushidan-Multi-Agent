@@ -118,6 +118,7 @@ class LangGraphRouter(
         graph.add_node("check_followup",  self._check_followup)
         graph.add_node("human_interrupt", self._human_interrupt)
         graph.add_node("notion_store",    self._notion_store)
+        graph.add_node("crosscheck",       self._crosscheck_node)
 
         graph.set_entry_point("analyze_intent")
         graph.add_edge("analyze_intent", "notion_index")
@@ -175,10 +176,11 @@ class LangGraphRouter(
             {
                 "human": "human_interrupt",
                 "loop":  "notion_index",
-                "done":  "notion_store",
+                "done":  "crosscheck",
             },
         )
         graph.add_edge("human_interrupt", "notion_store")
+        graph.add_edge("crosscheck",       "notion_store")
         graph.add_edge("notion_store", END)
 
         return graph

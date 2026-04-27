@@ -140,6 +140,82 @@ class PostprocessMixin:
             except Exception as e:
                 logger.warning("📢 Webhook 通知エラー: %s", e)
 
+    async def _crosscheck_node(self, state: "BushidanState") -> dict:
+        """複雑度に応じた段階的クロスチェック。
+
+        medium            -> crosscheck_light (Cerebras Llama3.1-8B) で検出
+                             -> 問題あり -> crosscheck_heavy (Gemini 3.1 Pro) で修正
+        complex/strategic -> crosscheck_heavy (Gemini 3.1 Pro) で検出・修正
+        simple            -> スキップ
+        """
+        complexity = state.get("complexity", "simple")
+        if complexity == "simple":
+            return {}
+
+        response = state.get("response", "") or ""
+        if not response:
+            return {}
+
+        message = state.get("message", "") or ""
+        is_medium = complexity == "medium"
+        checker_key = "crosscheck_light" if is_medium else "crosscheck_heavy"
+
+        try:
+            from utils.client_registry import ClientRegistry
+            registry = ClientRegistry.get()
+            checker = registry.get_client(checker_key)
+            if not checker:
+                logger.debug("[crosscheck] %s クライアント未取得 — スキップ", checker_key)
+                return {}
+
+            check_prompt = (
+                "以下の回答に事実の誤り・論理矛盾・重要な見落としがあれば指摘してください。\n"
+                "問題なければ「問題なし」とだけ答えてください。\n\n"
+                "【質問】" + message[:400] + "\n\n【回答】" + response[:800]
+            )
+            verdict = await checker.generate(
+                messages=[{"role": "user", "content": check_prompt}],
+                system="批判的検証AI。事実誤認・論理矛盾・重要な見落としのみ指摘。余分な説明不要。",
+                max_tokens=400,
+            )
+
+            if not verdict or "問題なし" in verdict:
+                return {}
+
+            logger.info(
+                "🔍 [crosscheck] 問題検出 (complexity=%s checker=%s): %s",
+                complexity, checker_key, verdict[:80],
+            )
+
+            # 問題あり → crosscheck_heavy (Gemini 3.1 Pro) で修正
+            verifier = registry.get_client("crosscheck_heavy")
+            if not verifier:
+                return {"response": response + "\n\n⚠️ **要確認**: " + verdict.strip()[:200]}
+
+            correct_prompt = (
+                "以下の回答に誤りが指摘されました。正しい回答を日本語で提示してください。\n\n"
+                "【質問】" + message[:400] + "\n\n"
+                "【元の回答】" + response[:800] + "\n\n"
+                "【指摘内容】" + verdict[:300]
+            )
+            corrected = await verifier.generate(
+                messages=[{"role": "user", "content": correct_prompt}],
+                system="修正AI。指摘を踏まえて正確・簡潔な回答を日本語で提示してください。",
+                max_tokens=2000,
+            )
+            if corrected:
+                logger.info("🔍 [crosscheck] 修正完了 (complexity=%s)", complexity)
+                return {
+                    "response": corrected,
+                    "mcp_tools_used": (state.get("mcp_tools_used") or []) + [checker_key],
+                }
+
+        except Exception as e:
+            logger.debug("[crosscheck] スキップ: %s", e)
+
+        return {}
+
+
     async def batch_bulk_notion_store(self, states: list) -> dict:
         """
         バッチ処理で生成された複数スレッドの結果を一括で Notion に保存する。
