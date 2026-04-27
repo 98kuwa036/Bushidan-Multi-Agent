@@ -58,7 +58,8 @@ class AnthropicBatchProcessor:
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY が未設定です")
         poll_interval = float(os.environ.get("ANTHROPIC_BATCH_POLL_INTERVAL", "5.0"))
-        return cls(api_key=api_key, poll_interval=poll_interval)
+        max_wait = float(os.environ.get("ANTHROPIC_BATCH_MAX_WAIT", "3600.0"))
+        return cls(api_key=api_key, poll_interval=poll_interval, max_wait=max_wait)
 
     # ── public API ───────────────────────────────────────────────────────────
 

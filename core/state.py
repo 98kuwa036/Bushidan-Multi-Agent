@@ -2,7 +2,6 @@
 武士団 BushidanState v18
 """
 
-import operator
 from typing import Annotated, Optional
 from typing_extensions import TypedDict, NotRequired
 
@@ -12,6 +11,15 @@ def _reduce_roadmap_results(left: list, right: list | None) -> list:
     if right is None:
         return []
     return left + right
+
+
+_HISTORY_MAX_MESSAGES = 40  # 20ターン × 2メッセージ
+
+
+def _bounded_history(current: list, new: list) -> list:
+    """会話履歴を最大 _HISTORY_MAX_MESSAGES 件に制限するレデューサー。"""
+    combined = (current or []) + (new or [])
+    return combined[-_HISTORY_MAX_MESSAGES:]
 
 
 class BushidanState(TypedDict):
@@ -28,7 +36,7 @@ class BushidanState(TypedDict):
     attachments: list
 
     # ── 会話履歴 (MemorySaver でターン間持続) ────────────────────────
-    conversation_history: Annotated[list, operator.add]
+    conversation_history: Annotated[list, _bounded_history]
 
     # ── Notion RAG ────────────────────────────────────────────────
     notion_chunks: list
