@@ -120,7 +120,8 @@ class MessagingMixin:
         )
         if _can_cache:
             _tid = thread_id or "default"
-            _h = hashlib.md5(f"{_tid}:{message}".encode()).hexdigest()
+            _hist_len = len(self._compiled.get_state({"configurable": {"thread_id": _tid}}).values.get("conversation_history", [])) if self._compiled else 0
+            _h = hashlib.md5(f"{_tid}:{_hist_len}:{message}".encode()).hexdigest()
             _cache_key = _h
             async with self._cache_lock:
                 _entry = self._RESP_CACHE.get(_h)

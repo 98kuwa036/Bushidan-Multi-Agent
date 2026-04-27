@@ -390,7 +390,10 @@ class NodesMixin:
             except Exception as e:
                 return f"❌ {q[:30]}: {e}"
 
-        sub_responses = list(await asyncio.gather(*[_run_sub(q) for q in sub_queries[:4]],
+        _MAX_SQ = int(__import__("os").environ.get("LLM_MAX_PARALLEL_SUBQUERIES", "4"))
+        if len(sub_queries) > _MAX_SQ:
+            logger.warning("⚠️ サブクエリ %d件中 %d件のみ実行 (LLM_MAX_PARALLEL_SUBQUERIES=%d で変更可)", len(sub_queries), _MAX_SQ, _MAX_SQ)
+        sub_responses = list(await asyncio.gather(*[_run_sub(q) for q in sub_queries[:_MAX_SQ]],
                                                    return_exceptions=True))
         sub_responses = [r if isinstance(r, str) else f"❌ エラー: {r}" for r in sub_responses]
         merged  = "\n\n".join(f"**Q: {q}?**\n{a}" for q, a in zip(sub_queries, sub_responses))

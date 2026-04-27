@@ -315,7 +315,7 @@ repo:
 daigensui:
   codename: "Daigensui"
   role: "大元帥 - 最高難度・戦略設計・最終品質保証"
-  model: "claude-opus-4-6"
+  model: "claude-opus-4-7"
 
   prompt_caching:
     enabled: true

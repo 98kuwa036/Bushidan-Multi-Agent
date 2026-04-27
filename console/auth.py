@@ -65,9 +65,12 @@ def check_password(password: str) -> bool:
     if plain:
         return secrets.compare_digest(password, plain)
 
-    # どちらも未設定 → 認証スキップ（開発環境用: 本番では必ず CONSOLE_PASSWORD_HASH を設定すること）
-    logger.error("🚨 CONSOLE_PASSWORD_HASH 未設定: 認証をスキップしています！本番環境では危険です")
-    return True
+    # どちらも未設定 → CONSOLE_AUTH_BYPASS=true の明示が必要
+    if os.environ.get("CONSOLE_AUTH_BYPASS", "").lower() == "true":
+        logger.warning("🔓 CONSOLE_AUTH_BYPASS=true: 認証スキップ中 (開発環境専用)")
+        return True
+    logger.error("🚨 CONSOLE_PASSWORD_HASH 未設定: ログインを拒否します。開発環境では CONSOLE_AUTH_BYPASS=true を設定してください")
+    return False
 
 
 def create_session() -> str:
@@ -81,9 +84,9 @@ def create_session() -> str:
 def validate_session(token: str) -> bool:
     """セッショントークンを検証"""
     _cleanup_expired()
-    # 認証が設定されていない場合はスキップ
+    # 認証が設定されていない場合は明示バイパスフラグを確認
     if not _get_hash() and not _get_plaintext():
-        return True
+        return os.environ.get("CONSOLE_AUTH_BYPASS", "").lower() == "true"
     with _sessions_lock:
         expiry = _SESSIONS.get(token)
         if not expiry:

@@ -37,6 +37,7 @@ logger = logging.getLogger("claude_api_server")
 
 app = Flask(__name__)
 API_PORT = int(os.environ.get("CLAUDE_API_PORT", "8070"))
+API_HOST = os.environ.get("CLAUDE_API_HOST", "127.0.0.1")
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
 
 
@@ -277,6 +278,8 @@ async def call_claude():
 @app.route("/api/status", methods=["GET"])
 def get_status():
     """サーバーステータス"""
+    if not _verify_api_key():
+        return jsonify({"error": "Unauthorized"}), 401
     cli_available = os.path.exists(claude.cli_path)
     api_available = bool(claude.api_key)
 
@@ -302,7 +305,7 @@ def main():
     logger.info(f"   Anthropic API: {'✅' if claude.api_key else '❌'}")
 
     app.run(
-        host="0.0.0.0",
+        host=API_HOST,
         port=API_PORT,
         debug=False,
         threaded=True,
