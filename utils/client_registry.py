@@ -39,6 +39,26 @@ class _CohereAdapter(BaseLLMClient):
         )
 
 
+class _CerebrasAdapter(BaseLLMClient):
+    """CerebrasClient → BaseLLMClient (ウェーハスケール超高速推論)"""
+
+    def __init__(self, model: str = "llama3.1-8b"):
+        from utils.cerebras_client import CerebrasClient
+        api_key = os.environ.get("CEREBRAS_API_KEY", "")
+        if not api_key or len(api_key) < 5:
+            raise RuntimeError("CEREBRAS_API_KEY が未設定です")
+        self._client = CerebrasClient(api_key=api_key, model=model)
+
+    async def generate(self, messages, system="", max_tokens=1000, **kw):
+        return await self._client.generate(
+            messages=messages, system=system, max_tokens=max_tokens,
+            temperature=kw.get("temperature", 0.3),
+        )
+
+    async def health_check(self) -> bool:
+        return await self._client.health_check()
+
+
 class _GroqAdapter(BaseLLMClient):
     """GroqClient → BaseLLMClient"""
 
@@ -189,6 +209,8 @@ _FACTORIES = {
     "yuhitsu":        lambda: _GemmaLocalAdapter(),                                   # 日本語処理: Gemma4 (統合)
     "onmitsu":        lambda: _NemotronAdapter(),                                     # 機密: Nemotron Local
     "claude_fallback":lambda: _Gemini3Adapter("gemini-3.1-pro-preview"),              # Claude障害時: Gemini Pro
+    "crosscheck_light":lambda: _CerebrasAdapter("llama3.1-8b"),                       # 軽量クロスチェック: Cerebras Llama3.1-8B
+    "crosscheck_heavy":lambda: _Gemini3Adapter("gemini-3.1-pro-preview"),             # 重量クロスチェック: Gemini 3.1 Pro
 }
 
 
