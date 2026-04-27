@@ -132,7 +132,7 @@ class ClaudeClient:
             # CLI コマンド構築 (-p の直後にプロンプト、--add-dir は後置)
             cmd = [self.cli_path, "-p", prompt, "--add-dir", mounted_dir]
             if system:
-                cmd.extend(["--system-prompt", system])
+                cmd.extend(["--append-system-prompt", system])
 
             logger.info(f"🔄 Claude CLI 実行 (バインドマウント {mounted_dir})")
 
@@ -181,30 +181,28 @@ class ClaudeClient:
         self, prompt: str, system: Optional[str], max_tokens: int,
         model: Optional[str] = None,
     ) -> dict:
-        """AsyncAnthropic API でフォールバック (シングルトン、ノンブロッキング)"""
+        """AsyncAnthropic API でフォールバック (リクエストごとに新規クライアント生成)"""
         try:
             if not self.api_key:
                 return {"success": False, "error": "ANTHROPIC_API_KEY not set"}
 
             import anthropic
 
-            # シングルトン AsyncAnthropic クライアント (リクエストごとに生成しない)
-            if not hasattr(self, "_async_client") or self._async_client is None:
-                self._async_client = anthropic.AsyncAnthropic(api_key=self.api_key)
-
-            response = await self._async_client.messages.create(
-                model=model or "claude-opus-4-7",
-                max_tokens=max_tokens,
-                system=system or "",
-                messages=[{"role": "user", "content": prompt}],
-                timeout=30.0,
-            )
-
-            return {
-                "success": True,
-                "content": response.content[0].text,
-                "model": response.model,
-            }
+            # Flask threaded=True + async view = リクエストごとに新しい event loop。
+            # httpx.AsyncClient は生成 loop にバインドされるためシングルトン再利用は unsafe。
+            async with anthropic.AsyncAnthropic(api_key=self.api_key) as client:
+                response = await client.messages.create(
+                    model=model or "claude-opus-4-6",
+                    max_tokens=max_tokens,
+                    system=system or "",
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=60.0,
+                )
+                return {
+                    "success": True,
+                    "content": response.content[0].text,
+                    "model": response.model,
+                }
 
         except Exception as e:
             return {"success": False, "error": str(e)[:100]}

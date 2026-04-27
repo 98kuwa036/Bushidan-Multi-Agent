@@ -218,11 +218,40 @@ class IntentMixin:
                     system=system,
                     max_tokens=120,
                 )
-                import re
                 import json
-                m = re.search(r'\{[^}]+\}', raw, re.DOTALL)
-                if m:
-                    parsed = json.loads(m.group())
+
+                def _find_json(s: str) -> "dict | None":
+                    start = s.find('{')
+                    if start == -1:
+                        return None
+                    depth = i = 0
+                    i, in_str, esc = start, False, False
+                    while i < len(s):
+                        ch = s[i]
+                        if esc:
+                            esc = False
+                        elif in_str:
+                            if ch == '\\':
+                                esc = True
+                            elif ch == '"':
+                                in_str = False
+                        else:
+                            if ch == '"':
+                                in_str = True
+                            elif ch == '{':
+                                depth += 1
+                            elif ch == '}':
+                                depth -= 1
+                                if depth == 0:
+                                    try:
+                                        return json.loads(s[start:i + 1])
+                                    except json.JSONDecodeError:
+                                        return None
+                        i += 1
+                    return None
+
+                parsed = _find_json(raw)
+                if parsed is not None:
                     complexity         = parsed.get("complexity", "medium")
                     is_multi           = bool(parsed.get("is_multi_step", False))
                     is_action          = bool(parsed.get("is_action_task", False))

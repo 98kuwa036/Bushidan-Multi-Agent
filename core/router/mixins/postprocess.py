@@ -242,7 +242,7 @@ class PostprocessMixin:
         async def _save_one(state: dict) -> bool:
             try:
                 if not state.get("should_save", True):
-                    return True
+                    return False
                 await save_task_result_bg(state)
                 return True
             except Exception as e_inner:
