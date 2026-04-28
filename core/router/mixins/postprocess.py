@@ -13,6 +13,7 @@ from utils.logger import get_logger
 from core.router.batch.mode import ProcessingMode, BATCH_CONFIG
 from core.router.constants import fire
 
+logger = get_logger(__name__)
 
 class PostprocessMixin:
 

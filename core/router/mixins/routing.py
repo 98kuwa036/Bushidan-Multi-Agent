@@ -8,6 +8,7 @@ from core.state import BushidanState
 from utils.logger import get_logger
 from core.router.constants import FALLBACK_MAP, NODE_TIMEOUTS
 
+logger = get_logger(__name__)
 
 class RoutingMixin:
     """_notion_index_node と _route_decision / _exec_node を提供する"""

@@ -9,6 +9,7 @@ from core.state import BushidanState
 from utils.logger import get_logger
 from core.router.batch.mode import ProcessingMode, BATCH_CONFIG
 
+logger = get_logger(__name__)
 
 class IntentMixin:
     """analyze_intent ノードとショートカット判定定数を提供する"""
