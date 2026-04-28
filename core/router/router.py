@@ -8,20 +8,14 @@ core/router/router.py — LangGraph Router v16 (Mixin 統合版)
 import asyncio
 from typing import Any, Optional
 
-from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph
 
-from core.state import BushidanState
 from core.router.batch.mode import ProcessingMode
-from core.router.constants import load_roles, refresh_notion_index_bg, fire
-from core.router.mixins import (
-    CheckpointerMixin,
-    IntentMixin,
-    RoutingMixin,
-    NodesMixin,
-    PostprocessMixin,
-    MessagingMixin,
-)
+from core.router.constants import fire, load_roles, refresh_notion_index_bg
+from core.router.mixins import (CheckpointerMixin, IntentMixin, MessagingMixin,
+                                NodesMixin, PostprocessMixin, RoutingMixin)
+from core.state import BushidanState
 from utils.logger import get_logger
 
 logger = get_logger(__name__)

@@ -27,12 +27,11 @@ import time
 import uuid
 from typing import Optional
 import httpx
-import psycopg
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -413,14 +412,12 @@ class ThreadUpdateRequest(BaseModel):
 
 # ── 認証ヘルパー ──────────────────────────────────────────────────────
 
-from fastapi import Depends, Request as _Request
-
-def _extract_token(request: _Request, token: str = "") -> str:
-    """Authorization ヘッダー優先、なければクエリパラメーター token= を使用"""
+def _extract_token(request: Request) -> str:
+    """Authorization ヘッダーからトークンを取得"""
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         return auth[7:]
-    return token
+    return ""
 
 def _check_auth(token: str = Depends(_extract_token)):
     from console.auth import validate_session
@@ -1001,12 +998,16 @@ async def sandbox_run(req: SandboxRequest, token: str = Depends(_extract_token))
 @app.websocket("/ws/chat")
 async def ws_chat(ws: WebSocket):
     """WebSocket チャット"""
-    token = ws.query_params.get("token", "")
+    # フロントエンドから subprotocols として token が送られる
+    token = ""
+    if "sec-websocket-protocol" in ws.headers:
+        token = ws.headers["sec-websocket-protocol"].split(",")[0].strip()
+
     from console.auth import validate_session
     if not validate_session(token):
         await ws.close(code=4001, reason="Unauthorized")
         return
-    await ws.accept()
+    await ws.accept(subprotocol=token)
     if _HAS_PROMETHEUS:
         _active_ws.inc()
     router = await _get_router()
@@ -1549,9 +1550,13 @@ async def v2_chat(req: V2ChatRequest, token: str = Depends(_extract_token)):
             notion_score = notion_out.relevance_score
             karasu_results = len(karasu_out.search_results)
 
-            # Phase 1 が決定したロールをそのまま使用
+            # Phase 1 が決定したロールをそのまま使用 (無効化されている場合は auto にフォールバック)
             if route_decision.selected_role != "auto":
-                forced_role = route_decision.selected_role
+                if route_decision.selected_role not in _DISABLED_ROLES:
+                    forced_role = route_decision.selected_role
+                else:
+                    logger.info("v18 Phase1: selected role %s is disabled, fallback to auto", route_decision.selected_role)
+                    forced_role = None
 
             logger.info(
                 "v18 Phase1: complexity=%s intent=%s role=%s (conf=%.2f) notion=%.3f karasu=%d",

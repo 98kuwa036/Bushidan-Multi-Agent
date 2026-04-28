@@ -8,11 +8,13 @@ core/router/mixins/nodes.py — 実行・特殊ノード群 Mixin
 import asyncio
 import time
 from typing import TYPE_CHECKING
+
+from core.router.batch.anthropic_batch import (ANTHROPIC_ROLES,
+                                               AnthropicBatchProcessor)
+from core.router.batch.mode import BATCH_CONFIG, ProcessingMode
+from core.router.constants import NODE_TIMEOUTS
 from core.state import BushidanState
 from utils.logger import get_logger
-from core.router.constants import NODE_TIMEOUTS
-from core.router.batch.mode import ProcessingMode, BATCH_CONFIG
-from core.router.batch.anthropic_batch import ANTHROPIC_ROLES, AnthropicBatchProcessor
 
 logger = get_logger(__name__)
 
@@ -78,8 +80,8 @@ class NodesMixin:
                 max_tokens=800,
             )
 
-            import re as _re
             import json as _json
+            import re as _re
             m = _re.search(r'\{.*\}', raw, _re.DOTALL)
             if m:
                 roadmap = _json.loads(m.group())
@@ -422,6 +424,7 @@ class NodesMixin:
         _execute_step_node から呼び出す内部ヘルパー。
         """
         import os
+
         from roles.base import RoleResult
 
         logger.info("📦 [execute_step] Anthropic Batch API 使用: %d steps", len(batch_steps))
@@ -753,7 +756,7 @@ class NodesMixin:
         if "```" not in response:
             return {"code_verified": False, "code_verify_result": "skipped"}
         try:
-            from core.code_verifier import verify_response, append_verify_note
+            from core.code_verifier import append_verify_note, verify_response
             verify_result   = await asyncio.wait_for(verify_response(response, max_blocks=2), timeout=25)
             updated_response = append_verify_note(response, verify_result)
             return {"response": updated_response, "code_verified": True,

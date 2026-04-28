@@ -171,6 +171,12 @@ class ClaudeClient:
                     if not _WARN_RE.match(line.strip())
                 ]
                 content = "\n".join(lines).strip()
+                if not content:
+                    logger.warning("CLI returned empty content after filtering warnings.")
+                    return {
+                        "success": False,
+                        "error": "Empty response from CLI after filtering",
+                    }
                 return {
                     "success": True,
                     "content": content,
@@ -296,9 +302,9 @@ async def call_claude():
         return jsonify(result), 200
 
     except Exception as e:
-        logger.exception("API エラー")
+        logger.exception("API エラー: %s", e)
         return (
-            jsonify({"error": str(e), "content": "", "model": None, "source": None}),
+            jsonify({"error": "Internal server error", "content": "", "model": None, "source": None}),
             500,
         )
 
