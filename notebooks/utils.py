@@ -63,7 +63,7 @@ def scalar(sql: str, params=None, default=0):
     df = qdf(sql, params)
     return df.iloc[0, 0] if len(df) > 0 else default
 
-# ── ロール定義 (v18 11役職) ──────────────────────────────────────────
+# ── ロール定義 (v18 10役職) ──────────────────────────────────────────
 ROLES = [
     'uketuke', 'gaiji', 'gunshi', 'sanbo',
     'shogun', 'daigensui', 'metsuke', 'kengyo', 'yuhitsu', 'onmitsu',
