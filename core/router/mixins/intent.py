@@ -152,7 +152,7 @@ class IntentMixin:
         _history_trimmed: Optional[list] = None
         _summary_text: Optional[str] = None
         history_now = state.get("conversation_history", [])
-        if len(history_now) > 12 and not state.get("context_summary"):
+        if len(history_now) > 12 and (not state.get("context_summary") or len(history_now) > 24):
             try:
                 from utils.client_registry import ClientRegistry
                 _sum_client = (
@@ -216,7 +216,7 @@ class IntentMixin:
                 raw = await client.generate(
                     messages=[{"role": "user", "content": message[:1000]}],
                     system=system,
-                    max_tokens=120,
+                    max_tokens=200,
                 )
                 import json
 
@@ -283,6 +283,11 @@ class IntentMixin:
                     if _history_trimmed is not None:
                         _ret["conversation_history"] = _history_trimmed
                     return _ret
+                else:
+                    logger.warning(
+                        "🚪 [受付] JSON解析失敗 → キーワードフォールバック: raw=%s",
+                        (raw or "")[:80],
+                    )
         except Exception as e:
             logger.warning("🚪 [受付] LLM分析失敗 → キーワードフォールバック: %s", e)
 

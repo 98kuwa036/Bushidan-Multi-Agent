@@ -16,15 +16,21 @@ def _reduce_roadmap_results(left: list, right: list | None) -> list:
 _HISTORY_MAX_MESSAGES = 40  # 20ターン × 2メッセージ
 
 
+_KEEP_HEAD = 2  # 先頭ターン（重要指示）を長期会話でも保持する件数
+
 def _bounded_history(current: list, new: "list | None") -> list:
     """会話履歴を最大 _HISTORY_MAX_MESSAGES 件に制限するレデューサー。
 
     `new` が None の場合は履歴をリセット（_reduce_roadmap_results と同パターン）。
+    先頭 _KEEP_HEAD 件は常に保持し、残り枠を末尾で埋めることで
+    セッション冒頭の重要指示が長期会話で消失しないようにする。
     """
     if new is None:
         return []
     combined = (current or []) + new
-    return combined[-_HISTORY_MAX_MESSAGES:]
+    if len(combined) <= _HISTORY_MAX_MESSAGES:
+        return combined
+    return combined[:_KEEP_HEAD] + combined[-(_HISTORY_MAX_MESSAGES - _KEEP_HEAD):]
 
 
 class BushidanState(TypedDict):
