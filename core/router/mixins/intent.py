@@ -160,14 +160,18 @@ class IntentMixin:
                     or ClientRegistry.get().get_client("seppou")
                 )
                 if _sum_client:
+                    _base_summary = state.get("context_summary", "")
                     _old = history_now[:-6]
                     _joined = "\n".join(
                         f"{m['role']}: {str(m.get('content',''))[:300]}"
                         for m in _old
                     )
+                    _summary_input = (
+                        (f"既存要約:\n{_base_summary}\n\n" if _base_summary else "")
+                        + f"以下の会話を3〜5行の要点に圧縮してください:\n{_joined[:3000]}"
+                    )
                     _summary_text = await _sum_client.generate(
-                        messages=[{"role": "user", "content":
-                            f"以下の会話を3〜5行の要点に圧縮してください:\n{_joined[:3000]}"}],
+                        messages=[{"role": "user", "content": _summary_input[:3500]}],
                         system="会話要約アシスタント。箇条書きで簡潔に。",
                         max_tokens=300,
                     )
@@ -223,34 +227,36 @@ class IntentMixin:
                 def _find_json(s: str) -> "dict | None":
                     if not isinstance(s, str):
                         return None
-                    start = s.find('{')
-                    if start == -1:
-                        return None
-                    depth = 0
-                    i, in_str, esc = start, False, False
-                    while i < len(s):
-                        ch = s[i]
-                        if esc:
-                            esc = False
-                        elif in_str:
-                            if ch == '\\':
-                                esc = True
-                            elif ch == '"':
-                                in_str = False
-                        else:
-                            if ch == '"':
-                                in_str = True
-                            elif ch == '{':
-                                depth += 1
-                            elif ch == '}':
-                                depth -= 1
-                                if depth == 0:
-                                    try:
-                                        return json.loads(s[start:i + 1])
-                                    except json.JSONDecodeError:
-                                        return None
-                        i += 1
-                    return None
+                    search_from = 0
+                    while True:
+                        start = s.find('{', search_from)
+                        if start == -1:
+                            return None
+                        depth = 0
+                        i, in_str, esc = start, False, False
+                        while i < len(s):
+                            ch = s[i]
+                            if esc:
+                                esc = False
+                            elif in_str:
+                                if ch == '\\':
+                                    esc = True
+                                elif ch == '"':
+                                    in_str = False
+                            else:
+                                if ch == '"':
+                                    in_str = True
+                                elif ch == '{':
+                                    depth += 1
+                                elif ch == '}':
+                                    depth -= 1
+                                    if depth == 0:
+                                        try:
+                                            return json.loads(s[start:i + 1])
+                                        except json.JSONDecodeError:
+                                            break  # try next '{'
+                            i += 1
+                        search_from = start + 1
 
                 parsed = _find_json(raw)
                 if parsed is not None:

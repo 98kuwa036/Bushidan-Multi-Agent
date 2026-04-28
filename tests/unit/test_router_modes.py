@@ -581,6 +581,8 @@ class TestBatchBulkNotionStore:
 
         assert result["skipped"] == 1
         assert result["saved"] == 0
+        assert result["failed"] == 0
+        assert result["errors"] == []
         save_mock.assert_not_awaited()
 
 

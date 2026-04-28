@@ -44,6 +44,7 @@ CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
 def _verify_api_key() -> bool:
     """X-API-Key ヘッダーを検証。CLAUDE_API_KEY 未設定時は拒否。"""
     import secrets as _secrets
+
     if not CLAUDE_API_KEY:
         logger.error(
             "🚨 CLAUDE_API_KEY unset — rejecting request. Set CLAUDE_API_KEY in .env to enable the API.",
@@ -95,7 +96,9 @@ class ClaudeClient:
                 "error": None,
             }
 
-        logger.warning(f"⚠️  Claude CLI 失敗: {cli_result['error']} → API フォールバック")
+        logger.warning(
+            f"⚠️  Claude CLI 失敗: {cli_result['error']} → API フォールバック"
+        )
 
         # API でフォールバック
         api_result = await self._call_api(prompt, system, max_tokens, model=model)
@@ -108,7 +111,9 @@ class ClaudeClient:
                 "error": None,
             }
 
-        logger.error(f"❌ 両方失敗: CLI={cli_result['error']}, API={api_result['error']}")
+        logger.error(
+            f"❌ 両方失敗: CLI={cli_result['error']}, API={api_result['error']}"
+        )
         return {
             "content": "",
             "model": None,
@@ -127,9 +132,16 @@ class ClaudeClient:
             # バインドマウントされたディレクトリを指定
             mounted_dir = "/mnt/Bushidan-Multi-Agent"
             if not os.path.exists(mounted_dir):
-                return {"success": False, "error": f"Mounted dir not found: {mounted_dir}"}
+                return {
+                    "success": False,
+                    "error": f"Mounted dir not found: {mounted_dir}",
+                }
 
             # CLI コマンド構築 (-p の直後にプロンプト、--add-dir は後置)
+            if system is not None and not isinstance(system, str):
+                raise ValueError(
+                    f"system must be str or None, got {type(system).__name__}"
+                )
             cmd = [self.cli_path, "-p", prompt, "--add-dir", mounted_dir]
             if system:
                 cmd.extend(["--append-system-prompt", system])
@@ -154,7 +166,8 @@ class ClaudeClient:
                     re.IGNORECASE,
                 )
                 lines = [
-                    line for line in result.stdout.splitlines()
+                    line
+                    for line in result.stdout.splitlines()
                     if not _WARN_RE.match(line.strip())
                 ]
                 content = "\n".join(lines).strip()
@@ -178,7 +191,10 @@ class ClaudeClient:
             return {"success": False, "error": str(e)[:100]}
 
     async def _call_api(
-        self, prompt: str, system: Optional[str], max_tokens: int,
+        self,
+        prompt: str,
+        system: Optional[str],
+        max_tokens: int,
         model: Optional[str] = None,
     ) -> dict:
         """AsyncAnthropic API でフォールバック (リクエストごとに新規クライアント生成)"""
@@ -212,6 +228,7 @@ claude = ClaudeClient()
 
 
 # ── API エンドポイント ────────────────────────────────────────────────
+
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -254,7 +271,12 @@ async def call_claude():
         model = data.get("model")
         max_tokens = data.get("max_tokens", 2000)
         if not isinstance(max_tokens, int) or not (1 <= max_tokens <= 8192):
-            return jsonify({"error": "'max_tokens' must be an integer between 1 and 8192"}), 400
+            return (
+                jsonify(
+                    {"error": "'max_tokens' must be an integer between 1 and 8192"}
+                ),
+                400,
+            )
 
         result = await claude.call(
             prompt=prompt,
@@ -270,7 +292,10 @@ async def call_claude():
 
     except Exception as e:
         logger.exception("API エラー")
-        return jsonify({"error": str(e), "content": "", "model": None, "source": None}), 500
+        return (
+            jsonify({"error": str(e), "content": "", "model": None, "source": None}),
+            500,
+        )
 
 
 @app.route("/api/status", methods=["GET"])
@@ -292,11 +317,10 @@ def get_status():
 
 # ── メイン ────────────────────────────────────────────────────────────
 
+
 def main():
     """サーバー起動"""
-    logger.info(
-        "🚀 Claude API Server 起動"
-    )
+    logger.info("🚀 Claude API Server 起動")
     logger.info(f"   ポート: {API_PORT}")
     logger.info(f"   Claude CLI: {claude.cli_path}")
     logger.info(f"   Anthropic API: {'✅' if claude.api_key else '❌'}")

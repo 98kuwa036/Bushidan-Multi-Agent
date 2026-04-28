@@ -229,21 +229,23 @@ class PostprocessMixin:
         Returns:
             {"saved": int, "failed": int, "skipped": int, "errors": list[str]}
         """
-        saved   = 0
-        failed  = 0
-        skipped = 0
+        skipped = sum(1 for s in states if not s.get("should_save", True))
+        target_states = [s for s in states if s.get("should_save", True)]
+        saved  = 0
+        failed = 0
         errors: list[str] = []
+
+        if not target_states:
+            return {"saved": 0, "failed": 0, "skipped": skipped, "errors": []}
 
         try:
             from integrations.notion.storage import save_task_result_bg
         except ImportError as e:
             logger.warning("batch_bulk_notion_store: notion モジュール未ロード: %s", e)
-            return {"saved": 0, "failed": len(states), "skipped": 0, "errors": [str(e)]}
+            return {"saved": 0, "failed": len(target_states), "skipped": skipped, "errors": [str(e)]}
 
         async def _save_one(state: dict):
             try:
-                if not state.get("should_save", True):
-                    return None
                 await save_task_result_bg(state)
                 return True
             except Exception as e_inner:
@@ -259,12 +261,10 @@ class PostprocessMixin:
             async with semaphore:
                 return await _save_one(s)
 
-        results = await asyncio.gather(*[_guarded(s) for s in states], return_exceptions=True)
+        results = await asyncio.gather(*[_guarded(s) for s in target_states], return_exceptions=True)
         for r in results:
             if r is True:
                 saved += 1
-            elif r is None:
-                skipped += 1
             else:
                 failed += 1
                 if isinstance(r, BaseException):
