@@ -17,28 +17,27 @@
 | PCT | IP | 役割 |
 |---|---|---|
 | pct100 | 192.168.11.231 | bushidan-honjin — Bushidan アプリ本体 |
-| pct103 | 192.168.11.234 | Matrix Synapse サーバー (PostgreSQL: pct105) |
-| pct105 | 192.168.11.236 | PostgreSQL 17 (LangGraph PostgresSaver + Synapse 共用) |
+| pct105 | 192.168.11.236 | PostgreSQL 17 (LangGraph PostgresSaver) |
 | pct237 | 192.168.11.237 | Claude Server — Claude Pro CLI + このファイルの作業場所 |
-| LLM機 | 192.168.11.239 | ローカルLLM (Gemma3 27B + Nemotron 3) :8082 |
+| LLM機 | 192.168.11.239 | ローカルLLM (Gemma4 27B + Nemotron) :8082 |
+
+※ pct103 (Matrix Synapse) は廃止済み。Matrix / Mattermost 連携は撤去。
 
 ## 主要サービス
 
 | サービス | ホスト | ポート |
 |---|---|---|
 | Bushidan コンソール (FastAPI) | pct100 | 8067 |
-| Matrix Synapse | pct103 | 8448 |
-| RabbitMQ | pct100 | 5672 |
-| Prometheus | pct100 | 9090 |
-| Grafana | pct100 | 3000 |
 | Claude API Server | pct237 | 8070 |
 | Local LLM Server | 192.168.11.239 | 8082 |
+| JupyterLab | pct100 | 8888 |
 
 ## systemd サービス (pct100 ユーザーサービス)
 
 ```bash
-systemctl --user status matrix-bot
-systemctl --user restart matrix-bot
+systemctl --user status bushidan-console
+systemctl --user restart bushidan-console
+systemctl --user status jupyterlab
 ```
 
 ## 開発ルール
