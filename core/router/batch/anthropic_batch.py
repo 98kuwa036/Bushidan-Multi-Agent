@@ -12,6 +12,7 @@ Anthropic Batch API の特性:
 - タイムアウト: 24 時間
 """
 import asyncio
+import math
 import os
 from typing import Any
 from utils.logger import get_logger
@@ -61,13 +62,13 @@ class AnthropicBatchProcessor:
             poll_interval = float(os.environ.get("ANTHROPIC_BATCH_POLL_INTERVAL", "5.0"))
         except ValueError as e:
             raise RuntimeError("ANTHROPIC_BATCH_POLL_INTERVAL は数値で指定してください") from e
-        if poll_interval <= 0:
+        if not math.isfinite(poll_interval) or poll_interval <= 0:
             raise RuntimeError("ANTHROPIC_BATCH_POLL_INTERVAL は 0 より大きい値を指定してください")
         try:
             max_wait = float(os.environ.get("ANTHROPIC_BATCH_MAX_WAIT", "3600.0"))
         except ValueError as e:
             raise RuntimeError("ANTHROPIC_BATCH_MAX_WAIT は数値で指定してください") from e
-        if max_wait <= 0:
+        if not math.isfinite(max_wait) or max_wait <= 0:
             raise RuntimeError("ANTHROPIC_BATCH_MAX_WAIT は 0 より大きい値を指定してください")
         return cls(api_key=api_key, poll_interval=poll_interval, max_wait=max_wait)
 

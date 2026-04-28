@@ -238,7 +238,7 @@ class PostprocessMixin:
             from integrations.notion.storage import save_task_result_bg
         except ImportError as e:
             logger.warning("batch_bulk_notion_store: notion モジュール未ロード: %s", e)
-            return {"saved": 0, "failed": len(states), "errors": [str(e)]}
+            return {"saved": 0, "failed": len(states), "skipped": 0, "errors": [str(e)]}
 
         async def _save_one(state: dict):
             try:

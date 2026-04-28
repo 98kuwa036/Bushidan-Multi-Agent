@@ -280,13 +280,11 @@ class IntentMixin:
                     }
                     if _summary_text:
                         _ret["context_summary"] = _summary_text
-                    if _history_trimmed is not None:
-                        _ret["conversation_history"] = _history_trimmed
                     return _ret
                 else:
                     logger.warning(
-                        "🚪 [受付] JSON解析失敗 → キーワードフォールバック: raw=%s",
-                        (raw or "")[:80],
+                        "🚪 [受付] JSON解析失敗 → キーワードフォールバック: raw_len=%d",
+                        len(raw or ""),
                     )
         except Exception as e:
             logger.warning("🚪 [受付] LLM分析失敗 → キーワードフォールバック: %s", e)
@@ -325,6 +323,4 @@ class IntentMixin:
         }
         if _summary_text:
             _ret["context_summary"] = _summary_text
-        if _history_trimmed is not None:
-            _ret["conversation_history"] = _history_trimmed
         return _ret
