@@ -2,7 +2,7 @@
 core/router/mixins/nodes.py — 実行・特殊ノード群 Mixin
 
 将軍プランニング (_shogun_plan_node, _execute_step_node, _step_decision)、
-大元帥監査 (_daigensui_audit_node)、並列斥候 (_parallel_groq_node)、
+大元帥監査 (_daigensui_audit_node)、並列受付 (_parallel_groq_node)、
 バッチ並列 (_batch_parallel_node)、コード検証 (_sandbox_verify_node) を提供する。
 """
 import asyncio
@@ -30,7 +30,7 @@ class NodesMixin:
         "analysis":   "gunshi",
         "quick_task": "metsuke",
         "rag":        "gaiji",
-        "web_search": "gaiji",
+        "web_search": "uketuke",
         "code":       "sanbo",
         "tools":      "sanbo",
         "japanese":   "yuhitsu",
@@ -356,7 +356,7 @@ class NodesMixin:
                     "execution_time": time.time() - start, "error": str(e)}
 
     async def _parallel_groq_node(self, state: "BushidanState") -> dict:
-        """メッセージを「?」で分割し各サブクエリを斥候(Groq)で並列実行する。"""
+        """メッセージを「?」で分割し各サブクエリを受付(Groq)で並列実行する。"""
         message = state.get("message", "")
         start   = time.time()
         import re as _re
@@ -371,7 +371,7 @@ class NodesMixin:
         role = self._roles.get("uketuke")
         if not role:
             return {"response": "⚠️ 受付ロール未初期化", "handled_by": "parallel_groq",
-                    "agent_role": "斥候", "execution_time": 0.0, "error": "role not loaded",
+                    "agent_role": "受付", "execution_time": 0.0, "error": "role not loaded",
                     "routed_to": "parallel_groq", "mcp_tools_used": [],
                     "sub_queries": sub_queries, "sub_responses": []}
 

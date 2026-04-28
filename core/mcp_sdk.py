@@ -130,7 +130,6 @@ class MCPToolRegistry:
             "gaiji":     ["web_search"],
             "kengyo":    ["playwright", "filesystem"],
             "uketuke":   ["web_search"],
-            "uketuke":   [],
             "yuhitsu":   [],
             "onmitsu":   ["filesystem", "git"],
         }

@@ -1150,7 +1150,7 @@ async def _send_result(ws: WebSocket, result: dict, thread_id: str, t0: float):
 async def _broadcast_message(ws: WebSocket, router, message: str, thread_id: str, t0: float):
     """全役職に並列送信し、完了した順に WebSocket へ送信する"""
     BROADCAST_ROLES = [
-        "daigensui", "shogun", "gunshi", "sanbo", "gaiji",
+        "uketuke", "daigensui", "shogun", "gunshi", "sanbo", "gaiji",
         "metsuke", "kengyo", "yuhitsu", "onmitsu",
     ]
 

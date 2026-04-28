@@ -277,6 +277,8 @@ async def call_claude():
                 ),
                 400,
             )
+        if system is not None and not isinstance(system, str):
+            return jsonify({"error": "'system' must be a string or null"}), 400
 
         result = await claude.call(
             prompt=prompt,

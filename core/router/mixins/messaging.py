@@ -140,7 +140,7 @@ class MessagingMixin:
                     _sem_route, _sem_score = _sr.route(message)
                     if _sem_route and _sem_score >= CONFIDENT_THRESHOLD:
                         _ROUTE_MAP = {
-                            "groq_qa":       "uketuke (受付)",
+                            "groq_qa":       "uketuke",
                             "yuhitsu_jp":    "yuhitsu",
                             "metsuke_proc":  "metsuke",
                             "gunshi_haiku":  "gunshi",

@@ -23,8 +23,9 @@ def _get_tokenizer():
         try:
             import sudachipy
             _tokenizer = sudachipy.Dictionary(dict="full").create()
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug("SudachiPy 初期化スキップ: %s", e)
     return _tokenizer
 
 
@@ -42,7 +43,9 @@ def _analyze_japanese(text: str) -> dict:
                     if len(t.part_of_speech()) > 1 and "固有名詞" in t.part_of_speech()[1]]
         normalized = " ".join(t.dictionary_form() for t in tokens)
         return {"nouns": nouns, "verbs": verbs, "entities": entities, "normalized": normalized}
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).debug("形態素解析スキップ: %s", e)
         return {"nouns": [], "verbs": [], "entities": [], "normalized": text}
 
 
@@ -163,7 +166,7 @@ class UketukeRole(BaseRole):
                                 "🚪 受付: コードレビューループ完了 (%dラウンド)", rounds
                             )
                     except Exception as e:
-                        self.logger.debug("コードレビュースキップ: %s", e)
+                        self.logger.info("コードレビュースキップ: %s", e)
 
             return RoleResult(
                 response=response,

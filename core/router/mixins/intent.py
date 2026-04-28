@@ -149,16 +149,12 @@ class IntentMixin:
         logger.info("🚪 [受付] 分析開始: '%s'...", message[:60])
 
         # ── ③ 長大コンテキスト圧縮 ──────────────────────────────────────
-        _history_trimmed: Optional[list] = None
         _summary_text: Optional[str] = None
         history_now = state.get("conversation_history", [])
         if len(history_now) > 12 and (not state.get("context_summary") or len(history_now) > 24):
             try:
                 from utils.client_registry import ClientRegistry
-                _sum_client = (
-                    ClientRegistry.get().get_client("metsuke")
-                    
-                )
+                _sum_client = ClientRegistry.get().get_client("metsuke")
                 if _sum_client:
                     _base_summary = state.get("context_summary", "")
                     _old = history_now[:-6]
@@ -175,7 +171,6 @@ class IntentMixin:
                         system="会話要約アシスタント。箇条書きで簡潔に。",
                         max_tokens=300,
                     )
-                    _history_trimmed = history_now[-6:]
                     logger.info("📝 [受付] 事前コンテキスト圧縮: %d→%d turns", len(history_now), 6)
             except Exception as _ce:
                 logger.debug("受付コンテキスト圧縮スキップ: %s", _ce)
