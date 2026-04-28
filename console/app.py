@@ -199,13 +199,13 @@ async def startup_init_db_and_switch():
                     ]),
                     ("test-005", "モバイルアプリ設計", [
                         ("user", "モバイルアプリのアーキテクチャを教えてください", None, None),
-                        ("assistant", "推奨アーキテクチャ:\n- フロントエンド: React Native/Flutter\n- バックエンド: REST/GraphQL\n- 認証: OAuth 2.0", "uketuke", "Gemma4 MoE"),
+                        ("assistant", "推奨アーキテクチャ:\n- フロントエンド: React Native/Flutter\n- バックエンド: REST/GraphQL\n- 認証: OAuth 2.0", "uketuke", "Llama 3.3 70B (Groq)"),
                         ("user", "パフォーマンス最適化は？", None, None),
-                        ("assistant", "最適化方法:\n- バンドル削減\n- 画像最適化\n- 遅延ロード\n- APIバッチ化", "uketuke", "Gemma4 MoE"),
+                        ("assistant", "最適化方法:\n- バンドル削減\n- 画像最適化\n- 遅延ロード\n- APIバッチ化", "uketuke", "Llama 3.3 70B (Groq)"),
                     ]),
                     ("test-006", "クラウド移行", [
                         ("user", "AWS移行戦略を教えてください", None, None),
-                        ("assistant", "AWS移行フェーズ:\n1. 現状分析\n2. マイグレーション計画\n3. パイロット実行\n4. 本番移行\n\nサービス: EC2、RDS、CloudFront", "seppou", "Llama 3.3"),
+                        ("assistant", "AWS移行フェーズ:\n1. 現状分析\n2. マイグレーション計画\n3. パイロット実行\n4. 本番移行\n\nサービス: EC2、RDS、CloudFront", "uketuke", "Llama 3.3 70B (Groq)"),
                     ]),
                 ]
 
@@ -480,18 +480,18 @@ async def chat(req: ChatRequest, token: str = ""):
 async def models():
     """利用可能モデル一覧"""
     model_list = [
-        {"key": "auto",      "name": "🔀 自動ルーティング",                        "emoji": "🔀"},
-        {"key": "all",       "name": "🏯 全員会議（一斉送信）",                     "emoji": "🏯"},
-        {"key": "daigensui", "name": "👑 大元帥（最終判断・監査）— Claude Opus 4.6",   "emoji": "👑"},
-        {"key": "shogun",    "name": "🎌 将軍（計画立案・指揮）— Claude Sonnet 4.6",  "emoji": "🎌"},
+        {"key": "auto",      "name": "🔀 自動ルーティング",                             "emoji": "🔀"},
+        {"key": "all",       "name": "🏯 全員会議（一斉送信）",                          "emoji": "🏯"},
+        {"key": "daigensui", "name": "👑 大元帥（最終判断・監査）— Claude Opus 4.6",      "emoji": "👑"},
+        {"key": "shogun",    "name": "🎌 将軍（計画立案・指揮）— Claude Sonnet 4.6",     "emoji": "🎌"},
         {"key": "gunshi",    "name": "🧠 軍師（汎用処理・推論）— Command A",              "emoji": "🧠"},
-        {"key": "metsuke",   "name": "🔎 目付（要約・整形・軽量推論）— Mistral Small",  "emoji": "🔎"},
-        {"key": "sanbo",     "name": "📋 参謀（ツール実行・コーディング）— Gemini Flash","emoji": "📋"},
-        {"key": "gaiji",     "name": "🌏 外事（外部情報・RAG）— Command R",             "emoji": "🌏"},
-        
-        {"key": "kengyo",    "name": "👁️ 検校（画像解析）— Gemini 3.1 Flash Image",   "emoji": "👁️"},
-        {"key": "yuhitsu",   "name": "✍️ 右筆（日本語処理）— Gemma4 MoE Local",      "emoji": "✍️"},
-        {"key": "onmitsu",   "name": "🥷 隠密（機密データ処理）— Nemotron Local",      "emoji": "🥷"},
+        {"key": "metsuke",   "name": "🔎 目付（要約・整形・軽量推論）— Mistral Small",   "emoji": "🔎"},
+        {"key": "sanbo",     "name": "📋 参謀（ツール実行・コーディング）— Gemini Flash", "emoji": "📋"},
+        {"key": "gaiji",     "name": "🌏 外事（外部情報・RAG）— Command R",              "emoji": "🌏"},
+        {"key": "uketuke",   "name": "🚪 受付（Q&A・雑談・コード）— Llama 3.3 70B (Groq)", "emoji": "🚪"},
+        {"key": "kengyo",    "name": "👁️ 検校（画像解析）— Gemini 3.1 Flash Image",    "emoji": "👁️"},
+        {"key": "yuhitsu",   "name": "✍️ 右筆（日本語処理）— Gemma4 MoE Local",         "emoji": "✍️"},
+        {"key": "onmitsu",   "name": "🥷 隠密（機密データ処理）— Nemotron Local",         "emoji": "🥷"},
     ]
     return {"models": model_list}
 
@@ -1794,16 +1794,13 @@ async def maintenance_package_upgrade(req: PackageUpgradeRequest, token: str = "
 
 @app.post("/api/maintenance/packages/suggest-fix")
 async def maintenance_suggest_fix(req: ConflictFixRequest, token: str = ""):
-    """依存競合を LLM (Gemini Flash-Lite) に分析させて解決案を返す"""
+    """依存競合を LLM (Mistral Small) に分析させて解決案を返す"""
     _check_auth(token)
     if not req.conflicts.strip():
         return JSONResponse({"packages": [], "explanation": "競合なし"})
     try:
         from utils.client_registry import ClientRegistry
-        client = (
-            ClientRegistry.get().get_client("uketuke")
-            
-        )
+        client = ClientRegistry.get().get_client("metsuke")
         if not client:
             return JSONResponse({"error": "LLMクライアント未初期化"}, status_code=503)
 
