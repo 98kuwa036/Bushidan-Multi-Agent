@@ -12,8 +12,10 @@ Anthropic Batch API の特性:
 - タイムアウト: 24 時間
 """
 import asyncio
+import math
 import os
 from typing import Any
+
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -51,14 +53,25 @@ class AnthropicBatchProcessor:
         self._poll_interval = poll_interval
         self._max_wait = max_wait
 
+    @staticmethod
+    def _parse_env_float(var_name: str, default: str) -> float:
+        try:
+            val = float(os.environ.get(var_name, default))
+        except ValueError as e:
+            raise RuntimeError(f"{var_name} は数値で指定してください") from e
+        if not math.isfinite(val) or val <= 0:
+            raise RuntimeError(f"{var_name} は 0 より大きい値を指定してください")
+        return val
+
     @classmethod
     def from_env(cls) -> "AnthropicBatchProcessor":
         """環境変数 ANTHROPIC_API_KEY からインスタンスを生成する。"""
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY が未設定です")
-        poll_interval = float(os.environ.get("ANTHROPIC_BATCH_POLL_INTERVAL", "5.0"))
-        return cls(api_key=api_key, poll_interval=poll_interval)
+        poll_interval = cls._parse_env_float("ANTHROPIC_BATCH_POLL_INTERVAL", "5.0")
+        max_wait = cls._parse_env_float("ANTHROPIC_BATCH_MAX_WAIT", "3600.0")
+        return cls(api_key=api_key, poll_interval=poll_interval, max_wait=max_wait)
 
     # ── public API ───────────────────────────────────────────────────────────
 

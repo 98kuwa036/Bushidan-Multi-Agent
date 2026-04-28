@@ -132,7 +132,7 @@ async def _page_to_entry(client, page: dict, entry_type: str) -> Optional[dict]:
                 summary = ""
 
         if not summary:
-            return None
+            summary = "(概要なし)"
 
         # タグ (properties から)
         tags = _extract_tags(page)

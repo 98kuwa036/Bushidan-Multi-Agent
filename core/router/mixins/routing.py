@@ -4,14 +4,11 @@ core/router/mixins/routing.py — notion_index ノード + ルーティング判
 import asyncio
 import time
 from typing import TYPE_CHECKING
+from core.state import BushidanState
 from utils.logger import get_logger
 from core.router.constants import FALLBACK_MAP, NODE_TIMEOUTS
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from core.state import BushidanState
-
 
 class RoutingMixin:
     """_notion_index_node と _route_decision / _exec_node を提供する"""
@@ -47,7 +44,7 @@ class RoutingMixin:
             "shogun_plan", "daigensui_audit",
         }
         _role_to_node = {
-            "seppou":    "groq_qa",      "gunshi":    "gunshi_haiku",
+            "gunshi":    "gunshi_haiku",
             "metsuke":   "metsuke_proc", "gaiji":     "gaiji_rag",
             "sanbo":     "sanbo_mcp",    "yuhitsu":   "yuhitsu_jp",
             "uketuke":   "uketuke_default", "onmitsu": "onmitsu_local",

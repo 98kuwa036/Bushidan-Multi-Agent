@@ -2,22 +2,21 @@
 core/router/mixins/nodes.py — 実行・特殊ノード群 Mixin
 
 将軍プランニング (_shogun_plan_node, _execute_step_node, _step_decision)、
-大元帥監査 (_daigensui_audit_node)、並列斥候 (_parallel_groq_node)、
+大元帥監査 (_daigensui_audit_node)、並列受付 (_parallel_groq_node)、
 バッチ並列 (_batch_parallel_node)、コード検証 (_sandbox_verify_node) を提供する。
 """
 import asyncio
 import time
 from typing import TYPE_CHECKING
-from utils.logger import get_logger
+
+from core.router.batch.anthropic_batch import (ANTHROPIC_ROLES,
+                                               AnthropicBatchProcessor)
+from core.router.batch.mode import BATCH_CONFIG, ProcessingMode
 from core.router.constants import NODE_TIMEOUTS
-from core.router.batch.mode import ProcessingMode, BATCH_CONFIG
-from core.router.batch.anthropic_batch import ANTHROPIC_ROLES, AnthropicBatchProcessor
+from core.state import BushidanState
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from core.state import BushidanState
-
 
 class NodesMixin:
 
@@ -30,7 +29,7 @@ class NodesMixin:
         "analysis":   "gunshi",
         "quick_task": "metsuke",
         "rag":        "gaiji",
-        "web_search": "gaiji",
+        "web_search": "uketuke",
         "code":       "sanbo",
         "tools":      "sanbo",
         "japanese":   "yuhitsu",
@@ -63,10 +62,10 @@ class NodesMixin:
                 "以下のJSON **のみ** を返してください。余分なテキスト・説明は不要です。\n\n"
                 '{"goal":"ユーザー目標の1文要約","steps":['
                 '{"id":1,"task":"具体的なタスク説明","capability":"analysis|rag|web_search|code|tools|japanese|image|quick_task",'
-                '"assigned_role":"gunshi|metsuke|gaiji|seppou|sanbo|yuhitsu|kengyo","can_parallel":false,"status":"pending"}],'
+                '"assigned_role":"gunshi|metsuke|gaiji|uketuke|sanbo|yuhitsu|kengyo","can_parallel":false,"status":"pending"}],'
                 '"needs_audit":false}\n\n'
                 "capability → assigned_role: analysis→gunshi, quick_task→metsuke, rag→gaiji, "
-                "web_search→seppou, code→sanbo, tools→sanbo, japanese→yuhitsu, image→kengyo\n"
+                "web_search→uketuke, code→sanbo, tools→sanbo, japanese→yuhitsu, image→kengyo\n"
                 "needs_audit: 最高難度・重大な意思決定・本番デプロイ関連の場合 true\n"
                 "can_parallel: 前ステップの結果に依存しない独立したタスクの場合 true\n"
             )
@@ -81,8 +80,8 @@ class NodesMixin:
                 max_tokens=800,
             )
 
-            import re as _re
             import json as _json
+            import re as _re
             m = _re.search(r'\{.*\}', raw, _re.DOTALL)
             if m:
                 roadmap = _json.loads(m.group())
@@ -356,22 +355,22 @@ class NodesMixin:
                     "execution_time": time.time() - start, "error": str(e)}
 
     async def _parallel_groq_node(self, state: "BushidanState") -> dict:
-        """メッセージを「?」で分割し各サブクエリを斥候(Groq)で並列実行する。"""
+        """メッセージを「?」で分割し各サブクエリを受付(Groq)で並列実行する。"""
         message = state.get("message", "")
         start   = time.time()
         import re as _re
         sub_queries = [p.strip() for p in _re.split(r"[?？]\s*", message) if p.strip()]
 
         if len(sub_queries) <= 1:
-            exec_fn = self._exec_node("seppou", "groq_qa")
+            exec_fn = self._exec_node("uketuke", "groq_qa")
             result  = await exec_fn(state)
             result["routed_to"] = "parallel_groq"
             return result
 
-        role = self._roles.get("seppou")
+        role = self._roles.get("uketuke")
         if not role:
-            return {"response": "⚠️ 斥候ロール未初期化", "handled_by": "parallel_groq",
-                    "agent_role": "斥候", "execution_time": 0.0, "error": "role not loaded",
+            return {"response": "⚠️ 受付ロール未初期化", "handled_by": "parallel_groq",
+                    "agent_role": "受付", "execution_time": 0.0, "error": "role not loaded",
                     "routed_to": "parallel_groq", "mcp_tools_used": [],
                     "sub_queries": sub_queries, "sub_responses": []}
 
@@ -402,7 +401,7 @@ class NodesMixin:
         elapsed = time.time() - start
         logger.info("✅ parallel_groq: %.1fs (%d サブクエリ)", elapsed, len(sub_queries))
         return {
-            "response": merged, "handled_by": "parallel_groq", "agent_role": "斥候 (並列)",
+            "response": merged, "handled_by": "parallel_groq", "agent_role": "受付 (並列)",
             "execution_time": elapsed, "error": None, "mcp_tools_used": [],
             "requires_followup": False, "routed_to": "parallel_groq",
             "sub_queries": sub_queries, "sub_responses": sub_responses,
@@ -425,6 +424,7 @@ class NodesMixin:
         _execute_step_node から呼び出す内部ヘルパー。
         """
         import os
+
         from roles.base import RoleResult
 
         logger.info("📦 [execute_step] Anthropic Batch API 使用: %d steps", len(batch_steps))
@@ -756,7 +756,7 @@ class NodesMixin:
         if "```" not in response:
             return {"code_verified": False, "code_verify_result": "skipped"}
         try:
-            from core.code_verifier import verify_response, append_verify_note
+            from core.code_verifier import append_verify_note, verify_response
             verify_result   = await asyncio.wait_for(verify_response(response, max_blocks=2), timeout=25)
             updated_response = append_verify_note(response, verify_result)
             return {"response": updated_response, "code_verified": True,

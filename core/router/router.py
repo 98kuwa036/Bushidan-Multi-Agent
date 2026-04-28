@@ -8,19 +8,14 @@ core/router/router.py — LangGraph Router v16 (Mixin 統合版)
 import asyncio
 from typing import Any, Optional
 
-from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, StateGraph
 
+from core.router.batch.mode import ProcessingMode
+from core.router.constants import fire, load_roles, refresh_notion_index_bg
+from core.router.mixins import (CheckpointerMixin, IntentMixin, MessagingMixin,
+                                NodesMixin, PostprocessMixin, RoutingMixin)
 from core.state import BushidanState
-from core.router.constants import load_roles, refresh_notion_index_bg, fire
-from core.router.mixins import (
-    CheckpointerMixin,
-    IntentMixin,
-    RoutingMixin,
-    NodesMixin,
-    PostprocessMixin,
-    MessagingMixin,
-)
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -97,7 +92,7 @@ class LangGraphRouter(
         graph.add_node("analyze_intent",  self._analyze_intent)
         graph.add_node("notion_index",    self._notion_index_node)
 
-        graph.add_node("groq_qa",         self._exec_node("seppou",    "groq_qa"))
+        graph.add_node("groq_qa",         self._exec_node("uketuke",   "groq_qa"))
         graph.add_node("parallel_groq",   self._parallel_groq_node)
         graph.add_node("gunshi_haiku",    self._exec_node("gunshi",    "gunshi_haiku"))
         graph.add_node("metsuke_proc",    self._exec_node("metsuke",   "metsuke_proc"))

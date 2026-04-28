@@ -44,6 +44,7 @@ CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
 def _verify_api_key() -> bool:
     """X-API-Key ヘッダーを検証。CLAUDE_API_KEY 未設定時は拒否。"""
     import secrets as _secrets
+
     if not CLAUDE_API_KEY:
         logger.error(
             "🚨 CLAUDE_API_KEY unset — rejecting request. Set CLAUDE_API_KEY in .env to enable the API.",
@@ -95,7 +96,9 @@ class ClaudeClient:
                 "error": None,
             }
 
-        logger.warning(f"⚠️  Claude CLI 失敗: {cli_result['error']} → API フォールバック")
+        logger.warning(
+            f"⚠️  Claude CLI 失敗: {cli_result['error']} → API フォールバック"
+        )
 
         # API でフォールバック
         api_result = await self._call_api(prompt, system, max_tokens, model=model)
@@ -108,7 +111,9 @@ class ClaudeClient:
                 "error": None,
             }
 
-        logger.error(f"❌ 両方失敗: CLI={cli_result['error']}, API={api_result['error']}")
+        logger.error(
+            f"❌ 両方失敗: CLI={cli_result['error']}, API={api_result['error']}"
+        )
         return {
             "content": "",
             "model": None,
@@ -127,12 +132,19 @@ class ClaudeClient:
             # バインドマウントされたディレクトリを指定
             mounted_dir = "/mnt/Bushidan-Multi-Agent"
             if not os.path.exists(mounted_dir):
-                return {"success": False, "error": f"Mounted dir not found: {mounted_dir}"}
+                return {
+                    "success": False,
+                    "error": f"Mounted dir not found: {mounted_dir}",
+                }
 
             # CLI コマンド構築 (-p の直後にプロンプト、--add-dir は後置)
+            if system is not None and not isinstance(system, str):
+                raise ValueError(
+                    f"system must be str or None, got {type(system).__name__}"
+                )
             cmd = [self.cli_path, "-p", prompt, "--add-dir", mounted_dir]
             if system:
-                cmd.extend(["--system-prompt", system])
+                cmd.extend(["--append-system-prompt", system])
 
             logger.info(f"🔄 Claude CLI 実行 (バインドマウント {mounted_dir})")
 
@@ -154,10 +166,17 @@ class ClaudeClient:
                     re.IGNORECASE,
                 )
                 lines = [
-                    line for line in result.stdout.splitlines()
+                    line
+                    for line in result.stdout.splitlines()
                     if not _WARN_RE.match(line.strip())
                 ]
                 content = "\n".join(lines).strip()
+                if not content:
+                    logger.warning("CLI returned empty content after filtering warnings.")
+                    return {
+                        "success": False,
+                        "error": "Empty response from CLI after filtering",
+                    }
                 return {
                     "success": True,
                     "content": content,
@@ -178,33 +197,34 @@ class ClaudeClient:
             return {"success": False, "error": str(e)[:100]}
 
     async def _call_api(
-        self, prompt: str, system: Optional[str], max_tokens: int,
+        self,
+        prompt: str,
+        system: Optional[str],
+        max_tokens: int,
         model: Optional[str] = None,
     ) -> dict:
-        """AsyncAnthropic API でフォールバック (シングルトン、ノンブロッキング)"""
+        """AsyncAnthropic API でフォールバック (リクエストごとに新規クライアント生成)"""
         try:
             if not self.api_key:
                 return {"success": False, "error": "ANTHROPIC_API_KEY not set"}
 
             import anthropic
 
-            # シングルトン AsyncAnthropic クライアント (リクエストごとに生成しない)
-            if not hasattr(self, "_async_client") or self._async_client is None:
-                self._async_client = anthropic.AsyncAnthropic(api_key=self.api_key)
-
-            response = await self._async_client.messages.create(
-                model=model or "claude-opus-4-7",
-                max_tokens=max_tokens,
-                system=system or "",
-                messages=[{"role": "user", "content": prompt}],
-                timeout=30.0,
-            )
-
-            return {
-                "success": True,
-                "content": response.content[0].text,
-                "model": response.model,
-            }
+            # Flask threaded=True + async view = リクエストごとに新しい event loop。
+            # httpx.AsyncClient は生成 loop にバインドされるためシングルトン再利用は unsafe。
+            async with anthropic.AsyncAnthropic(api_key=self.api_key) as client:
+                response = await client.messages.create(
+                    model=model or "claude-opus-4-6",
+                    max_tokens=max_tokens,
+                    system=system or "",
+                    messages=[{"role": "user", "content": prompt}],
+                    timeout=60.0,
+                )
+                return {
+                    "success": True,
+                    "content": response.content[0].text,
+                    "model": response.model,
+                }
 
         except Exception as e:
             return {"success": False, "error": str(e)[:100]}
@@ -214,6 +234,7 @@ claude = ClaudeClient()
 
 
 # ── API エンドポイント ────────────────────────────────────────────────
+
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -256,7 +277,17 @@ async def call_claude():
         model = data.get("model")
         max_tokens = data.get("max_tokens", 2000)
         if not isinstance(max_tokens, int) or not (1 <= max_tokens <= 8192):
-            return jsonify({"error": "'max_tokens' must be an integer between 1 and 8192"}), 400
+            return (
+                jsonify(
+                    {"error": "'max_tokens' must be an integer between 1 and 8192"}
+                ),
+                400,
+            )
+        if system is not None:
+            if not isinstance(system, str):
+                return jsonify({"error": "'system' must be a string or null"}), 400
+            if len(system) == 0 or len(system) > 8192:
+                return jsonify({"error": "'system' must be between 1 and 8192 characters"}), 400
 
         result = await claude.call(
             prompt=prompt,
@@ -271,8 +302,11 @@ async def call_claude():
         return jsonify(result), 200
 
     except Exception as e:
-        logger.exception("API エラー")
-        return jsonify({"error": str(e), "content": "", "model": None, "source": None}), 500
+        logger.exception("API エラー: %s", e)
+        return (
+            jsonify({"error": "Internal server error", "content": "", "model": None, "source": None}),
+            500,
+        )
 
 
 @app.route("/api/status", methods=["GET"])
@@ -294,11 +328,10 @@ def get_status():
 
 # ── メイン ────────────────────────────────────────────────────────────
 
+
 def main():
     """サーバー起動"""
-    logger.info(
-        "🚀 Claude API Server 起動"
-    )
+    logger.info("🚀 Claude API Server 起動")
     logger.info(f"   ポート: {API_PORT}")
     logger.info(f"   Claude CLI: {claude.cli_path}")
     logger.info(f"   Anthropic API: {'✅' if claude.api_key else '❌'}")

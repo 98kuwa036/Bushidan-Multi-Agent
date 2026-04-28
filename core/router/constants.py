@@ -88,7 +88,6 @@ def load_roles() -> dict:
     """roles/ パッケージから全ロールをロード（起動時1回のみ）"""
     from roles.uketuke import UketukeRole
     from roles.gaiji import GaijiRole
-    from roles.seppou import SeppouRole
     from roles.gunshi import GunshiRole
     from roles.metsuke import MetsukeRole
     from roles.sanbo import SanboRole
@@ -100,7 +99,6 @@ def load_roles() -> dict:
     return {
         "uketuke":   UketukeRole(),
         "gaiji":     GaijiRole(),
-        "seppou":    SeppouRole(),
         "gunshi":    GunshiRole(),
         "metsuke":   MetsukeRole(),
         "sanbo":     SanboRole(),

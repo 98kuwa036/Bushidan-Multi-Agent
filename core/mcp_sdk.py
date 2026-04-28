@@ -129,8 +129,7 @@ class MCPToolRegistry:
             "sanbo":     ["filesystem", "git", "github", "web_search"],
             "gaiji":     ["web_search"],
             "kengyo":    ["playwright", "filesystem"],
-            "seppou":    ["web_search"],
-            "uketuke":   [],
+            "uketuke":   ["web_search"],
             "yuhitsu":   [],
             "onmitsu":   ["filesystem", "git"],
         }

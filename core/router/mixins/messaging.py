@@ -8,15 +8,12 @@ import asyncio
 import hashlib
 import time
 from typing import TYPE_CHECKING, Optional
+from core.state import BushidanState
 from utils.logger import get_logger
 from core.router.batch.mode import ProcessingMode, BATCH_CONFIG
 from core.router.constants import skill_observe, fire
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from core.state import BushidanState
-
 
 def _make_initial_state(
     message: str,
@@ -140,7 +137,7 @@ class MessagingMixin:
                     _sem_route, _sem_score = _sr.route(message)
                     if _sem_route and _sem_score >= CONFIDENT_THRESHOLD:
                         _ROUTE_MAP = {
-                            "groq_qa":       "seppou",
+                            "groq_qa":       "uketuke",
                             "yuhitsu_jp":    "yuhitsu",
                             "metsuke_proc":  "metsuke",
                             "gunshi_haiku":  "gunshi",

@@ -8,15 +8,13 @@ batch_completion_notify / batch_bulk_notion_store
 import asyncio
 import os
 from typing import TYPE_CHECKING, Literal
-from utils.logger import get_logger
-from core.router.batch.mode import ProcessingMode, BATCH_CONFIG
+
+from core.router.batch.mode import BATCH_CONFIG, ProcessingMode
 from core.router.constants import fire
+from core.state import BushidanState
+from utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from core.state import BushidanState
-
 
 class PostprocessMixin:
 
@@ -227,22 +225,25 @@ class PostprocessMixin:
             states: BushidanState dict のリスト
 
         Returns:
-            {"saved": int, "failed": int, "errors": list[str]}
+            {"saved": int, "failed": int, "skipped": int, "errors": list[str]}
         """
+        skipped = sum(1 for s in states if not s.get("should_save", True))
+        target_states = [s for s in states if s.get("should_save", True)]
         saved  = 0
         failed = 0
         errors: list[str] = []
+
+        if not target_states:
+            return {"saved": 0, "failed": 0, "skipped": skipped, "errors": []}
 
         try:
             from integrations.notion.storage import save_task_result_bg
         except ImportError as e:
             logger.warning("batch_bulk_notion_store: notion モジュール未ロード: %s", e)
-            return {"saved": 0, "failed": len(states), "errors": [str(e)]}
+            return {"saved": 0, "failed": len(target_states), "skipped": skipped, "errors": [str(e)]}
 
-        async def _save_one(state: dict) -> bool:
+        async def _save_one(state: dict):
             try:
-                if not state.get("should_save", True):
-                    return True
                 await save_task_result_bg(state)
                 return True
             except Exception as e_inner:
@@ -254,11 +255,11 @@ class PostprocessMixin:
         # 並列保存（最大 5 並列）
         semaphore = asyncio.Semaphore(5)
 
-        async def _guarded(s: dict) -> bool:
+        async def _guarded(s: dict):
             async with semaphore:
                 return await _save_one(s)
 
-        results = await asyncio.gather(*[_guarded(s) for s in states], return_exceptions=True)
+        results = await asyncio.gather(*[_guarded(s) for s in target_states], return_exceptions=True)
         for r in results:
             if r is True:
                 saved += 1
@@ -267,5 +268,5 @@ class PostprocessMixin:
                 if isinstance(r, BaseException):
                     errors.append(str(r))
 
-        logger.info("📋 batch_bulk_notion_store: saved=%d failed=%d", saved, failed)
-        return {"saved": saved, "failed": failed, "errors": errors}
+        logger.info("📋 batch_bulk_notion_store: saved=%d failed=%d skipped=%d", saved, failed, skipped)
+        return {"saved": saved, "failed": failed, "skipped": skipped, "errors": errors}

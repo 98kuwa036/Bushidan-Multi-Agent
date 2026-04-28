@@ -193,22 +193,33 @@ class _NemotronAdapter(BaseLLMClient):
         return await LocalModelManager.get().health_check()
 
 
+# claude_fallback と crosscheck_heavy は同一モデル (gemini-3.1-pro-preview) を使うため
+# インスタンスを共有してコネクションを節約する
+_gemini_pro_shared: Optional["_Gemini3Adapter"] = None
+
+
+def _gemini_pro_factory() -> "_Gemini3Adapter":
+    global _gemini_pro_shared
+    if _gemini_pro_shared is None:
+        _gemini_pro_shared = _Gemini3Adapter("gemini-3.1-pro-preview")
+    return _gemini_pro_shared
+
+
 # ─── ロールキー → アダプタ ファクトリ ─────────────────────────────────────────
 _FACTORIES = {
-    "uketuke":        lambda: _GemmaLocalAdapter(),                                   # 内部ルーター専用
-    "gaiji":          lambda: _CohereAdapter("command-r-08-2024"),                    # RAG特化: Command R
-    "metsuke":        lambda: _MistralAdapter("mistral-small-latest"),               # 低中難度: Mistral Small
-    "seppou":         lambda: _GroqAdapter(),                                          # 高速Q&A: Llama 3.3
-    "gunshi":         lambda: _CohereAdapter("command-a-03-2025"),                    # 汎用処理: Command A
-    "sanbo":          lambda: _Gemini3Adapter("gemini-3-flash-preview"),              # ツール実行: Gemini Flash
-    "shogun":         lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet
-    "daigensui":      lambda: _ClaudeAdapter("claude-opus-4-6"),                      # 最終判断: Opus
-    "kengyo":         lambda: _Gemini3Adapter("gemini-3.1-flash-image-preview"),      # 画像解析
-    "yuhitsu":        lambda: _GemmaLocalAdapter(),                                   # 日本語処理: Gemma4 (統合)
-    "onmitsu":        lambda: _NemotronAdapter(),                                     # 機密: Nemotron Local
-    "claude_fallback":lambda: _Gemini3Adapter("gemini-3.1-pro-preview"),              # Claude障害時: Gemini Pro
-    "crosscheck_light":lambda: _CerebrasAdapter("llama3.1-8b"),                       # 軽量クロスチェック: Cerebras Llama3.1-8B
-    "crosscheck_heavy":lambda: _Gemini3Adapter("gemini-3.1-pro-preview"),             # 重量クロスチェック: Gemini 3.1 Pro
+    "uketuke":         lambda: _GroqAdapter(),                                         # 受付+斥候統合: Groq Llama 3.3
+    "gaiji":           lambda: _CohereAdapter("command-r-08-2024"),                    # RAG特化: Command R
+    "metsuke":         lambda: _MistralAdapter("mistral-small-latest"),                # 低中難度: Mistral Small
+    "gunshi":          lambda: _CohereAdapter("command-a-03-2025"),                    # 汎用処理: Command A
+    "sanbo":           lambda: _Gemini3Adapter("gemini-3-flash-preview"),              # ツール実行: Gemini Flash
+    "shogun":          lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet
+    "daigensui":       lambda: _ClaudeAdapter("claude-opus-4-6"),                      # 最終判断: Opus
+    "kengyo":          lambda: _Gemini3Adapter("gemini-3.1-flash-image-preview"),      # 画像解析
+    "yuhitsu":         lambda: _GemmaLocalAdapter(),                                   # 日本語処理: Gemma4 (統合)
+    "onmitsu":         lambda: _NemotronAdapter(),                                     # 機密: Nemotron Local
+    "claude_fallback": _gemini_pro_factory,                                            # Claude障害時: Gemini 3.1 Pro (共有)
+    "crosscheck_light":lambda: _CerebrasAdapter("llama3.1-8b"),                        # 軽量クロスチェック: Cerebras Llama3.1-8B
+    "crosscheck_heavy":_gemini_pro_factory,                                            # 重量クロスチェック: Gemini 3.1 Pro (共有)
 }
 
 

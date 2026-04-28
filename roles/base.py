@@ -190,7 +190,7 @@ class BaseRole(ABC):
         try:
             from core.mcp_sdk import MCPToolRegistry
             registry = MCPToolRegistry.get()
-            return await registry.call_tool(name, args)
+            return await registry.call_tool(name, args, role_key=self.role_key)
         except Exception as e:
             self.logger.warning("MCP tool %s 呼び出し失敗: %s", name, e)
             return None
