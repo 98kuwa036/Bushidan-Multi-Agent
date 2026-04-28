@@ -65,14 +65,13 @@ def scalar(sql: str, params=None, default=0):
 
 # ── ロール定義 (v18 11役職) ──────────────────────────────────────────
 ROLES = [
-    'uketuke', 'gaiji', 'seppou', 'gunshi', 'sanbo',
+    'uketuke', 'gaiji', 'gunshi', 'sanbo',
     'shogun', 'daigensui', 'metsuke', 'kengyo', 'yuhitsu', 'onmitsu',
 ]
 
 ROLE_JA = {
     'uketuke':   '受付',
     'gaiji':     '外事',
-    'seppou':    '斥候',
     'gunshi':    '軍師',
     'sanbo':     '参謀',
     'shogun':    '将軍',
@@ -84,9 +83,8 @@ ROLE_JA = {
 }
 
 ROLE_MODEL = {
-    'uketuke':   'Gemini Flash-Lite',
+    'uketuke':   'Llama 3.3 70B (Groq)',
     'gaiji':     'Cohere Command R',
-    'seppou':    'Llama 3.3 70B (Groq)',
     'gunshi':    'Cohere Command A',
     'sanbo':     'Gemini Flash Preview',
     'shogun':    'Claude Sonnet 4.6',

@@ -97,7 +97,7 @@ class LangGraphRouter(
         graph.add_node("analyze_intent",  self._analyze_intent)
         graph.add_node("notion_index",    self._notion_index_node)
 
-        graph.add_node("groq_qa",         self._exec_node("seppou",    "groq_qa"))
+        graph.add_node("groq_qa",         self._exec_node("uketuke",   "groq_qa"))
         graph.add_node("parallel_groq",   self._parallel_groq_node)
         graph.add_node("gunshi_haiku",    self._exec_node("gunshi",    "gunshi_haiku"))
         graph.add_node("metsuke_proc",    self._exec_node("metsuke",   "metsuke_proc"))

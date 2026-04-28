@@ -113,7 +113,7 @@ class IntentMixin:
                     sem_route, sem_score = sr.route(message)
                     if sem_route and sem_score >= CONFIDENT_THRESHOLD:
                         _ROUTE_TO_ROLE = {
-                            "groq_qa":       "seppou",
+                            "groq_qa":       "uketuke",
                             "yuhitsu_jp":    "yuhitsu",
                             "metsuke_proc":  "metsuke",
                             "gunshi_haiku":  "gunshi",
@@ -126,7 +126,7 @@ class IntentMixin:
                         sem_role = _ROUTE_TO_ROLE.get(sem_route)
                         if sem_role:
                             is_jp  = sem_role == "yuhitsu"
-                            is_qa  = sem_role == "seppou"
+                            is_qa  = sem_role == "uketuke"
                             is_conf = sem_role == "onmitsu"
                             logger.info("🧭 SemanticRouter ショートカット: %s (%.3f) → %s",
                                         sem_route, sem_score, sem_role)
@@ -157,7 +157,7 @@ class IntentMixin:
                 from utils.client_registry import ClientRegistry
                 _sum_client = (
                     ClientRegistry.get().get_client("metsuke")
-                    or ClientRegistry.get().get_client("seppou")
+                    
                 )
                 if _sum_client:
                     _base_summary = state.get("context_summary", "")

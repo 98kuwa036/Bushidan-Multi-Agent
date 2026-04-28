@@ -47,7 +47,7 @@ class RoutingMixin:
             "shogun_plan", "daigensui_audit",
         }
         _role_to_node = {
-            "seppou":    "groq_qa",      "gunshi":    "gunshi_haiku",
+            "gunshi":    "gunshi_haiku",
             "metsuke":   "metsuke_proc", "gaiji":     "gaiji_rag",
             "sanbo":     "sanbo_mcp",    "yuhitsu":   "yuhitsu_jp",
             "uketuke":   "uketuke_default", "onmitsu": "onmitsu_local",

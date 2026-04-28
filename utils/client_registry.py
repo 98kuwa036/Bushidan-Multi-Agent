@@ -195,10 +195,9 @@ class _NemotronAdapter(BaseLLMClient):
 
 # ─── ロールキー → アダプタ ファクトリ ─────────────────────────────────────────
 _FACTORIES = {
-    "uketuke":        lambda: _GemmaLocalAdapter(),                                   # 内部ルーター専用
+    "uketuke":        lambda: _GroqAdapter(),                                          # 受付+斥候統合: Groq Llama 3.3
     "gaiji":          lambda: _CohereAdapter("command-r-08-2024"),                    # RAG特化: Command R
     "metsuke":        lambda: _MistralAdapter("mistral-small-latest"),               # 低中難度: Mistral Small
-    "seppou":         lambda: _GroqAdapter(),                                          # 高速Q&A: Llama 3.3
     "gunshi":         lambda: _CohereAdapter("command-a-03-2025"),                    # 汎用処理: Command A
     "sanbo":          lambda: _Gemini3Adapter("gemini-3-flash-preview"),              # ツール実行: Gemini Flash
     "shogun":         lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet

@@ -488,7 +488,7 @@ async def models():
         {"key": "metsuke",   "name": "🔎 目付（要約・整形・軽量推論）— Mistral Small",  "emoji": "🔎"},
         {"key": "sanbo",     "name": "📋 参謀（ツール実行・コーディング）— Gemini Flash","emoji": "📋"},
         {"key": "gaiji",     "name": "🌏 外事（外部情報・RAG）— Command R",             "emoji": "🌏"},
-        {"key": "seppou",    "name": "⚡ 斥候（高速Q&A）— Llama 3.3 Groq",           "emoji": "⚡"},
+        
         {"key": "kengyo",    "name": "👁️ 検校（画像解析）— Gemini 3.1 Flash Image",   "emoji": "👁️"},
         {"key": "yuhitsu",   "name": "✍️ 右筆（日本語処理）— Gemma4 MoE Local",      "emoji": "✍️"},
         {"key": "onmitsu",   "name": "🥷 隠密（機密データ処理）— Nemotron Local",      "emoji": "🥷"},
@@ -1151,7 +1151,7 @@ async def _broadcast_message(ws: WebSocket, router, message: str, thread_id: str
     """全役職に並列送信し、完了した順に WebSocket へ送信する"""
     BROADCAST_ROLES = [
         "daigensui", "shogun", "gunshi", "sanbo", "gaiji",
-        "metsuke", "seppou", "kengyo", "yuhitsu", "onmitsu",
+        "metsuke", "kengyo", "yuhitsu", "onmitsu",
     ]
 
     async def run_one(role: str):
@@ -1802,7 +1802,7 @@ async def maintenance_suggest_fix(req: ConflictFixRequest, token: str = ""):
         from utils.client_registry import ClientRegistry
         client = (
             ClientRegistry.get().get_client("uketuke")
-            or ClientRegistry.get().get_client("seppou")
+            
         )
         if not client:
             return JSONResponse({"error": "LLMクライアント未初期化"}, status_code=503)
