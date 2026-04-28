@@ -12,6 +12,7 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from core.state import BushidanState
+from core.router.batch.mode import ProcessingMode
 from core.router.constants import load_roles, refresh_notion_index_bg, fire
 from core.router.mixins import (
     CheckpointerMixin,

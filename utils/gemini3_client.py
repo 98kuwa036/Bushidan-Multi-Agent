@@ -447,18 +447,32 @@ class Gemini3Client:
     async def health_check(self) -> bool:
         """
         Check if Gemini 3.0 Flash API is available
-
-        Returns:
-            True if healthy, False otherwise
         """
-
         try:
-            await self.generate(prompt="Hi", max_output_tokens=64)
-            logger.info("✅ Gemini 3 health check passed")
-            return True
-
+            # ヘルスチェック時は安全フィルターを完全に無効化し、空の応答でも疎通を確認する
+            import httpx
+            url = f"{self.base_url}/models/{self.model}:generateContent"
+            params = {"key": self.api_key}
+            payload = {
+                "contents": [{"parts": [{"text": "Hi"}]}],
+                "generationConfig": {"maxOutputTokens": 10},
+                "safetySettings": [
+                    {"category": c, "threshold": "BLOCK_NONE"} for c in [
+                        "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH",
+                        "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"
+                    ]
+                ]
+            }
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, params=params, json=payload)
+                if resp.status_code == 200:
+                    logger.info("✅ Gemini 3 health check passed")
+                    return True
+                else:
+                    logger.warning(f"⚠️ Gemini 3 health check status {resp.status_code}")
+                    return False
         except Exception as e:
-            logger.warning(f"⚠️ Gemini 3 health check failed: {e}")
+            logger.warning(f"⚠️ Gemini 3 health check failed: {type(e).__name__} - {e}")
             return False
     
     def get_statistics(self) -> Dict[str, Any]:

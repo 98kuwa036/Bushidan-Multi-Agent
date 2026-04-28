@@ -27,6 +27,7 @@ import time
 import uuid
 from typing import Optional
 import httpx
+import psycopg
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -79,7 +80,7 @@ def _get_http_client() -> httpx.AsyncClient:
     global _HTTP_CLIENT
     if _HTTP_CLIENT is None:
         _HTTP_CLIENT = httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=5.0, read=180.0, write=10.0),
+            timeout=httpx.Timeout(timeout=180.0, connect=5.0, write=10.0),
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         )
     return _HTTP_CLIENT
@@ -238,7 +239,8 @@ async def startup_init_db_and_switch():
             for attempt in range(3):
                 try:
                     resp = await _get_http_client().post(
-                        f"{llm_url}/switch/gemma", timeout=10.0
+                        f"{llm_url}/switch/gemma", 
+                        timeout=httpx.Timeout(timeout=10.0, connect=5.0)
                     )
                     resp.raise_for_status()
                     logger.info("✅ Console startup: LLM server switched to Gemma4 MoE")
@@ -411,7 +413,16 @@ class ThreadUpdateRequest(BaseModel):
 
 # ── 認証ヘルパー ──────────────────────────────────────────────────────
 
-def _check_auth(token: str = ""):
+from fastapi import Depends, Request as _Request
+
+def _extract_token(request: _Request, token: str = "") -> str:
+    """Authorization ヘッダー優先、なければクエリパラメーター token= を使用"""
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:]
+    return token
+
+def _check_auth(token: str = Depends(_extract_token)):
     from console.auth import validate_session
     if not validate_session(token):
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -438,7 +449,7 @@ async def login(req: LoginRequest):
 
 
 @app.post("/api/chat")
-async def chat(req: ChatRequest, token: str = ""):
+async def chat(req: ChatRequest, token: str = Depends(_extract_token)):
     """同期チャット"""
     _check_auth(token)
     router = await _get_router()
@@ -497,7 +508,7 @@ async def models():
 
 
 @app.get("/api/settings/claude-fallback")
-async def get_claude_fallback(token: str = ""):
+async def get_claude_fallback(token: str = Depends(_extract_token)):
     """現在のClaudeインシデントフォールバックモードを返す"""
     _check_auth(token)
     from utils.claude_cli_client import get_incident_fallback_mode
@@ -508,7 +519,7 @@ class FallbackModeRequest(BaseModel):
     mode: str  # "gemini" または "bedrock"
 
 @app.post("/api/settings/claude-fallback")
-async def set_claude_fallback(req: FallbackModeRequest, token: str = ""):
+async def set_claude_fallback(req: FallbackModeRequest, token: str = Depends(_extract_token)):
     """Claudeインシデント時のフォールバックモードを切り替える。
     mode: "gemini" (デフォルト: Gemini 3.1 Pro) / "bedrock" (AWS Bedrock)
     """
@@ -521,7 +532,7 @@ async def set_claude_fallback(req: FallbackModeRequest, token: str = ""):
 
 
 @app.post("/api/resume")
-async def resume(req: ResumeRequest, token: str = ""):
+async def resume(req: ResumeRequest, token: str = Depends(_extract_token)):
     """
     HITL Go サイン — human_interrupt で停止中のグラフを再開する。
 
@@ -538,7 +549,7 @@ async def resume(req: ResumeRequest, token: str = ""):
 
 
 @app.get("/api/history")
-async def history(thread_id: str = "", token: str = ""):
+async def history(thread_id: str = "", token: str = Depends(_extract_token)):
     """指定スレッドの会話履歴を返す"""
     _check_auth(token)
     if not thread_id:
@@ -555,7 +566,7 @@ async def history(thread_id: str = "", token: str = ""):
 
 
 @app.get("/api/llm-status")
-async def llm_status(token: str = ""):
+async def llm_status(token: str = Depends(_extract_token)):
     """ローカルLLM排他制御ステータス"""
     _check_auth(token)
     try:
@@ -566,7 +577,7 @@ async def llm_status(token: str = ""):
 
 
 @app.post("/api/llm/test")
-async def llm_test(req: LLMTestRequest, token: str = ""):
+async def llm_test(req: LLMTestRequest, token: str = Depends(_extract_token)):
     """ローカルLLMサーバーのプロキシエンドポイント（CORS対応） v16"""
     _check_auth(token)
     try:
@@ -593,7 +604,7 @@ async def llm_test(req: LLMTestRequest, token: str = ""):
 
 
 @app.post("/api/llm/switch/{model}")
-async def llm_switch(model: str, token: str = ""):
+async def llm_switch(model: str, token: str = Depends(_extract_token)):
     """ローカルLLMサーバーのモデル切り替え (Gemma4 ↔ Nemotron) v16"""
     _check_auth(token)
     if model not in ["gemma", "nemotron"]:
@@ -670,7 +681,7 @@ async def health():
 # ── v17: Thread/Message CRUD API (PostgreSQL backed) ────────────────────────
 
 @app.get("/api/threads")
-async def get_threads(limit: int = 50, offset: int = 0, token: str = ""):
+async def get_threads(limit: int = 50, offset: int = 0, token: str = Depends(_extract_token)):
     """スレッド一覧を取得 (最新順)"""
     _check_auth(token)
     try:
@@ -702,7 +713,7 @@ async def get_threads(limit: int = 50, offset: int = 0, token: str = ""):
 
 
 @app.post("/api/threads")
-async def create_thread(title: str = "新しい会話", token: str = ""):
+async def create_thread(title: str = "新しい会話", token: str = Depends(_extract_token)):
     """新しいスレッドを作成"""
     _check_auth(token)
     try:
@@ -721,7 +732,7 @@ async def create_thread(title: str = "新しい会話", token: str = ""):
 
 
 @app.put("/api/threads/{thread_id}")
-async def update_thread(thread_id: str, body: ThreadUpdateRequest, token: str = ""):
+async def update_thread(thread_id: str, body: ThreadUpdateRequest, token: str = Depends(_extract_token)):
     """スレッドのタイトルまたはタグを更新"""
     _check_auth(token)
     try:
@@ -755,7 +766,7 @@ async def update_thread(thread_id: str, body: ThreadUpdateRequest, token: str = 
 
 
 @app.delete("/api/threads/all")
-async def delete_all_threads(token: str = ""):
+async def delete_all_threads(token: str = Depends(_extract_token)):
     """全スレッドをアーカイブ（論理削除）"""
     _check_auth(token)
     try:
@@ -770,7 +781,7 @@ async def delete_all_threads(token: str = ""):
 
 
 @app.get("/api/settings/roles")
-async def get_role_settings(token: str = ""):
+async def get_role_settings(token: str = Depends(_extract_token)):
     """ロールの有効/無効状態を返す"""
     _check_auth(token)
     from utils.client_registry import ClientRegistry
@@ -783,7 +794,7 @@ class RoleEnabledRequest(BaseModel):
 
 
 @app.post("/api/settings/roles/{role_key}")
-async def set_role_enabled(role_key: str, req: RoleEnabledRequest, token: str = ""):
+async def set_role_enabled(role_key: str, req: RoleEnabledRequest, token: str = Depends(_extract_token)):
     """ロールの有効/無効を切り替える"""
     _check_auth(token)
     if req.enabled:
@@ -795,7 +806,7 @@ async def set_role_enabled(role_key: str, req: RoleEnabledRequest, token: str = 
 
 
 @app.delete("/api/threads/{thread_id}")
-async def delete_thread(thread_id: str, token: str = ""):
+async def delete_thread(thread_id: str, token: str = Depends(_extract_token)):
     """スレッドを削除 (アーカイブ)"""
     _check_auth(token)
     try:
@@ -814,7 +825,7 @@ async def delete_thread(thread_id: str, token: str = ""):
 
 
 @app.get("/api/threads/{thread_id}/messages")
-async def get_messages(thread_id: str, limit: int = 100, offset: int = 0, token: str = ""):
+async def get_messages(thread_id: str, limit: int = 100, offset: int = 0, token: str = Depends(_extract_token)):
     """スレッドのメッセージを取得"""
     _check_auth(token)
     try:
@@ -857,7 +868,7 @@ class MessageRequest(BaseModel):
 
 
 @app.post("/api/threads/{thread_id}/messages")
-async def save_message(thread_id: str, msg: MessageRequest, token: str = ""):
+async def save_message(thread_id: str, msg: MessageRequest, token: str = Depends(_extract_token)):
     """メッセージをスレッドに保存"""
     _check_auth(token)
     try:
@@ -882,7 +893,7 @@ class RewindRequest(BaseModel):
 
 
 @app.get("/api/threads/{thread_id}/checkpoints")
-async def get_checkpoints(thread_id: str, token: str = ""):
+async def get_checkpoints(thread_id: str, token: str = Depends(_extract_token)):
     """LangGraph チェックポイント履歴を返す（タイムトラベル用）"""
     _check_auth(token)
     try:
@@ -914,7 +925,7 @@ async def get_checkpoints(thread_id: str, token: str = ""):
 
 
 @app.post("/api/threads/{thread_id}/rewind")
-async def rewind_thread(thread_id: str, req: RewindRequest, token: str = ""):
+async def rewind_thread(thread_id: str, req: RewindRequest, token: str = Depends(_extract_token)):
     """指定チェックポイントに巻き戻して再実行（タイムトラベル）"""
     _check_auth(token)
     try:
@@ -973,7 +984,7 @@ class SandboxRequest(BaseModel):
 
 
 @app.post("/api/sandbox/run")
-async def sandbox_run(req: SandboxRequest, token: str = ""):
+async def sandbox_run(req: SandboxRequest, token: str = Depends(_extract_token)):
     """Python コードをサンドボックスで安全に実行"""
     _check_auth(token)
     try:
@@ -1149,10 +1160,11 @@ async def _send_result(ws: WebSocket, result: dict, thread_id: str, t0: float):
 
 async def _broadcast_message(ws: WebSocket, router, message: str, thread_id: str, t0: float):
     """全役職に並列送信し、完了した順に WebSocket へ送信する"""
-    BROADCAST_ROLES = [
+    _all_roles = [
         "uketuke", "daigensui", "shogun", "gunshi", "sanbo", "gaiji",
         "metsuke", "kengyo", "yuhitsu", "onmitsu",
     ]
+    BROADCAST_ROLES = [r for r in _all_roles if r not in _DISABLED_ROLES]
 
     async def run_one(role: str):
         try:
@@ -1213,7 +1225,7 @@ async def _broadcast_message(ws: WebSocket, router, message: str, thread_id: str
 # ── v18: YAML 監査ログ API ───────────────────────────────────────────────
 
 @app.get("/api/audit-logs")
-async def get_audit_logs(days: int = 7, token: str = ""):
+async def get_audit_logs(days: int = 7, token: str = Depends(_extract_token)):
     """直近 N 日分の YAML 監査ログ一覧を返す"""
     _check_auth(token)
     try:
@@ -1225,7 +1237,7 @@ async def get_audit_logs(days: int = 7, token: str = ""):
 
 
 @app.get("/api/audit-logs/content")
-async def get_audit_log_content(path: str, token: str = ""):
+async def get_audit_log_content(path: str, token: str = Depends(_extract_token)):
     """指定パスの YAML ファイル内容を返す"""
     _check_auth(token)
     import os as _os
@@ -1248,7 +1260,7 @@ async def get_audit_log_content(path: str, token: str = ""):
 # ── v18: スキル提案 API ──────────────────────────────────────────────────
 
 @app.get("/api/skill-proposals")
-async def get_skill_proposals(status: str = "pending", token: str = ""):
+async def get_skill_proposals(status: str = "pending", token: str = Depends(_extract_token)):
     """スキル候補一覧を返す (status: pending | approved | dismissed)"""
     _check_auth(token)
     try:
@@ -1266,7 +1278,7 @@ class SkillApproveRequest(BaseModel):
 
 
 @app.post("/api/skill-proposals/{proposal_id}/approve")
-async def approve_skill_proposal(proposal_id: str, req: SkillApproveRequest, token: str = ""):
+async def approve_skill_proposal(proposal_id: str, req: SkillApproveRequest, token: str = Depends(_extract_token)):
     """スキル候補を承認し、skills/*.yaml に書き出す"""
     _check_auth(token)
     try:
@@ -1283,7 +1295,7 @@ async def approve_skill_proposal(proposal_id: str, req: SkillApproveRequest, tok
 
 
 @app.post("/api/skill-proposals/{proposal_id}/dismiss")
-async def dismiss_skill_proposal(proposal_id: str, token: str = ""):
+async def dismiss_skill_proposal(proposal_id: str, token: str = Depends(_extract_token)):
     """スキル候補を却下する"""
     _check_auth(token)
     try:
@@ -1295,7 +1307,7 @@ async def dismiss_skill_proposal(proposal_id: str, token: str = ""):
 
 
 @app.get("/api/skills")
-async def get_approved_skills(token: str = ""):
+async def get_approved_skills(token: str = Depends(_extract_token)):
     """承認済みスキル一覧を返す"""
     _check_auth(token)
     try:
@@ -1309,7 +1321,7 @@ async def get_approved_skills(token: str = ""):
 # ── 進化提案 API ─────────────────────────────────────────────────────────────
 
 @app.get("/api/evolution-proposals")
-async def get_evolution_proposals(status: str = "pending", token: str = ""):
+async def get_evolution_proposals(status: str = "pending", token: str = Depends(_extract_token)):
     """週次進化サイクルで生成された型付き提案書一覧"""
     _check_auth(token)
     try:
@@ -1321,7 +1333,7 @@ async def get_evolution_proposals(status: str = "pending", token: str = ""):
 
 
 @app.post("/api/evolution-proposals/{proposal_id}/approve")
-async def approve_evolution_proposal(proposal_id: str, token: str = ""):
+async def approve_evolution_proposal(proposal_id: str, token: str = Depends(_extract_token)):
     """進化提案を承認して適用する"""
     _check_auth(token)
     try:
@@ -1333,7 +1345,7 @@ async def approve_evolution_proposal(proposal_id: str, token: str = ""):
 
 
 @app.post("/api/evolution-proposals/{proposal_id}/dismiss")
-async def dismiss_evolution_proposal(proposal_id: str, token: str = ""):
+async def dismiss_evolution_proposal(proposal_id: str, token: str = Depends(_extract_token)):
     """進化提案を却下する"""
     _check_auth(token)
     try:
@@ -1345,7 +1357,7 @@ async def dismiss_evolution_proposal(proposal_id: str, token: str = ""):
 
 
 @app.get("/api/evolution-reports/latest")
-async def get_latest_evolution_report(token: str = ""):
+async def get_latest_evolution_report(token: str = Depends(_extract_token)):
     """最新の週次レポートを返す"""
     _check_auth(token)
     from pathlib import Path
@@ -1358,7 +1370,7 @@ async def get_latest_evolution_report(token: str = ""):
 # ── v18: KPI サマリーメトリクス API ─────────────────────────────────────────
 
 @app.get("/api/metrics/summary")
-async def get_metrics_summary(token: str = ""):
+async def get_metrics_summary(token: str = Depends(_extract_token)):
     """直近24時間のKPIサマリーを返す（ヘッダースパークライン用）"""
     _check_auth(token)
     if not POSTGRES_URL:
@@ -1511,7 +1523,7 @@ class V2ChatResponse(BaseModel):
 
 
 @app.post("/api/v2/chat", response_model=V2ChatResponse)
-async def v2_chat(req: V2ChatRequest, token: str = ""):
+async def v2_chat(req: V2ChatRequest, token: str = Depends(_extract_token)):
     """v18 Phase 1 パイプライン統合チャット"""
     _check_auth(token)
     thread_id = req.thread_id or str(uuid.uuid4())[:8]
@@ -1612,7 +1624,7 @@ async def v2_chat(req: V2ChatRequest, token: str = ""):
 
 
 @app.get("/api/v18/cache/status")
-async def v18_cache_status(token: str = ""):
+async def v18_cache_status(token: str = Depends(_extract_token)):
     """v18 キャッシュバックエンドのステータス"""
     _check_auth(token)
     try:
@@ -1623,7 +1635,7 @@ async def v18_cache_status(token: str = ""):
 
 
 @app.post("/api/v18/evolve")
-async def v18_evolve_skills(days: int = 7, token: str = ""):
+async def v18_evolve_skills(days: int = 7, token: str = Depends(_extract_token)):
     """スキル自動進化サイクルを手動実行"""
     _check_auth(token)
     try:
@@ -1636,7 +1648,7 @@ async def v18_evolve_skills(days: int = 7, token: str = ""):
 
 
 @app.get("/api/v18/audit-logs")
-async def v18_audit_logs(days: int = 3, token: str = ""):
+async def v18_audit_logs(days: int = 3, token: str = Depends(_extract_token)):
     """v18 時刻別 YAML 監査ログ一覧"""
     _check_auth(token)
     try:
@@ -1648,7 +1660,7 @@ async def v18_audit_logs(days: int = 3, token: str = ""):
 
 
 @app.post("/api/v2/pipeline/analyze")
-async def v2_pipeline_analyze(req: V2ChatRequest, token: str = ""):
+async def v2_pipeline_analyze(req: V2ChatRequest, token: str = Depends(_extract_token)):
     """Phase 1 パイプライン診断 — LangGraph を呼ばずに分析結果のみ返す"""
     _check_auth(token)
     try:
@@ -1730,7 +1742,7 @@ async def maintenance_logs(
     source: str = "console",
     lines: int = 300,
     date: str = "",
-    token: str = "",
+    token: str = Depends(_extract_token),
 ):
     """ログ取得 (source: console / audit / maintenance / journal-{service})"""
     _check_auth(token)
@@ -1751,7 +1763,7 @@ async def maintenance_logs(
 
 
 @app.get("/api/maintenance/audit-dates")
-async def maintenance_audit_dates(token: str = ""):
+async def maintenance_audit_dates(token: str = Depends(_extract_token)):
     """監査ログが存在する日付一覧"""
     _check_auth(token)
     from console.maintenance import get_audit_dates
@@ -1759,7 +1771,7 @@ async def maintenance_audit_dates(token: str = ""):
 
 
 @app.get("/api/maintenance/system")
-async def maintenance_system(token: str = ""):
+async def maintenance_system(token: str = Depends(_extract_token)):
     """システム情報 (CPU・メモリ・ディスク・サービス・git)"""
     _check_auth(token)
     from console.maintenance import get_system_info
@@ -1767,7 +1779,7 @@ async def maintenance_system(token: str = ""):
 
 
 @app.get("/api/maintenance/packages")
-async def maintenance_packages(token: str = ""):
+async def maintenance_packages(token: str = Depends(_extract_token)):
     """インストール済みパッケージ一覧"""
     _check_auth(token)
     from console.maintenance import get_packages
@@ -1775,7 +1787,7 @@ async def maintenance_packages(token: str = ""):
 
 
 @app.get("/api/maintenance/packages/outdated")
-async def maintenance_packages_outdated(token: str = ""):
+async def maintenance_packages_outdated(token: str = Depends(_extract_token)):
     """更新可能なパッケージ一覧 (時間がかかる場合あり)"""
     _check_auth(token)
     from console.maintenance import get_outdated_packages
@@ -1784,7 +1796,7 @@ async def maintenance_packages_outdated(token: str = ""):
 
 
 @app.post("/api/maintenance/packages/upgrade")
-async def maintenance_package_upgrade(req: PackageUpgradeRequest, token: str = ""):
+async def maintenance_package_upgrade(req: PackageUpgradeRequest, token: str = Depends(_extract_token)):
     """単一パッケージをアップグレード"""
     _check_auth(token)
     from console.maintenance import upgrade_package
@@ -1793,7 +1805,7 @@ async def maintenance_package_upgrade(req: PackageUpgradeRequest, token: str = "
 
 
 @app.post("/api/maintenance/packages/suggest-fix")
-async def maintenance_suggest_fix(req: ConflictFixRequest, token: str = ""):
+async def maintenance_suggest_fix(req: ConflictFixRequest, token: str = Depends(_extract_token)):
     """依存競合を LLM (Mistral Small) に分析させて解決案を返す"""
     _check_auth(token)
     if not req.conflicts.strip():
@@ -1833,7 +1845,7 @@ async def maintenance_suggest_fix(req: ConflictFixRequest, token: str = ""):
 
 
 @app.post("/api/maintenance/packages/apply-fix")
-async def maintenance_apply_fix(req: ApplyFixRequest, token: str = ""):
+async def maintenance_apply_fix(req: ApplyFixRequest, token: str = Depends(_extract_token)):
     """LLM 提案のパッケージをバリデーション後にインストール"""
     _check_auth(token)
     _valid = __import__('re').compile(r'^[a-zA-Z0-9_\-\.]+==[\d\w\.\-\+]+$')
@@ -1846,7 +1858,7 @@ async def maintenance_apply_fix(req: ApplyFixRequest, token: str = ""):
 
 
 @app.get("/api/maintenance/update/stream")
-async def maintenance_update_stream(stage: str = "check", token: str = ""):
+async def maintenance_update_stream(stage: str = "check", token: str = Depends(_extract_token)):
     """
     アップデートをストリーミング実行 (SSE text/event-stream)
     stage: check / sandbox / apply
@@ -1872,7 +1884,7 @@ async def maintenance_update_stream(stage: str = "check", token: str = ""):
 
 
 @app.post("/api/maintenance/service")
-async def maintenance_service(req: ServiceActionRequest, token: str = ""):
+async def maintenance_service(req: ServiceActionRequest, token: str = Depends(_extract_token)):
     """サービス管理 (start / stop / restart / status)"""
     _check_auth(token)
     from console.maintenance import service_action
@@ -1889,7 +1901,7 @@ class EvolutionAutoConfig(BaseModel):
 
 
 @app.get("/api/v18/evolution-auto-config")
-async def get_evolution_auto_config(token: str = ""):
+async def get_evolution_auto_config(token: str = Depends(_extract_token)):
     """スキル自動進化の現在設定と状態を返す"""
     _check_auth(token)
     cfg = await _get_evolution_config()
@@ -1918,7 +1930,7 @@ async def get_evolution_auto_config(token: str = ""):
 
 
 @app.post("/api/v18/evolution-auto-config")
-async def update_evolution_auto_config(req: EvolutionAutoConfig, token: str = ""):
+async def update_evolution_auto_config(req: EvolutionAutoConfig, token: str = Depends(_extract_token)):
     """スキル自動進化の設定を更新する"""
     _check_auth(token)
     try:

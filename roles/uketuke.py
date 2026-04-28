@@ -25,7 +25,7 @@ def _get_tokenizer():
             _tokenizer = sudachipy.Dictionary(dict="full").create()
         except Exception as e:
             import logging
-            logging.getLogger(__name__).debug("SudachiPy 初期化スキップ: %s", e)
+            logging.getLogger(__name__).warning("⚠️ SudachiPy 初期化失敗 (日本語解析が無効になります): %s", e)
     return _tokenizer
 
 
@@ -45,7 +45,7 @@ def _analyze_japanese(text: str) -> dict:
         return {"nouns": nouns, "verbs": verbs, "entities": entities, "normalized": normalized}
     except Exception as e:
         import logging
-        logging.getLogger(__name__).debug("形態素解析スキップ: %s", e)
+        logging.getLogger(__name__).warning("⚠️ 形態素解析失敗: %s", e)
         return {"nouns": [], "verbs": [], "entities": [], "normalized": text}
 
 
@@ -166,7 +166,8 @@ class UketukeRole(BaseRole):
                                 "🚪 受付: コードレビューループ完了 (%dラウンド)", rounds
                             )
                     except Exception as e:
-                        self.logger.info("コードレビュースキップ: %s", e)
+                        self.logger.error("コードレビュースキップ: %s", e, exc_info=True)
+                        response += f"\n\n⚠️ コードレビュー中にエラーが発生したため、レビューはスキップされました: {e}"
 
             return RoleResult(
                 response=response,

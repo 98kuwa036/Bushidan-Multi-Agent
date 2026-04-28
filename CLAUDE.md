@@ -35,9 +35,9 @@
 ## systemd サービス (pct100 ユーザーサービス)
 
 ```bash
-systemctl --user status bushidan-console
-systemctl --user restart bushidan-console
-systemctl --user status jupyterlab
+systemctl --user --no-pager status bushidan-evolution.service
+systemctl --user --no-pager restart bushidan-evolution.service
+systemctl --user --no-pager status bushidan-console.service
 ```
 
 ## 開発ルール

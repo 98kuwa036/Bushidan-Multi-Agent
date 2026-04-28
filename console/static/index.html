@@ -635,7 +635,9 @@ const S = {
   roleFilter: 'all',
   msgSearchQuery: '',
   ws: null,
-  wsUrl: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat`,
+  get wsUrl() {
+    return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/chat?token=${encodeURIComponent(this.token)}`;
+  },
   apiBase: '/api',
   // 個別チャット用
   currentIndividualRole: '',

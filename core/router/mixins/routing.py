@@ -4,13 +4,9 @@ core/router/mixins/routing.py — notion_index ノード + ルーティング判
 import asyncio
 import time
 from typing import TYPE_CHECKING
+from core.state import BushidanState
 from utils.logger import get_logger
 from core.router.constants import FALLBACK_MAP, NODE_TIMEOUTS
-
-logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from core.state import BushidanState
 
 
 class RoutingMixin:

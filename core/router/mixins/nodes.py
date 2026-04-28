@@ -8,15 +8,11 @@ core/router/mixins/nodes.py — 実行・特殊ノード群 Mixin
 import asyncio
 import time
 from typing import TYPE_CHECKING
+from core.state import BushidanState
 from utils.logger import get_logger
 from core.router.constants import NODE_TIMEOUTS
 from core.router.batch.mode import ProcessingMode, BATCH_CONFIG
 from core.router.batch.anthropic_batch import ANTHROPIC_ROLES, AnthropicBatchProcessor
-
-logger = get_logger(__name__)
-
-if TYPE_CHECKING:
-    from core.state import BushidanState
 
 
 class NodesMixin:

@@ -277,8 +277,11 @@ async def call_claude():
                 ),
                 400,
             )
-        if system is not None and not isinstance(system, str):
-            return jsonify({"error": "'system' must be a string or null"}), 400
+        if system is not None:
+            if not isinstance(system, str):
+                return jsonify({"error": "'system' must be a string or null"}), 400
+            if len(system) == 0 or len(system) > 8192:
+                return jsonify({"error": "'system' must be between 1 and 8192 characters"}), 400
 
         result = await claude.call(
             prompt=prompt,
