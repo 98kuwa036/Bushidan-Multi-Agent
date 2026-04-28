@@ -124,7 +124,7 @@ _DISABLED_ROLES: set = set()  # 無効化されたロールキーのセット（
 # ── Startup Event: DB スキーマ初期化 + LLM Gemma4 切り替え ──────────────
 @app.on_event("startup")
 async def startup_init_db_and_switch():
-    """Console 起動時: DB スキーマ作成 + Gemma4 に自動切り替え (v17)"""
+    """Console 起動時: DB スキーマ作成 + Gemma4 に自動切り替え (v18)"""
     # Phase 1: DB スキーマ初期化
     try:
         import psycopg

@@ -91,8 +91,8 @@ ROLE_MODEL = {
     'daigensui': 'Claude Opus 4.6',
     'metsuke':   'Mistral Small',
     'kengyo':    'Gemini Flash Image',
-    'yuhitsu':   'Gemma4 / Gemini FL',
-    'onmitsu':   'Nemotron / Gemma4',
+    'yuhitsu':   'Gemma4 MoE Local (fallback: Gemini Flash-Lite)',
+    'onmitsu':   'Nemotron Local (fallback: Gemma4 Local)',
 }
 
 # ── カラーパレット（武士団ベージュテーマ） ────────────────────────────
