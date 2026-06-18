@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>🏯 武士団 v18 ダッシュボード</title>
-<link rel="stylesheet" href="/static/style.css?v=20260419j">
+<link rel="stylesheet" href="/static/style.css?v=20260618a">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
@@ -81,6 +81,12 @@
         </div>
       </div>
 
+      <!-- ロール状態グリッド -->
+      <div class="side-nav-section">
+        <div class="side-nav-label">ロール状態</div>
+        <div id="role-cards" class="role-cards-grid"></div>
+      </div>
+
       <div class="side-nav-section">
         <div class="side-nav-label">会話履歴</div>
         <button onclick="createNewThread()" style="width:calc(100% - 16px); padding:8px 16px; background:var(--primary); color:var(--bg); border:none; border-radius:6px; font-weight:600; font-size:12px; cursor:pointer; margin:0 8px">
@@ -98,9 +104,15 @@
         <div class="dashboard-main">
           <!-- 会話エリア -->
           <div class="conversation-area">
+            <!-- モードバナー -->
+            <div class="mode-banner" id="mode-banner">
+              <span class="mode-badge" id="mode-badge">🔀 オーケストレーション</span>
+              <span class="mode-desc" id="mode-desc">マルチエージェント自動ルーティング</span>
+              <span style="margin-left:auto; font-size:10px; color:var(--text-dim)">個別チャットは左メニューから</span>
+            </div>
             <div class="conversation-controls">
               <select id="role-select" onchange="selectRole()">
-                <option value="auto">🤖 自動ルーティング</option>
+                <option value="auto">🔀 自動（オーケストレーション）</option>
               </select>
               <label>
                 <input type="checkbox" id="parallel-mode" onchange="toggleParallel()">
@@ -156,12 +168,14 @@
 
       <!-- PAGE 2.5: 個別チャット -->
       <div id="page-individual" class="page-content">
-        <h2>🎯 個別チャット</h2>
-        <div style="padding:16px; display:flex; flex-direction:column; height:100%; overflow:hidden">
+        <div class="individual-header">
+          <span class="mode-badge" style="background:var(--surface3); color:var(--accent)">🎯 個別チャット</span>
+          <span style="font-size:11px; color:var(--text-dim); margin-left:8px">特定ロールと1対1で会話</span>
+        </div>
+        <div style="padding:12px 16px; display:flex; flex-direction:column; height:calc(100% - 48px); overflow:hidden">
           <!-- ロール選択 -->
-          <div style="margin-bottom:16px">
-            <label style="display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px">ロール選択</label>
-            <select id="individual-role-select" onchange="loadIndividualChat(this.value)" style="width:100%; padding:10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px; cursor:pointer">
+          <div style="margin-bottom:12px">
+            <select id="individual-role-select" onchange="loadIndividualChat(this.value)" class="individual-role-selector">
               <option value="">-- ロールを選択してください --</option>
             </select>
           </div>
@@ -169,12 +183,12 @@
           <!-- チャットエリア -->
           <div style="flex:1; overflow:hidden; display:flex; flex-direction:column">
             <!-- メッセージ表示 -->
-            <div id="individual-messages" style="flex:1; overflow-y:auto; margin-bottom:16px; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:12px"></div>
+            <div id="individual-messages" class="individual-messages-area"></div>
 
             <!-- メッセージ入力 -->
-            <div style="display:flex; gap:8px">
-              <input type="text" id="individual-input" placeholder="メッセージを入力..." style="flex:1; padding:10px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:13px" onkeydown="if(event.key==='Enter') sendIndividualMessage()">
-              <button onclick="sendIndividualMessage()" style="padding:10px 16px; background:var(--primary); color:var(--bg); border:none; border-radius:6px; font-weight:600; cursor:pointer">送信</button>
+            <div class="individual-input-area">
+              <textarea id="individual-input" placeholder="メッセージを入力... (Enter送信 / Shift+Enter改行)" class="individual-textarea" onkeydown="onIndividualKey(event)"></textarea>
+              <button onclick="sendIndividualMessage()" class="send-btn">送信</button>
             </div>
           </div>
         </div>
@@ -303,9 +317,9 @@
             </div>
           </div>
           <div class="settings-item">
-            <span class="settings-label">Groq API Key</span>
+            <span class="settings-label">Cohere API Key</span>
             <div class="settings-value">
-              <input type="password" id="api-groq" placeholder="gsk_..." onchange="saveSetting('apiGroq', this.value)">
+              <input type="password" id="api-cohere" placeholder="co-..." onchange="saveSetting('apiCohere', this.value)">
             </div>
           </div>
         </div>
@@ -345,7 +359,9 @@
         </div>
 
         <div class="settings-section">
-          <div class="section-title">🤖 ロール管理</div>
+          <div class="section-title">🤖 ロール & モデル対応</div>
+          <div id="role-model-table" style="margin-bottom:12px"></div>
+          <div style="font-size:11px; font-weight:600; color:var(--text-dim); margin:8px 0 6px">有効/無効</div>
           <div id="role-toggles"></div>
         </div>
 
@@ -729,14 +745,17 @@ async function loadModels() {
 
     // API から返される models は配列なので、オブジェクトに変換
     S.models = {};
+    S.modelDetails = {};  // model フィールドも保持
     (data.models || []).forEach(m => {
       S.models[m.key] = m.name;
+      S.modelDetails[m.key] = m.model || '—';
     });
 
-    // ロール選択ドロップダウン
+    // ロール選択ドロップダウン（auto/all を除いた実ロールのみ）
+    const coreRoleKeys = ['daigensui','shogun','sanbo','gaiji','uketuke','kengyo','onmitsu'];
     const select = document.getElementById('role-select');
-    select.innerHTML = '<option value="auto">🤖 自動ルーティング</option>' +
-      Object.entries(S.models).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+    select.innerHTML = '<option value="auto">🔀 自動（オーケストレーション）</option>' +
+      coreRoleKeys.map(k => S.models[k] ? `<option value="${k}">${S.models[k]}</option>` : '').join('');
 
     // ロール管理トグル（バックエンドから有効/無効状態を取得）
     const toggles = document.getElementById('role-toggles');
@@ -747,12 +766,13 @@ async function loadModels() {
       });
       if (rr.ok) roleStates = (await rr.json()).roles || {};
     } catch (_) {}
-    toggles.innerHTML = Object.entries(S.models)
-      .map(([k, v]) => {
+    toggles.innerHTML = coreRoleKeys
+      .filter(k => S.models[k])
+      .map(k => {
         const enabled = roleStates[k] !== false;
         return `
           <div class="settings-item">
-            <span class="settings-label">${v}</span>
+            <span class="settings-label">${S.models[k]}</span>
             <div class="settings-value">
               <div class="toggle-switch${enabled ? ' active' : ''}" onclick="toggleRole(this, '${k}')"></div>
             </div>
@@ -760,12 +780,36 @@ async function loadModels() {
         `;
       }).join('');
 
-    // ロール状態カード（ステータスパネルが存在する場合のみ）
+    // ロール & モデル対応表
+    const modelTable = document.getElementById('role-model-table');
+    if (modelTable) {
+      modelTable.innerHTML = `
+        <table class="role-model-table">
+          <thead><tr><th>ロール</th><th>使用モデル</th><th>状態</th></tr></thead>
+          <tbody>
+            ${coreRoleKeys.filter(k => S.models[k]).map(k => `
+              <tr id="rmt-${k}">
+                <td>${S.models[k]}</td>
+                <td class="model-name-cell">${S.modelDetails[k]}</td>
+                <td><span class="status-dot ok" id="rmt-dot-${k}" title="確認中"></span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    // サイドバーのロール状態カード
     const cards = document.getElementById('role-cards');
     if (cards) {
-      cards.innerHTML = Object.entries(S.models)
-        .map(([k, v]) => `<div class="role-card healthy" id="role-${k}"><div class="role-status ok" title="稼働中"></div><span class="role-name">${v}</span></div>`)
-        .join('');
+      const ROLE_EMOJI = {daigensui:'👑',shogun:'🎌',sanbo:'📋',gaiji:'🌏',uketuke:'🚪',kengyo:'👁️',onmitsu:'🥷'};
+      const ROLE_SHORT = {daigensui:'大元帥',shogun:'将軍',sanbo:'参謀',gaiji:'外事',uketuke:'受付',kengyo:'検校',onmitsu:'隠密'};
+      cards.innerHTML = coreRoleKeys.map(k => `
+        <div class="role-card-mini" id="role-${k}" title="${S.models[k] || k}">
+          <span class="status-dot ok" id="rdot-${k}"></span>
+          <span class="role-emoji">${ROLE_EMOJI[k] || '?'}</span>
+          <span class="role-short-name">${ROLE_SHORT[k] || k}</span>
+        </div>
+      `).join('');
     }
 
     // 個別チャット用ロール選択ドロップダウン
@@ -802,6 +846,19 @@ async function loadStatus() {
     document.getElementById('llm-status').textContent =
       model === 'unknown' || model === '?' ? 'LLM?' : model.replace('gemma', 'Gemma').replace('nemotron', 'Nemo');
     _setDot('dot-llm', model === 'unknown' || model === '?' ? 'warn' : locked ? 'warn' : 'ok');
+
+    // 各ロールのヘルス状態を更新
+    const roleHealth = data.role_health || {};
+    Object.entries(roleHealth).forEach(([k, healthy]) => {
+      const state = healthy ? 'ok' : 'warn';
+      _setDot(`rdot-${k}`, state);
+      _setDot(`rmt-dot-${k}`, state);
+      const card = document.getElementById(`role-${k}`);
+      if (card) {
+        card.classList.toggle('role-card-mini--warn', !healthy);
+        card.title = healthy ? (S.models[k] || k) : `${S.models[k] || k} — 不調`;
+      }
+    });
   } catch (e) {
     _setDot('dot-llm', 'err');
     _setDot('dot-db', 'err');
@@ -1963,12 +2020,23 @@ function renderIndividualMessages() {
     return;
   }
 
-  messagesDiv.innerHTML = thread.messages.map(msg => `
-    <div style="margin-bottom:12px; padding:10px; background:${msg.role === 'user' ? 'var(--primary-glow)' : 'var(--surface2)'}; border-radius:6px; color:var(--text); font-size:12px">
-      <div style="font-weight:600; font-size:11px; color:var(--text-dim); margin-bottom:4px">${msg.role === 'user' ? 'あなた' : S.models[S.currentIndividualRole]}</div>
-      <div>${escapeHtml(msg.content)}</div>
-    </div>
-  `).join('');
+  messagesDiv.innerHTML = thread.messages.map(msg => {
+    const isUser = msg.role === 'user';
+    const isSystem = msg.role === 'system';
+    const label = isUser ? 'あなた' : (isSystem ? 'システム' : (S.models[S.currentIndividualRole] || S.currentIndividualRole));
+    const mdl = (!isUser && !isSystem && S.modelDetails && S.modelDetails[S.currentIndividualRole])
+      ? `<span style="font-size:9px; color:var(--text-muted); margin-left:6px">${S.modelDetails[S.currentIndividualRole]}</span>` : '';
+    const bodyHtml = (isUser || isSystem)
+      ? `<div class="msg-content">${escapeHtml(msg.content)}</div>`
+      : `<div class="msg-content md-rendered">${typeof DOMPurify !== 'undefined' && typeof marked !== 'undefined'
+          ? DOMPurify.sanitize(marked.parse(msg.content))
+          : escapeHtml(msg.content)}</div>`;
+    return `
+      <div class="msg ${isUser ? 'user' : isSystem ? 'system' : 'assistant'}" style="max-width:90%">
+        <div class="msg-header"><span class="msg-role">${label}${mdl}</span></div>
+        ${bodyHtml}
+      </div>`;
+  }).join('');
 
   // スクロール最下部へ
   setTimeout(() => {
@@ -2144,10 +2212,17 @@ function showPage(page) {
 
 function selectRole() {
   S.currentRole = document.getElementById('role-select').value;
-  // ロール選択フィードバックを表示
-  const selectedRoleName = S.models[S.currentRole] || (S.currentRole === 'auto' ? '🤖 自動ルーティング' : '?');
-  console.log(`✨ Role selected: ${selectedRoleName}`);
-
+  const badge = document.getElementById('mode-badge');
+  const desc = document.getElementById('mode-desc');
+  if (S.currentRole === 'auto') {
+    if (badge) { badge.textContent = '🔀 オーケストレーション'; badge.style.background = ''; badge.style.color = ''; }
+    if (desc) desc.textContent = 'マルチエージェント自動ルーティング';
+  } else {
+    const name = S.models[S.currentRole] || S.currentRole;
+    const mdl  = S.modelDetails && S.modelDetails[S.currentRole] ? ` — ${S.modelDetails[S.currentRole]}` : '';
+    if (badge) { badge.textContent = `🎯 ${name}`; badge.style.background = 'var(--surface3)'; badge.style.color = 'var(--accent)'; }
+    if (desc) desc.textContent = `指名モード${mdl}`;
+  }
   document.querySelectorAll('.role-card').forEach(card => card.classList.remove('processing'));
 }
 
@@ -2642,6 +2717,14 @@ function onPromptKey(e) {
       e.preventDefault();
       sendMessage();
     }
+  }
+}
+
+// 個別チャット Enter 送信
+function onIndividualKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendIndividualMessage();
   }
 }
 

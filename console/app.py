@@ -496,15 +496,15 @@ async def chat(req: ChatRequest, token: str = Depends(_extract_token)):
 async def models():
     """利用可能モデル一覧"""
     model_list = [
-        {"key": "auto",      "name": "🔀 自動ルーティング",                             "emoji": "🔀"},
-        {"key": "all",       "name": "🏯 全員会議（一斉送信）",                          "emoji": "🏯"},
-        {"key": "daigensui", "name": "👑 大元帥（最終判断・監査）— Claude Opus 4.6",      "emoji": "👑"},
-        {"key": "shogun",    "name": "🎌 将軍（計画立案・指揮）— Claude Sonnet 4.6",     "emoji": "🎌"},
-        {"key": "sanbo",     "name": "📋 参謀（汎用処理・ツール実行・分析）— Gemini Flash", "emoji": "📋"},
-        {"key": "gaiji",     "name": "🌏 外事（外部情報・RAG）— Command R",              "emoji": "🌏"},
-        {"key": "uketuke",   "name": "🚪 受付（Q&A・雑談・コード）— Gemma4 Local", "emoji": "🚪"},
-        {"key": "kengyo",    "name": "👁️ 検校（画像解析）— Gemini 3.1 Flash Image",    "emoji": "👁️"},
-        {"key": "onmitsu",   "name": "🥷 隠密（機密・日本語処理）— Gemma4 Local",          "emoji": "🥷"},
+        {"key": "auto",      "name": "🔀 自動ルーティング",                                   "emoji": "🔀", "model": "—"},
+        {"key": "all",       "name": "🏯 全員会議（一斉送信）",                                "emoji": "🏯", "model": "—"},
+        {"key": "daigensui", "name": "👑 大元帥（最終判断・監査）",   "emoji": "👑", "model": "Claude Opus 4.6"},
+        {"key": "shogun",    "name": "🎌 将軍（計画立案・指揮）",    "emoji": "🎌", "model": "Claude Sonnet 4.6"},
+        {"key": "sanbo",     "name": "📋 参謀（汎用処理・ツール実行）", "emoji": "📋", "model": "Gemini 3.5 Flash"},
+        {"key": "gaiji",     "name": "🌏 外事（外部情報・RAG）",      "emoji": "🌏", "model": "Command R (Cohere)"},
+        {"key": "uketuke",   "name": "🚪 受付（Q&A・雑談・コード）",  "emoji": "🚪", "model": "Gemma4 → Gemini 3.1 Flash-Lite"},
+        {"key": "kengyo",    "name": "👁️ 検校（画像解析）",          "emoji": "👁️", "model": "Gemini 3.5 Flash"},
+        {"key": "onmitsu",   "name": "🥷 隠密（機密・日本語処理）",   "emoji": "🥷", "model": "Nemotron (ローカル)"},
     ]
     return {"models": model_list}
 
@@ -677,6 +677,14 @@ async def health():
     except Exception as e:
         logger.debug("local_llm status 取得失敗: %s", e)
         result["local_llm"] = {"active_model": "unknown", "lock_held": False}
+    # 各ロールのヘルス状態
+    try:
+        role_health = {}
+        for r in registry.available_roles:
+            role_health[r] = registry.is_healthy_cached(r)
+        result["role_health"] = role_health
+    except Exception:
+        result["role_health"] = {}
     return result
 
 

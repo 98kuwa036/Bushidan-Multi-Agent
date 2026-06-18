@@ -1701,3 +1701,183 @@ body.dark .maint-logbox { background: #080810; }
     color: var(--primary-dim);
   }
 }
+
+/* ── モードバナー ────────────────────────────────────────────── */
+.mode-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-xs);
+  flex-shrink: 0;
+}
+
+.mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: var(--primary-glow);
+  color: var(--primary-dim);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.mode-desc {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+/* ── サイドバー: ロール状態グリッド ─────────────────────────── */
+.role-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.role-card-mini {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  background: var(--surface);
+  border: 1px solid var(--border-dim);
+  border-radius: 6px;
+  font-size: 10px;
+  cursor: default;
+  transition: background 0.2s;
+  overflow: hidden;
+}
+
+.role-card-mini:hover {
+  background: var(--surface2);
+}
+
+.role-card-mini--warn {
+  border-color: var(--warn);
+  background: rgba(200,159,48,0.08);
+}
+
+.role-emoji { font-size: 12px; flex-shrink: 0; }
+.role-short-name { color: var(--text-dim); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── ロール & モデル対応表 ──────────────────────────────────── */
+.role-model-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+}
+
+.role-model-table th {
+  text-align: left;
+  padding: 5px 8px;
+  background: var(--surface2);
+  color: var(--text-dim);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.role-model-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-dim);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.role-model-table td.model-name-cell {
+  color: var(--primary-dim);
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.role-model-table tr:hover td { background: var(--surface2); }
+
+/* ── 個別チャット改良 ────────────────────────────────────────── */
+.individual-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-dim);
+  background: var(--surface2);
+  flex-shrink: 0;
+}
+
+.individual-role-selector {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--fs-md);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.individual-role-selector:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+.individual-messages-area {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.individual-input-area {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.individual-textarea {
+  flex: 1;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--fs-md);
+  resize: vertical;
+  max-height: 120px;
+  min-height: 44px;
+  font-family: inherit;
+}
+
+.individual-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* マークダウンレンダリング */
+.md-rendered h1, .md-rendered h2, .md-rendered h3 {
+  font-weight: 700; color: var(--primary-dim); margin: 8px 0 4px;
+}
+.md-rendered h1 { font-size: var(--fs-lg); }
+.md-rendered h2 { font-size: var(--fs-base); }
+.md-rendered h3 { font-size: var(--fs-md); }
+.md-rendered p  { margin: 4px 0; line-height: 1.5; }
+.md-rendered ul, .md-rendered ol { padding-left: 20px; margin: 4px 0; }
+.md-rendered li { margin: 2px 0; line-height: 1.4; }
+.md-rendered code { background: var(--surface2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 4px; font-size: 11px; font-family: monospace; }
+.md-rendered pre code { display: block; padding: 8px 10px; overflow-x: auto; white-space: pre; border-radius: var(--radius-sm); }
+.md-rendered blockquote { border-left: 3px solid var(--primary); padding-left: 10px; color: var(--text-dim); margin: 6px 0; }
+.md-rendered strong { font-weight: 700; color: var(--text); }
+.md-rendered table { border-collapse: collapse; width: 100%; font-size: 11px; margin: 6px 0; }
+.md-rendered th, .md-rendered td { border: 1px solid var(--border); padding: 4px 8px; }
+.md-rendered th { background: var(--surface2); font-weight: 600; }
