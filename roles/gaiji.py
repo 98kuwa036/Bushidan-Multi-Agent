@@ -1,7 +1,7 @@
-"""roles/gaiji.py — 外事 (Command R 08-2024) ロール v18
+"""roles/gaiji.py — 外事 (Cohere Command A+) ロール v18
 
 役割: 外部情報収集・RAG・マルチステップ処理
-モデル: Cohere Command R (08-2024) - RAG最適化
+モデル: Cohere Command A+ (05-2026) - MoE・Vision・Reasoning統合最新フラッグシップ
 MCP:  tavily_search (常時 — 外部情報収集が主務)
 データソース: Web検索・気象庁API・為替API・中央銀行RSS
 """
@@ -14,7 +14,7 @@ from roles.base import BaseRole, RoleResult
 class GaijiRole(BaseRole):
     role_key = "gaiji"
     role_name = "外事"
-    model_name = "Command R (08-2024)"
+    model_name = "Command A+ (05-2026)"
     emoji = "🌐"
     default_handled_by = "gaiji_rag"
 

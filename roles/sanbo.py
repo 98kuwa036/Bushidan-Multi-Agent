@@ -1,15 +1,34 @@
-"""roles/sanbo.py — 参謀 (Gemini Flash Preview) ロール v18
+"""roles/sanbo.py — 参謀 (Gemini 3.5 Flash) ロール v18
 
 役割: ツール実行・コーディング・ファイル参照・Web検索
-モデル: Gemini 3.1 Flash Preview
+モデル: Gemini 3.5 Flash
 
 HITL: 破壊的操作（削除・上書き・強制プッシュ等）を検出した場合、
       実行前に人間の承認を求める。
 """
 
+import os
 import re
+import subprocess
 import time
 from roles.base import BaseRole, RoleResult
+
+# ── ワークスペース自動セットアップ ─────────────────────────────────────────────
+_WORKSPACE_BASE = "/mnt/Bushidan-Multi-Agent"
+_GH_OWNER = "98kuwa036"
+
+# 「新規プロジェクト作成」を示すキーワード
+_NEW_PROJECT_KWS = [
+    "新しいプロジェクト", "新規プロジェクト", "新しいアプリ", "新規アプリ",
+    "repo作って", "リポジトリ作って", "新規リポジトリ", "新規repo",
+    "new project", "create repo", "new repository", "start project",
+]
+
+# 「再開」を示すキーワード
+_RESUME_KWS = [
+    "続き", "再開", "また", "引き続き", "前回の",
+    "resume", "continue", "pick up",
+]
 
 # 破壊的操作を示すキーワード（HITL 承認が必要）
 _DESTRUCTIVE_PATTERNS = [
@@ -48,9 +67,82 @@ _GH_KWS = [
 class SanboRole(BaseRole):
     role_key = "sanbo"
     role_name = "参謀"
-    model_name = "Gemini Flash Preview"
+    model_name = "Gemini 3.5 Flash"
     emoji = "📋"
     default_handled_by = "sanbo_mcp"
+
+    def _extract_project_name(self, msg: str) -> str:
+        """メッセージからプロジェクト名（英数字・ハイフン）を抽出。なければ空文字。"""
+        # 「XXXプロジェクト」「XXXアプリ」などを抽出
+        patterns = [
+            r'[「『]([^」』\s]{2,40})[」』]',           # 鉤括弧内
+            r'(?:project|repo|app|system)\s+(\w[\w-]{1,39})',  # 英語
+            r'(\w[\w-]{2,39})(?:プロジェクト|アプリ|システム|サービス)',  # 日本語接尾
+        ]
+        for p in patterns:
+            m = re.search(p, msg, re.IGNORECASE)
+            if m:
+                raw = m.group(1)
+                # 英数字・ハイフンのみに正規化
+                safe = re.sub(r'[^\w-]', '-', raw).strip('-').lower()
+                if len(safe) >= 2:
+                    return safe
+        return ""
+
+    async def _setup_coding_workspace(self, topic: str) -> tuple[str, str]:
+        """
+        コーディングワークスペースを準備する。
+        優先順位: ローカル存在 → GitHub clone → 新規作成 (pushはHITL)
+        Returns: (workspace_path, status_message)
+        """
+        local_path = os.path.join(_WORKSPACE_BASE, topic)
+
+        # 1. ローカルに git リポジトリとして存在する
+        if os.path.isdir(os.path.join(local_path, ".git")):
+            # 最新状態を確認
+            result = subprocess.run(
+                ["git", "log", "--oneline", "-3"],
+                cwd=local_path, capture_output=True, text=True, timeout=10,
+            )
+            commits = result.stdout.strip() or "(コミットなし)"
+            return local_path, (
+                f"✅ **ローカルで発見** → `{local_path}`\n"
+                f"最近のコミット:\n```\n{commits}\n```\n作業を再開します。"
+            )
+
+        # 2. GitHub にリポジトリが存在すれば clone
+        repo_info = await self._mcp_gh_get_repo(_GH_OWNER, topic)
+        if repo_info:
+            clone_url = repo_info.get("clone_url") or repo_info.get("html_url", "")
+            if clone_url:
+                result = subprocess.run(
+                    ["git", "clone", clone_url, local_path],
+                    capture_output=True, text=True, timeout=60,
+                )
+                if result.returncode == 0:
+                    return local_path, (
+                        f"📥 **GitHub からクローン** → `{local_path}`\n"
+                        f"リポジトリ: {clone_url}\n作業を再開します。"
+                    )
+                self.logger.warning("clone 失敗: %s", result.stderr)
+
+        # 3. 新規リポジトリを初期化（push は HITL で確認）
+        os.makedirs(local_path, exist_ok=True)
+        subprocess.run(["git", "init"], cwd=local_path, capture_output=True)
+        readme = os.path.join(local_path, "README.md")
+        if not os.path.exists(readme):
+            with open(readme, "w") as f:
+                f.write(f"# {topic}\n\n")
+        subprocess.run(["git", "add", "README.md"], cwd=local_path, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "initial commit"],
+            cwd=local_path, capture_output=True,
+        )
+        return local_path, (
+            f"🆕 **新規プロジェクト初期化** → `{local_path}`\n"
+            f"git init + README.md 作成済み。\n"
+            f"⚠️ GitHub へのプッシュ・リポジトリ作成は承認が必要です。"
+        )
 
     def _check_destructive(self, msg: str) -> str:
         """破壊的操作を検出して説明文を返す。安全なら空文字列を返す。"""
@@ -95,6 +187,19 @@ class SanboRole(BaseRole):
             )
             mcp_used = []
             msg = state.get("message", "")
+
+            # ── ワークスペース自動セットアップ ───────────────────────────
+            workspace_status = ""
+            is_new_project = any(kw in msg for kw in _NEW_PROJECT_KWS)
+            is_resume = any(kw in msg for kw in _RESUME_KWS)
+            project_name = self._extract_project_name(msg)
+
+            if project_name and (is_new_project or is_resume):
+                ws_path, ws_status = await self._setup_coding_workspace(project_name)
+                workspace_status = ws_status
+                system = self._append_mcp_context(system, "ワークスペース", ws_status)
+                mcp_used.append("workspace_setup")
+                self.logger.info("🗡️ 参謀 ワークスペース: %s → %s", project_name, ws_path)
 
             # ── HITL: 破壊的操作チェック ─────────────────────────────
             # human_response が既にある場合は承認済みとして通過

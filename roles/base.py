@@ -357,6 +357,33 @@ class BaseRole(ABC):
             return m.group(1), m.group(2), int(m.group(3))
         return "", "", None
 
+    async def _mcp_gh_get_repo(self, owner: str, repo: str) -> dict | None:
+        """GitHub リポジトリ情報を取得。存在しなければ None。"""
+        try:
+            result = await self._call_mcp_tool("get_repository", {
+                "owner": owner, "repo": repo,
+            })
+            return result if isinstance(result, dict) else None
+        except Exception as e:
+            self.logger.debug("gh get_repo 失敗: %s", e)
+            return None
+
+    async def _mcp_gh_create_repo(
+        self, name: str, description: str = "", private: bool = False
+    ) -> dict | None:
+        """GitHub リポジトリを新規作成。成功時は dict、失敗時は None。"""
+        try:
+            result = await self._call_mcp_tool("create_repository", {
+                "name": name,
+                "description": description,
+                "private": private,
+                "auto_init": True,
+            })
+            return result if isinstance(result, dict) else None
+        except Exception as e:
+            self.logger.debug("gh create_repo 失敗: %s", e)
+            return None
+
     async def _mcp_screenshot(self, url: str) -> str:
         """URL のスクリーンショットを取得し base64 文字列を返す。失敗時は空文字。"""
         try:

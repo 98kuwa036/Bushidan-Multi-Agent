@@ -135,7 +135,7 @@ class _ClaudeAdapter(BaseLLMClient):
 class _Gemini3Adapter(BaseLLMClient):
     """Gemini3Client → BaseLLMClient（モデル指定可能）"""
 
-    def __init__(self, model: str = "gemini-3-flash-preview"):
+    def __init__(self, model: str = "gemini-3.5-flash"):
         from utils.gemini3_client import Gemini3Client
         api_key = os.environ.get("GEMINI_API_KEY", os.environ.get("GOOGLE_API_KEY", ""))
         if not api_key or len(api_key) < 5:
@@ -205,21 +205,21 @@ _gemini_pro_shared: Optional["_Gemini3Adapter"] = None
 def _gemini_pro_factory() -> "_Gemini3Adapter":
     global _gemini_pro_shared
     if _gemini_pro_shared is None:
-        _gemini_pro_shared = _Gemini3Adapter("gemini-3.1-pro-preview")
+        _gemini_pro_shared = _Gemini3Adapter("gemini-3.1-pro")
     return _gemini_pro_shared
 
 
 # ─── ロールキー → アダプタ ファクトリ ─────────────────────────────────────────
 _FACTORIES = {
-    "uketuke":         lambda: _Gemini3Adapter("gemini-3.1-flash-lite-preview"),        # 受付フォールバック: Gemini Flash-Lite (プライマリはGemma4 local)
-    "gaiji":           lambda: _CohereAdapter("command-r-08-2024"),                    # RAG特化: Command R
-    "sanbo":           lambda: _Gemini3Adapter("gemini-3-flash-preview"),              # 汎用処理+ツール実行: Gemini Flash (旧軍師・参謀統合)
+    "uketuke":         lambda: _Gemini3Adapter("gemini-2.5-flash-lite"),               # 受付フォールバック: Gemini 2.5 Flash-Lite
+    "gaiji":           lambda: _CohereAdapter("command-a-plus-05-2026"),               # RAG特化: Command A+ (MoE・Vision・Reasoning統合)
+    "sanbo":           lambda: _Gemini3Adapter("gemini-3.5-flash"),                    # 汎用処理+ツール実行: Gemini 3.5 Flash
     "shogun":          lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet
-    "daigensui":       lambda: _ClaudeAdapter("claude-opus-4-6"),                      # 最終判断: Opus
-    "kengyo":          lambda: _Gemini3Adapter("gemini-3.1-flash-image-preview"),      # 画像解析
-    "onmitsu":         lambda: _NemotronAdapter(),                                     # 機密+日本語処理: Gemma4 Local (旧yuhitsu統合)
+    "daigensui":       lambda: _ClaudeAdapter("claude-opus-4-6"),                      # 最終判断: Opus (変更なし)
+    "kengyo":          lambda: _Gemini3Adapter("gemini-3.5-flash"),                    # 画像解析: Gemini 3.5 Flash (Vision統合)
+    "onmitsu":         lambda: _NemotronAdapter(),                                     # 機密+日本語処理: Gemma4 Local
     "claude_fallback": _gemini_pro_factory,                                            # Claude障害時: Gemini 3.1 Pro (共有)
-    "crosscheck_light":lambda: _CerebrasAdapter("gpt-oss-120b"),                       # 軽量クロスチェック: Cerebras 120B
+    "crosscheck_light":lambda: _CerebrasAdapter("llama-3.3-70b"),                      # 軽量クロスチェック: Cerebras Llama 3.3 70B (2100 tok/s)
     "crosscheck_heavy":_gemini_pro_factory,                                            # 重量クロスチェック: Gemini 3.1 Pro (共有)
 }
 

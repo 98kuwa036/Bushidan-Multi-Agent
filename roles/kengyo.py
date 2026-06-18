@@ -1,7 +1,7 @@
-"""roles/kengyo.py — 検校 (Gemini 3.1 Flash Image) ロール v18
+"""roles/kengyo.py — 検校 (Gemini 3.5 Flash) ロール v18
 
 役割: 画像解析・マルチモーダル処理
-モデル: Gemini 3.1 Flash Image Preview
+モデル: Gemini 3.5 Flash (Vision統合・multimodal対応)
 """
 
 import time
@@ -11,7 +11,7 @@ from roles.base import BaseRole, RoleResult
 class KengyoRole(BaseRole):
     role_key = "kengyo"
     role_name = "検校"
-    model_name = "Gemini 3.1 Flash Image"
+    model_name = "Gemini 3.5 Flash"
     emoji = "👁️"
     default_handled_by = "kengyo_vision"
 
