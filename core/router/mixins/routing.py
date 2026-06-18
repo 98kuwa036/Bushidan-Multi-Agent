@@ -35,18 +35,57 @@ class RoutingMixin:
             return {"notion_chunks": []}
 
     def _route_decision(self, state: "BushidanState") -> str:
-        """v16 ルーティング — 構造化インテントを活用した細粒度振り分け"""
+        """v18 Gatekeeper ルーティング — Goサインが出るまで受付(Groq)に強制固定"""
+        is_ready = bool(state.get("is_ready_to_go", False))
+        forced = state.get("forced_role")
+        roadmap = state.get("roadmap")
+        
+        logger.info("🚦 [判定] is_ready=%s, forced_role=%s, has_roadmap=%s", is_ready, forced, bool(roadmap))
+        
+        # ── ⓪ Gatekeeper 制御 ────────────────────────────────────────
+        # 実行指示（Goサイン）が出ていない場合は、指名アサイン(forced_role)も含めて
+        # すべて握り潰し、100% 受付(Groq)に固定する
+        if not is_ready:
+            logger.info("🚪 Gatekeeper: [決定] uketuke_default (未合意のため強制)")
+            return "uketuke_default"
+
+        # ── ① 通常ルーティング ───────────────────────────────────────
+        if forced:
+            _role_to_node = {
+                "gaiji":     "gaiji_rag",    "sanbo":     "sanbo_mcp",
+                "yuhitsu":   "onmitsu_local", "uketuke":  "uketuke_default",
+                "onmitsu":   "onmitsu_local", "shogun":   "shogun_plan",
+                "daigensui": "daigensui_audit", "kengyo": "kengyo_vision",
+                "gunshi":    "daigensui_audit",  # 廃止 → 大元帥に転送
+                "metsuke":   "uketuke_default",  # 廃止 → 受付に転送
+            }
+            node = _role_to_node.get(forced, forced)
+            logger.info("🎯 指名アサイン: [決定] %s", node)
+            return node
+        
+        # Go サイン直後の初回実行は Sonnet (shogun_plan) から開始
+        if is_ready and not state.get("roadmap"):
+            logger.info("⚔️ Gatekeeper: Go サインを検知。将軍 (Sonnet) が作戦を立てます")
+            from utils.client_registry import ClientRegistry
+            if ClientRegistry.get().is_healthy_cached("shogun"):
+                return "shogun_plan"
+            else:
+                logger.warning("⚠️ shogun unhealthy → fallback to daigensui")
+                return "daigensui_audit"
+
+        # ── ① 通常ルーティング ───────────────────────────────────────
         forced = state.get("forced_role")
 
         _valid = {
-            "groq_qa", "parallel_groq", "gunshi_haiku", "metsuke_proc", "gaiji_rag", "sanbo_mcp",
-            "yuhitsu_jp", "uketuke_default", "onmitsu_local", "kengyo_vision",
+            "groq_qa", "parallel_groq", "gaiji_rag", "sanbo_mcp",
+            "uketuke_default", "onmitsu_local", "kengyo_vision",
             "shogun_plan", "daigensui_audit",
         }
         _role_to_node = {
-            "gunshi":    "gunshi_haiku",
-            "metsuke":   "metsuke_proc", "gaiji":     "gaiji_rag",
-            "sanbo":     "sanbo_mcp",    "yuhitsu":   "yuhitsu_jp",
+            "gunshi":    "daigensui_audit", # 廃止 → 大元帥
+            "metsuke":   "uketuke_default", # 廃止 → 受付
+            "gaiji":     "gaiji_rag",
+            "sanbo":     "sanbo_mcp",    "yuhitsu":   "onmitsu_local",
             "uketuke":   "uketuke_default", "onmitsu": "onmitsu_local",
             "shogun":    "shogun_plan",  "daigensui": "daigensui_audit",
             "kengyo":    "kengyo_vision",
@@ -140,16 +179,20 @@ class RoutingMixin:
             return _check_health("groq_qa")
 
         if state.get("is_japanese_priority") and complexity in ("simple", "low_medium", "medium"):
-            return _check_health("yuhitsu_jp")
+            return _check_health("onmitsu_local")
 
         if complexity == "medium" or is_action:
             msg = state.get("message", "")
             if is_multi and msg.count("?") + msg.count("？") >= 2:
                 return _check_health("parallel_groq")
-            return _check_health("gunshi_haiku")
+            # Goサイン後は参謀ではなく shogun が指揮を継続する
+            if is_ready:
+                logger.info("🏯 Route: shogun_plan (Go済み + medium → shogun継続)")
+                return _check_health("shogun_plan")
+            return _check_health("sanbo_mcp")
 
         if complexity == "low_medium":
-            return _check_health("metsuke_proc")
+            return _check_health("sanbo_mcp")
 
         if is_simple or complexity == "simple":
             msg = state.get("message", "")

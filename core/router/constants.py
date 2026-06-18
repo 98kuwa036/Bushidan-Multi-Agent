@@ -15,9 +15,6 @@ NODE_TIMEOUTS: dict[str, int] = {
     "gaiji_rag":         60,
     "sanbo_mcp":         60,
     "kengyo_vision":     60,
-    "gunshi_haiku":      60,
-    "metsuke_proc":      45,
-    "yuhitsu_jp":        90,
     "onmitsu_local":    120,
     "execute_step":     120,
     "shogun_plan":      120,
@@ -27,15 +24,12 @@ NODE_TIMEOUTS: dict[str, int] = {
 FALLBACK_MAP: dict[str, str] = {
     "groq_qa":          "uketuke_default",
     "parallel_groq":    "groq_qa",
-    "gunshi_haiku":     "metsuke_proc",
-    "metsuke_proc":     "groq_qa",
     "gaiji_rag":        "groq_qa",
-    "sanbo_mcp":        "gunshi_haiku",
-    "yuhitsu_jp":       "metsuke_proc",
+    "sanbo_mcp":        "groq_qa",
     "onmitsu_local":    "uketuke_default",
-    "kengyo_vision":    "gunshi_haiku",
-    "shogun_plan":      "gunshi_haiku",
-    "execute_step":     "gunshi_haiku",
+    "kengyo_vision":    "sanbo_mcp",
+    "shogun_plan":      "sanbo_mcp",
+    "execute_step":     "sanbo_mcp",
     "daigensui_audit":  "shogun_plan",
     "uketuke_default":  "groq_qa",
 }
@@ -88,23 +82,17 @@ def load_roles() -> dict:
     """roles/ パッケージから全ロールをロード（起動時1回のみ）"""
     from roles.uketuke import UketukeRole
     from roles.gaiji import GaijiRole
-    from roles.gunshi import GunshiRole
-    from roles.metsuke import MetsukeRole
     from roles.sanbo import SanboRole
     from roles.shogun import ShogunRole
     from roles.daigensui import DaigensuiRole
-    from roles.yuhitsu import YuhitsuRole
     from roles.onmitsu import OnmitsuRole
     from roles.kengyo import KengyoRole
     return {
         "uketuke":   UketukeRole(),
         "gaiji":     GaijiRole(),
-        "gunshi":    GunshiRole(),
-        "metsuke":   MetsukeRole(),
         "sanbo":     SanboRole(),
         "shogun":    ShogunRole(),
         "daigensui": DaigensuiRole(),
-        "yuhitsu":   YuhitsuRole(),
         "onmitsu":   OnmitsuRole(),
         "kengyo":    KengyoRole(),
     }

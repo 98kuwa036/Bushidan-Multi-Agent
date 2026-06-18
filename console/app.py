@@ -179,9 +179,9 @@ async def startup_init_db_and_switch():
                 test_data = [
                     ("test-001", "AIチャットボット構築", [
                         ("user", "AIチャットボットを構築したいのですが、どんな技術スタックを使うべきですか？", None, None),
-                        ("assistant", "AIチャットボット構築には以下の技術スタックがおすすめです:\n\n1. **LLM選択**: Claude、GPT-4、Mistral\n2. **フレームワーク**: LangChain、LlamaIndex、HuggingFace\n3. **デプロイ**: FastAPI、Docker、Kubernetes", "gunshi", "Claude Sonnet"),
+                        ("assistant", "AIチャットボット構築には以下の技術スタックがおすすめです:\n\n1. **LLM選択**: Claude、GPT-4、Mistral\n2. **フレームワーク**: LangChain、LlamaIndex、HuggingFace\n3. **デプロイ**: FastAPI、Docker、Kubernetes", "sanbo", "Gemini Flash"),
                         ("user", "実装時の注意点はありますか？", None, None),
-                        ("assistant", "実装時の注意点:\n- トークン管理\n- レイテンシー最適化\n- エラーハンドリング\n- ロギング・監視", "gunshi", "Claude Sonnet"),
+                        ("assistant", "実装時の注意点:\n- トークン管理\n- レイテンシー最適化\n- エラーハンドリング\n- ロギング・監視", "sanbo", "Gemini Flash"),
                     ]),
                     ("test-002", "データベース最適化", [
                         ("user", "PostgreSQLのクエリパフォーマンス改善方法を教えてください", None, None),
@@ -258,6 +258,14 @@ async def startup_init_db_and_switch():
     _fire(_prewarm_router(), name="router_prewarm")
     # Phase 4: スキル自動進化バックグラウンドループ起動（デフォルト無効）
     _fire(_skill_evolution_loop(), name="skill_evolution_loop")
+
+    # Phase 5: NLP 辞書 (SudachiPy) 事前ロード
+    try:
+        from roles.uketuke import _get_tokenizer
+        _fire(asyncio.to_thread(_get_tokenizer), name="sudachi_preload")
+        logger.info("✅ Console startup: SudachiPy dictionary pre-loading started")
+    except Exception as e:
+        logger.warning("⚠️ SudachiPy 辞書の事前ロードに失敗: %s", e)
 
 
 async def _prewarm_router():
@@ -373,7 +381,7 @@ async def _get_router():
     async with _router_lock:
         if _router is not None:
             return _router
-        from core.langgraph_router import LangGraphRouter
+        from core.router.router import LangGraphRouter
         _router = LangGraphRouter()
         await _router.initialize()
         logger.info("🔗 Console: LangGraph Router v15 初期化完了")
@@ -492,14 +500,11 @@ async def models():
         {"key": "all",       "name": "🏯 全員会議（一斉送信）",                          "emoji": "🏯"},
         {"key": "daigensui", "name": "👑 大元帥（最終判断・監査）— Claude Opus 4.6",      "emoji": "👑"},
         {"key": "shogun",    "name": "🎌 将軍（計画立案・指揮）— Claude Sonnet 4.6",     "emoji": "🎌"},
-        {"key": "gunshi",    "name": "🧠 軍師（汎用処理・推論）— Command A",              "emoji": "🧠"},
-        {"key": "metsuke",   "name": "🔎 目付（要約・整形・軽量推論）— Mistral Small",   "emoji": "🔎"},
-        {"key": "sanbo",     "name": "📋 参謀（ツール実行・コーディング）— Gemini Flash", "emoji": "📋"},
+        {"key": "sanbo",     "name": "📋 参謀（汎用処理・ツール実行・分析）— Gemini Flash", "emoji": "📋"},
         {"key": "gaiji",     "name": "🌏 外事（外部情報・RAG）— Command R",              "emoji": "🌏"},
         {"key": "uketuke",   "name": "🚪 受付（Q&A・雑談・コード）— Llama 3.3 70B (Groq)", "emoji": "🚪"},
         {"key": "kengyo",    "name": "👁️ 検校（画像解析）— Gemini 3.1 Flash Image",    "emoji": "👁️"},
-        {"key": "yuhitsu",   "name": "✍️ 右筆（日本語処理）— Gemma4 MoE Local",         "emoji": "✍️"},
-        {"key": "onmitsu",   "name": "🥷 隠密（機密データ処理）— Nemotron Local",         "emoji": "🥷"},
+        {"key": "onmitsu",   "name": "🥷 隠密（機密・日本語処理）— Gemma4 Local",          "emoji": "🥷"},
     ]
     return {"models": model_list}
 
@@ -1010,13 +1015,22 @@ async def ws_chat(ws: WebSocket):
     await ws.accept(subprotocol=token)
     if _HAS_PROMETHEUS:
         _active_ws.inc()
-    router = await _get_router()
+    
+    try:
+        router = await _get_router()
+    except Exception as e:
+        logger.error(f"❌ WebSocket router initialization failed: {e}", exc_info=True)
+        await ws.send_json({"type": "error", "message": f"初期化エラー: {str(e)}"})
+        await ws.close(code=1011)
+        return
+
     thread_id = str(uuid.uuid4())[:8]
 
     try:
         while True:
             data = await ws.receive_json()
             msg_type = data.get("type", "message")
+            logger.info("📡 WS Incoming: type=%s, thread_id=%s", msg_type, data.get("thread_id"))
 
             if data.get("thread_id"):
                 thread_id = data["thread_id"]
@@ -1040,6 +1054,7 @@ async def ws_chat(ws: WebSocket):
 
             # ── 通常メッセージ ──────────────────────────────────────
             message  = data.get("message", "")
+            logger.info("💬 Normal Message processing started: %s...", message[:30])
             model    = data.get("model", "auto")
             streaming = data.get("stream", True)  # デフォルトでストリーミング有効
 
@@ -1162,8 +1177,8 @@ async def _send_result(ws: WebSocket, result: dict, thread_id: str, t0: float):
 async def _broadcast_message(ws: WebSocket, router, message: str, thread_id: str, t0: float):
     """全役職に並列送信し、完了した順に WebSocket へ送信する"""
     _all_roles = [
-        "uketuke", "daigensui", "shogun", "gunshi", "sanbo", "gaiji",
-        "metsuke", "kengyo", "yuhitsu", "onmitsu",
+        "uketuke", "daigensui", "shogun", "sanbo", "gaiji",
+        "kengyo", "onmitsu",
     ]
     BROADCAST_ROLES = [r for r in _all_roles if r not in _DISABLED_ROLES]
 
@@ -1811,13 +1826,13 @@ async def maintenance_package_upgrade(req: PackageUpgradeRequest, token: str = D
 
 @app.post("/api/maintenance/packages/suggest-fix")
 async def maintenance_suggest_fix(req: ConflictFixRequest, token: str = Depends(_extract_token)):
-    """依存競合を LLM (Mistral Small) に分析させて解決案を返す"""
+    """依存競合を LLM (Gemini Flash) に分析させて解決案を返す"""
     _check_auth(token)
     if not req.conflicts.strip():
         return JSONResponse({"packages": [], "explanation": "競合なし"})
     try:
         from utils.client_registry import ClientRegistry
-        client = ClientRegistry.get().get_client("metsuke")
+        client = ClientRegistry.get().get_client("sanbo")
         if not client:
             return JSONResponse({"error": "LLMクライアント未初期化"}, status_code=503)
 

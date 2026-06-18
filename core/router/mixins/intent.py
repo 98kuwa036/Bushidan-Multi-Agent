@@ -24,18 +24,30 @@ class IntentMixin:
         "日本語で書いて", "和訳", "添削", "翻訳して", "ビジネスメール", "敬語で",
         "メールを書", "手紙を書", "校正して",
     ])
+    _GO_KWS = frozenset([
+        "go", "実行して", "始めて", "開始して", "プロジェクト開始", "start task", "start project",
+        "はじめて", "進めて", "やって", "お願いします", "スタート", "動かして",
+        "始めよう", "やろう", "進もう", "いいです", "問題ない", "ok", "了解",
+    ])
 
     async def _analyze_intent(self, state: "BushidanState") -> dict:
-        """受付 (Gemini Flash-Lite) でメッセージを分析しルーティング情報を返す。
-
-        処理順:
-        1. ショートカット判定（画像・強制ロール・機密・超短文・日本語文章）
-        2. SemanticRouter（INTERACTIVE モードのみ）
-        3. 長大コンテキスト圧縮
-        4. Gemini Flash-Lite LLM 分析
-        5. キーワードフォールバック
-        """
+        """受付 (Gemini Flash-Lite) でメッセージを分析しルーティング情報を返す。"""
         message = state.get("message", "")
+        msg_lower = message.lower().strip()
+        msg_stripped = message.strip()
+
+        # ── ⓪ Goサイン判定 (Gatekeeper 制御用) ───────────────────────
+        # 新しい話題の検知（暫定：話題が変わったような言葉があれば requirements をリセットするヒント）
+        topic_shift = any(kw in msg_lower for kw in ["別の", "新しい", "他には", "次のは", "関係ないけど"])
+        
+        # AIの忖度を排除し、ユーザーが明示的なキーワードを使った時、または既に準備完了の場合に True にする
+        is_go = any(kw in msg_lower for kw in self._GO_KWS)
+        is_ready = bool(state.get("is_ready_to_go", False)) or is_go
+        
+        # もし話題が変わったなら、古い要件を一部リセットするようにトラッカーへ促す
+        if topic_shift and not is_ready:
+            logger.info("♻️ 話題の転換を検知。要件定義をリフレッシュする準備をします。")
+        
         has_vision = bool(state.get("attachments"))
         forced = state.get("forced_role") or ("kengyo" if has_vision else None)
         mode = ProcessingMode(state.get("processing_mode", ProcessingMode.INTERACTIVE))
@@ -47,6 +59,7 @@ class IntentMixin:
                 "complexity": "medium", "is_multi_step": False, "is_action_task": False,
                 "is_simple_qa": False, "is_japanese_priority": False, "is_confidential": False,
                 "attachments": state.get("attachments", []), "forced_role": "kengyo",
+                "is_ready_to_go": is_ready,
                 "intent_structured": {"intent_type": "image", "domain": "general",
                                       "required_capabilities": ["image"], "user_goal": message[:80]},
             }
@@ -58,6 +71,7 @@ class IntentMixin:
                 "complexity": "medium", "is_multi_step": False, "is_action_task": False,
                 "is_simple_qa": False, "is_japanese_priority": False, "is_confidential": False,
                 "attachments": [], "forced_role": state["forced_role"],
+                "is_ready_to_go": is_ready,
                 "intent_structured": {"intent_type": "task", "domain": "general",
                                       "required_capabilities": [], "user_goal": message[:80]},
             }
@@ -71,7 +85,7 @@ class IntentMixin:
             return {
                 "complexity": "medium", "is_multi_step": False, "is_action_task": False,
                 "is_simple_qa": False, "is_japanese_priority": False, "is_confidential": True,
-                "attachments": [], "forced_role": "onmitsu",
+                "attachments": [], "forced_role": "onmitsu", "is_ready_to_go": is_ready,
                 "intent_structured": {"intent_type": "confidential", "domain": "security",
                                       "required_capabilities": [], "user_goal": message[:80]},
             }
@@ -83,18 +97,18 @@ class IntentMixin:
             return {
                 "complexity": "simple", "is_multi_step": False, "is_action_task": False,
                 "is_simple_qa": not is_greeting, "is_japanese_priority": False, "is_confidential": False,
-                "attachments": [], "forced_role": forced,
+                "attachments": [], "forced_role": forced, "is_ready_to_go": is_ready,
                 "intent_structured": {"intent_type": "qa", "domain": "general",
                                       "required_capabilities": [], "user_goal": msg_stripped},
             }
 
         # 日本語文章作成キーワード → japanese 確定
         if any(kw in msg_stripped for kw in self._JP_WRITING_KWS):
-            logger.info("🚪 [受付] ショートカット: 日本語文章作成 → yuhitsu")
+            logger.info("🚪 [受付] ショートカット: 日本語文章作成 → onmitsu")
             return {
                 "complexity": "medium", "is_multi_step": False, "is_action_task": False,
                 "is_simple_qa": False, "is_japanese_priority": True, "is_confidential": False,
-                "attachments": [], "forced_role": "yuhitsu",
+                "attachments": [], "forced_role": "onmitsu", "is_ready_to_go": is_ready,
                 "intent_structured": {"intent_type": "japanese", "domain": "general",
                                       "required_capabilities": ["japanese"], "user_goal": message[:80]},
             }
@@ -113,9 +127,7 @@ class IntentMixin:
                     if sem_route and sem_score >= CONFIDENT_THRESHOLD:
                         _ROUTE_TO_ROLE = {
                             "groq_qa":       "uketuke",
-                            "yuhitsu_jp":    "yuhitsu",
-                            "metsuke_proc":  "metsuke",
-                            "gunshi_haiku":  "gunshi",
+                            "yuhitsu_jp":    "onmitsu",
                             "gaiji_rag":     "gaiji",
                             "sanbo_mcp":     "sanbo",
                             "kengyo_vision": "kengyo",
@@ -124,7 +136,7 @@ class IntentMixin:
                         }
                         sem_role = _ROUTE_TO_ROLE.get(sem_route)
                         if sem_role:
-                            is_jp  = sem_role == "yuhitsu"
+                            is_jp  = sem_role in ("onmitsu",)
                             is_qa  = sem_role == "uketuke"
                             is_conf = sem_role == "onmitsu"
                             logger.info("🧭 SemanticRouter ショートカット: %s (%.3f) → %s",
@@ -135,6 +147,7 @@ class IntentMixin:
                                 "is_simple_qa": is_qa, "is_japanese_priority": is_jp,
                                 "is_confidential": is_conf,
                                 "attachments": [], "forced_role": forced or sem_role,
+                                "is_ready_to_go": is_ready,
                                 "intent_structured": {
                                     "intent_type": "semantic", "domain": "general",
                                     "required_capabilities": [],
@@ -153,7 +166,7 @@ class IntentMixin:
         if len(history_now) > 12 and (not state.get("context_summary") or len(history_now) > 24):
             try:
                 from utils.client_registry import ClientRegistry
-                _sum_client = ClientRegistry.get().get_client("metsuke")
+                _sum_client = ClientRegistry.get().get_client("uketuke")
                 if _sum_client:
                     _base_summary = state.get("context_summary", "")
                     _old = history_now[:-6]
@@ -267,8 +280,9 @@ class IntentMixin:
                         "required_capabilities": parsed.get("required_capabilities", []),
                         "user_goal":             parsed.get("user_goal", message[:120]),
                     }
-                    logger.info("🚪 [受付] 分析完了: complexity=%s caps=%s",
-                                complexity, intent_structured["required_capabilities"])
+                    is_planning_now = not (complexity == "simple" or intent_structured["intent_type"] in ("qa", "creative"))
+                    logger.info("📊 判定結果: complexity=%s, intent=%s -> %s", 
+                                complexity, intent_structured["intent_type"], "🏯 企画立案" if is_planning_now else "🎈 日常会話")
                     _ret = {
                         "complexity": complexity, "is_multi_step": is_multi,
                         "is_action_task": is_action, "is_simple_qa": is_simple_qa,
@@ -276,6 +290,7 @@ class IntentMixin:
                         "is_correction": is_correction,
                         "attachments": state.get("attachments", []),
                         "forced_role": forced,
+                        "is_ready_to_go": is_ready,
                         "intent_structured": intent_structured,
                     }
                     if _summary_text:
@@ -310,7 +325,8 @@ class IntentMixin:
                            "そうじゃない", "正しくは", "ではないです", "ではなく",
                            "誤りです", "誤っています", "not correct", "incorrect"]
         is_correction = any(kw in message for kw in _CORRECTION_KWS)
-        logger.info("🚪 [受付] フォールバック分析: complexity=%s", complexity)
+        is_planning_now = not (complexity == "simple" or (not is_action and complexity == "simple"))
+        logger.info("📊 フォールバック判定: complexity=%s -> %s", complexity, "🏯 企画立案" if is_planning_now else "🎈 日常会話")
         _ret = {
             "complexity": complexity, "is_multi_step": is_multi,
             "is_action_task": is_action, "is_simple_qa": is_simple_qa,
@@ -318,6 +334,7 @@ class IntentMixin:
             "is_correction": is_correction,
             "attachments": state.get("attachments", []),
             "forced_role": forced,
+            "is_ready_to_go": is_ready,
             "intent_structured": {"intent_type": "general", "domain": "general",
                                   "required_capabilities": [], "user_goal": message[:120]},
         }

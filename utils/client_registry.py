@@ -109,11 +109,13 @@ class _ClaudeAdapter(BaseLLMClient):
     def __init__(self, model: str):
         self._model = model
         self._api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        self.last_backend: str = "unknown"
 
     async def generate(self, messages, system="", max_tokens=4000, **kw):
+        from utils.claude_cli_client import get_last_backend
         if len(messages) > 1:
             from utils.claude_cli_client import call_claude_with_history
-            return await call_claude_with_history(
+            result = await call_claude_with_history(
                 messages=messages, model=self._model,
                 api_key=self._api_key, system=system or None,
                 max_tokens=max_tokens,
@@ -121,11 +123,13 @@ class _ClaudeAdapter(BaseLLMClient):
         else:
             from utils.claude_cli_client import call_claude_with_fallback
             prompt = messages[0]["content"] if messages else ""
-            return await call_claude_with_fallback(
+            result = await call_claude_with_fallback(
                 prompt=prompt, model=self._model,
                 api_key=self._api_key, system=system or None,
                 max_tokens=max_tokens,
             )
+        self.last_backend = get_last_backend()
+        return result
 
 
 class _Gemini3Adapter(BaseLLMClient):
@@ -209,16 +213,13 @@ def _gemini_pro_factory() -> "_Gemini3Adapter":
 _FACTORIES = {
     "uketuke":         lambda: _GroqAdapter(),                                         # 受付+斥候統合: Groq Llama 3.3
     "gaiji":           lambda: _CohereAdapter("command-r-08-2024"),                    # RAG特化: Command R
-    "metsuke":         lambda: _MistralAdapter("mistral-small-latest"),                # 低中難度: Mistral Small
-    "gunshi":          lambda: _CohereAdapter("command-a-03-2025"),                    # 汎用処理: Command A
-    "sanbo":           lambda: _Gemini3Adapter("gemini-3-flash-preview"),              # ツール実行: Gemini Flash
+    "sanbo":           lambda: _Gemini3Adapter("gemini-3-flash-preview"),              # 汎用処理+ツール実行: Gemini Flash (旧軍師・参謀統合)
     "shogun":          lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet
     "daigensui":       lambda: _ClaudeAdapter("claude-opus-4-6"),                      # 最終判断: Opus
     "kengyo":          lambda: _Gemini3Adapter("gemini-3.1-flash-image-preview"),      # 画像解析
-    "yuhitsu":         lambda: _GemmaLocalAdapter(),                                   # 日本語処理: Gemma4 (統合)
-    "onmitsu":         lambda: _NemotronAdapter(),                                     # 機密: Nemotron Local
+    "onmitsu":         lambda: _NemotronAdapter(),                                     # 機密+日本語処理: Gemma4 Local (旧yuhitsu統合)
     "claude_fallback": _gemini_pro_factory,                                            # Claude障害時: Gemini 3.1 Pro (共有)
-    "crosscheck_light":lambda: _CerebrasAdapter("llama3.1-8b"),                        # 軽量クロスチェック: Cerebras Llama3.1-8B
+    "crosscheck_light":lambda: _CerebrasAdapter("gpt-oss-120b"),                       # 軽量クロスチェック: Cerebras 120B
     "crosscheck_heavy":_gemini_pro_factory,                                            # 重量クロスチェック: Gemini 3.1 Pro (共有)
 }
 
@@ -261,42 +262,59 @@ class ClientRegistry:
         return self._clients[role_key]
 
     async def health_check(self, role_key: str) -> bool:
-        """ロールの死活チェック (5分キャッシュ)"""
-        now = time.time()
+        """
+        ロールの死活チェック。
+        バックグラウンドタスクが実行した最新の結果を返す。
+        """
         cached = self._health_cache.get(role_key)
-        if cached and (now - cached[1]) < _HEALTH_TTL:
+        if cached:
             return cached[0]
 
+        # キャッシュがない場合のみ初期化（ただし外部通信は最小限に）
         client = self.get_client(role_key)
         if not client:
-            self._health_cache[role_key] = (False, now)
             return False
 
-        try:
-            result = await client.health_check()
-        except Exception:
-            result = False
-
-        self._health_cache[role_key] = (result, now)
-        return result
+        # ここで外部通信を伴う client.health_check() は呼ばず、
+        # 次のバックグラウンドタスクが回るまで True (楽観) を返して待つ
+        return True
 
     def is_healthy_cached(self, role_key: str) -> bool:
-        """同期キャッシュ読み取り — LangGraph _route_decision() 用。
-        キャッシュが無い場合は True (楽観) を返す。"""
+        """同期キャッシュ読み取り — 外部通信ゼロで即答する"""
         cached = self._health_cache.get(role_key)
         if cached is None:
             return True  # 未チェック = 楽観的に healthy
-        ts = cached[1]
-        if (time.time() - ts) > _HEALTH_TTL:
-            return True  # 期限切れ = 楽観
         return cached[0]
 
+    def force_update_health(self, role_key: str, status: bool) -> None:
+        """バックグラウンドタスク等から健康状態を強制上書きする"""
+        self._health_cache[role_key] = (status, time.time())
+
     async def health_check_all(self) -> Dict[str, bool]:
-        """全ロールの死活チェック"""
-        results = {}
-        for key in _FACTORIES:
-            results[key] = await self.health_check(key)
-        return results
+        """全ロールの死活チェックを【並列】で実行。バックグラウンドタスク用。"""
+        roles = list(_FACTORIES.keys())
+        
+        async def _check_one(rk):
+            client = self.get_client(rk)
+            if not client:
+                return rk, False
+            try:
+                # 実際の外部通信を伴うチェック
+                res = await client.health_check()
+                return rk, res
+            except Exception:
+                return rk, False
+
+        # すべての役職を一斉に診断
+        results = await asyncio.gather(*[_check_one(rk) for rk in roles], return_exceptions=True)
+        
+        final = {}
+        for res in results:
+            if isinstance(res, tuple):
+                rk, status = res
+                self.force_update_health(rk, status)
+                final[rk] = status
+        return final
 
     @property
     def available_roles(self):

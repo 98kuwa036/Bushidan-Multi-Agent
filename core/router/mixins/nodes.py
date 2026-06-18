@@ -26,15 +26,15 @@ class NodesMixin:
 
     # capability → role_key マッピング
     _CAP_TO_ROLE = {
-        "analysis":   "gunshi",
-        "quick_task": "metsuke",
+        "analysis":   "daigensui", # 旧: gunshi → 大元帥(Claude)が分析担当
+        "quick_task": "uketuke",   # 旧: metsuke → 受付(Groq)で高速処理
         "rag":        "gaiji",
         "web_search": "uketuke",
         "code":       "sanbo",
         "tools":      "sanbo",
-        "japanese":   "yuhitsu",
+        "japanese":   "onmitsu",   # 旧: yuhitsu → 隠密(Gemma4 local)に統合
         "image":      "kengyo",
-        "summary":    "metsuke",
+        "summary":    "uketuke",   # 旧: metsuke → 受付(Groq)で高速処理
     }
 
     async def _shogun_plan_node(self, state: "BushidanState") -> dict:
@@ -62,10 +62,10 @@ class NodesMixin:
                 "以下のJSON **のみ** を返してください。余分なテキスト・説明は不要です。\n\n"
                 '{"goal":"ユーザー目標の1文要約","steps":['
                 '{"id":1,"task":"具体的なタスク説明","capability":"analysis|rag|web_search|code|tools|japanese|image|quick_task",'
-                '"assigned_role":"gunshi|metsuke|gaiji|uketuke|sanbo|yuhitsu|kengyo","can_parallel":false,"status":"pending"}],'
+                '"assigned_role":"daigensui|uketuke|gaiji|uketuke|sanbo|onmitsu|kengyo","can_parallel":false,"status":"pending"}],'
                 '"needs_audit":false}\n\n'
-                "capability → assigned_role: analysis→gunshi, quick_task→metsuke, rag→gaiji, "
-                "web_search→uketuke, code→sanbo, tools→sanbo, japanese→yuhitsu, image→kengyo\n"
+                "capability → assigned_role: analysis→daigensui, quick_task→uketuke, rag→gaiji, "
+                "web_search→uketuke, code→sanbo, tools→sanbo, japanese→onmitsu, image→kengyo\n"
                 "needs_audit: 最高難度・重大な意思決定・本番デプロイ関連の場合 true\n"
                 "can_parallel: 前ステップの結果に依存しない独立したタスクの場合 true\n"
             )
@@ -112,7 +112,7 @@ class NodesMixin:
             "roadmap": {
                 "goal": message[:100],
                 "steps": [{"id": 1, "task": message, "capability": "analysis",
-                           "assigned_role": "gunshi", "status": "pending", "result": ""}],
+                           "assigned_role": "daigensui", "status": "pending", "result": ""}],
                 "needs_audit": False,
             },
             "roadmap_step": 0, "roadmap_results": [], "needs_audit": False,
@@ -154,8 +154,8 @@ class NodesMixin:
             capability = s.get("capability", "analysis")
             assigned   = s.get("assigned_role", "")
             task_desc  = s.get("task", "")
-            role_key   = assigned if assigned in self._roles else self._CAP_TO_ROLE.get(capability, "gunshi")
-            role       = self._roles.get(role_key) or self._roles.get("gunshi")
+            role_key   = assigned if assigned in self._roles else self._CAP_TO_ROLE.get(capability, "daigensui")
+            role       = self._roles.get(role_key) or self._roles.get("daigensui")
             sub_state  = {
                 **state,
                 "message":            task_desc,
@@ -221,7 +221,7 @@ class NodesMixin:
                     err_res = RoleResult(response=f"❌ エラー: {raw}", agent_role="unknown",
                                          handled_by="execute_step", error=str(raw), status="failed")
                     _role_key = (s.get("assigned_role")
-                                 or self._CAP_TO_ROLE.get(s.get("capability", ""), "gunshi"))
+                                 or self._CAP_TO_ROLE.get(s.get("capability", ""), "daigensui"))
                     batch_results.append((_role_key, s.get("capability", ""),
                                           s.get("task", ""), err_res, step_idx + ri))
                 else:
@@ -439,7 +439,7 @@ class NodesMixin:
         anth_requests = []
         for i, s in enumerate(batch_steps):
             capability = s.get("capability", "analysis")
-            role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
+            role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "daigensui")
             task_desc  = s.get("task", "")
             msgs_content = task_desc
             if prev_ctx:
@@ -463,8 +463,8 @@ class NodesMixin:
 
             async def _fb_run(s: dict, idx: int):
                 capability = s.get("capability", "analysis")
-                role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
-                role       = self._roles.get(role_key) or self._roles.get("gunshi")
+                role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "daigensui")
+                role       = self._roles.get(role_key) or self._roles.get("daigensui")
                 sub_state  = {
                     **state,
                     "message":            s.get("task", ""),
@@ -492,7 +492,7 @@ class NodesMixin:
             return [
                 r if not isinstance(r, BaseException)
                 else ((batch_steps[ri].get("assigned_role")
-                       or self._CAP_TO_ROLE.get(batch_steps[ri].get("capability", ""), "gunshi")),
+                       or self._CAP_TO_ROLE.get(batch_steps[ri].get("capability", ""), "daigensui")),
                       batch_steps[ri].get("capability", ""),
                       batch_steps[ri].get("task", ""),
                       RoleResult(response=f"❌ {r}", agent_role="unknown",
@@ -506,7 +506,7 @@ class NodesMixin:
         for i, s in enumerate(batch_steps):
             cid        = f"step_{step_idx + i}"
             capability = s.get("capability", "analysis")
-            role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
+            role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "daigensui")
             task_desc  = s.get("task", "")
             _text, _err = results_map.get(cid, ("", "結果なし"))
             fake_result = RoleResult(
@@ -554,8 +554,8 @@ class NodesMixin:
         if other_steps:
             async def _run(idx: int, s: dict):
                 capability = s.get("capability", "analysis")
-                role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "gunshi")
-                role       = self._roles.get(role_key) or self._roles.get("gunshi")
+                role_key   = s.get("assigned_role") or self._CAP_TO_ROLE.get(capability, "daigensui")
+                role       = self._roles.get(role_key) or self._roles.get("daigensui")
                 sub_state  = {
                     **state,
                     "message":            s.get("task", ""),
@@ -628,7 +628,7 @@ class NodesMixin:
                 # フォールバック
                 async def _run_anth(idx: int, s: dict):
                     rk   = s.get("assigned_role") or self._CAP_TO_ROLE.get(s.get("capability", ""), "shogun")
-                    role = self._roles.get(rk) or self._roles.get("gunshi")
+                    role = self._roles.get(rk) or self._roles.get("daigensui")
                     sub  = {
                         **state,
                         "message":            s.get("task", ""),
@@ -665,7 +665,7 @@ class NodesMixin:
             # Batch API 無効: asyncio.gather
             async def _run_anth_direct(idx: int, s: dict):
                 rk   = s.get("assigned_role") or self._CAP_TO_ROLE.get(s.get("capability", ""), "shogun")
-                role = self._roles.get(rk) or self._roles.get("gunshi")
+                role = self._roles.get(rk) or self._roles.get("daigensui")
                 sub  = {
                     **state,
                     "message":            s.get("task", ""),

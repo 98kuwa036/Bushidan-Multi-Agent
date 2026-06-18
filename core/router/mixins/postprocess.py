@@ -44,8 +44,15 @@ class PostprocessMixin:
 
         return updates
 
-    def _followup_decision(self, state: "BushidanState") -> Literal["human", "loop", "done"]:
-        """BATCH モードでは "human" を "done" に変換する（ユーザー待機なし）。"""
+    def _followup_decision(self, state: "BushidanState") -> Literal["human", "loop", "done", "fast_done"]:
+        """BATCH モードでは "human" を "done" に変換する。
+        また、Go サイン前（Phase 0）は、如何なる場合も自律ループを行わず即座に回答し、
+        さらにクロスチェックもスキップする。
+        """
+        if not state.get("is_ready_to_go", False):
+            logger.debug("🚪 Gatekeeper Phase 0: Skipping crosscheck for speed.")
+            return "fast_done"
+
         mode = ProcessingMode(state.get("processing_mode", ProcessingMode.INTERACTIVE))
 
         if state.get("awaiting_human_input", False):

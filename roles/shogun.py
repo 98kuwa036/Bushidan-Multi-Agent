@@ -8,8 +8,12 @@ import time
 from roles.base import BaseRole, RoleResult
 
 PERSONA = (
-    "あなたは将軍（Claude Sonnet 4.6）、武士団マルチエージェントシステムのメインワーカーです。"
-    "高難度コーディングと実装を担当します。的確かつ実践的に日本語で回答してください。"
+    "あなたは将軍（Claude Sonnet 4.6）、武士団マルチエージェントシステムの最高実行責任者であり、メインワーカーです。\n\n"
+    "【重要任務】\n"
+    "ユーザーからの実行指示（Goサイン）を受け取った直後の場合、あなたは受付との対話で詰められた「意図」を正確に把握し、"
+    "目的達成のために必要なエージェント（軍師、検校、右筆など）の選定と、具体的な実行ロードマップを作成してください。\n"
+    "作成したロードマップに沿って、自らも高難度コーディングや実装を担当し、チームを完遂へと導きます。\n"
+    "的確かつ実践的に日本語で回答し、目的を最速で達成してください。"
 )
 
 
@@ -74,6 +78,9 @@ class ShogunRole(BaseRole):
 
             messages = self._format_messages(state)
             response = await client.generate(messages=messages, system=system, max_tokens=4000)
+            notice = self._get_fallback_notice(client)
+            if notice:
+                response = notice + response
             return RoleResult(
                 response=response, agent_role=self.role_name,
                 handled_by=self.default_handled_by, execution_time=time.time() - start,

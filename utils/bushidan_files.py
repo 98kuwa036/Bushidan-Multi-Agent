@@ -22,11 +22,18 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-BUSHIDAN_DIR = Path("/home/claude/Bushidan")
+# 許可されたルートディレクトリ (セキュリティ制限)
+ALLOWED_ROOTS = [
+    Path("/mnt/Bushidan-Multi-Agent"),
+    Path("/mnt/Bushidan"),
+]
+
+# デフォルトの参照・保存先
+BUSHIDAN_DIR = Path("/mnt/Bushidan")
 
 # メッセージ内のファイル参照パターン
 _PATH_PATTERNS = [
-    re.compile(r'/home/claude/Bushidan/[\w\-./]+'),
+    re.compile(r'/mnt/Bushidan/[\w\-./]+'),
     re.compile(r'~/Bushidan/[\w\-./]+'),
     re.compile(r'\bBushidan/[\w\-./]+'),
     re.compile(r'(?:ファイル|file|参照|read)[:\s]+([^\s,\n「」【】]+)', re.IGNORECASE),
@@ -41,21 +48,22 @@ _WRITE_PATTERN = re.compile(
 
 
 def _safe_resolve(path_str: str) -> Optional[Path]:
-    """パスを安全に解決。Bushidan外はNoneを返す。"""
+    """パスを安全に解決。許可されたルート外はNoneを返す。"""
     path_str = path_str.strip().strip("「」【】")
-    path_str = path_str.replace("~/Bushidan", str(BUSHIDAN_DIR))
+    path_str = path_str.replace("~/Bushidan", "/mnt/Bushidan")
     path_str = path_str.replace("~", str(Path.home()))
 
-    # "Bushidan/xxx" 形式 → BUSHIDAN_DIR/xxx として解釈
-    if path_str.startswith("Bushidan/"):
-        path_str = str(BUSHIDAN_DIR / path_str[len("Bushidan/"):])
-
-    candidates = [Path(path_str), BUSHIDAN_DIR / path_str]
+    candidates = [
+        Path(path_str),
+        BUSHIDAN_DIR / path_str,
+        Path("/mnt/Bushidan-Multi-Agent") / path_str,
+    ]
     for candidate in candidates:
         try:
             resolved = candidate.resolve()
-            if str(resolved).startswith(str(BUSHIDAN_DIR) + "/") or resolved == BUSHIDAN_DIR:
-                return resolved
+            for root in ALLOWED_ROOTS:
+                if str(resolved).startswith(str(root) + "/") or resolved == root:
+                    return resolved
         except Exception:
             continue
     return None
@@ -128,7 +136,7 @@ def get_directory_listing(max_depth: int = 3, max_files: int = 60) -> str:
     if not lines:
         return ""
 
-    return "📁 /home/claude/Bushidan/\n" + "\n".join(lines)
+    return "📁 /mnt/Bushidan/\n" + "\n".join(lines)
 
 
 # ─── 書き込み ─────────────────────────────────────────────────────────────
@@ -210,7 +218,7 @@ def build_file_context(message: str) -> str:
     if listing:
         parts.append(f"【Bushidan共有ファイル領域】\n{listing}\n\n{_WRITE_INSTRUCTION}")
     else:
-        parts.append(f"【Bushidan共有ファイル領域】\n📁 /home/claude/Bushidan/ (現在空)\n\n{_WRITE_INSTRUCTION}")
+        parts.append(f"【Bushidan共有ファイル領域】\n📁 /mnt/Bushidan/ (現在空)\n\n{_WRITE_INSTRUCTION}")
 
     # 明示的に参照されたファイルの内容を注入
     if refs:

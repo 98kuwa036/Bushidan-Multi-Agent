@@ -121,3 +121,5 @@ class BushidanState(TypedDict):
     # "batch":       非同期・コスト効率優先（スキル進化分析・監査ログ等）
     processing_mode: NotRequired[str]
     batch_job_id: NotRequired[Optional[str]]
+    is_ready_to_go: NotRequired[bool]  # ユーザーからの Go サイン済みフラグ
+    requirements: NotRequired[dict]    # 7つの重要質問の回答状況

@@ -138,9 +138,7 @@ class MessagingMixin:
                     if _sem_route and _sem_score >= CONFIDENT_THRESHOLD:
                         _ROUTE_MAP = {
                             "groq_qa":       "uketuke",
-                            "yuhitsu_jp":    "yuhitsu",
-                            "metsuke_proc":  "metsuke",
-                            "gunshi_haiku":  "gunshi",
+                            "yuhitsu_jp":    "onmitsu",
                             "gaiji_rag":     "gaiji",
                             "sanbo_mcp":     "sanbo",
                             "kengyo_vision": "kengyo",

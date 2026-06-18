@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """
 local_llm_server.py — ローカルLLMサーバー v18
-192.168.11.239 で稼働。Gemma4 MoE（常時）と Nemotron（排他）を管理。
+192.168.11.12 (Windowsホスト portproxy経由) で稼働。Gemma4 MoE（常時）と Nemotron（排他）を管理。
 
 起動:
   python local_llm_server.py
 
 環境変数:
-  LOCAL_LLM_PORT:      ポート番号 (デフォルト: 8082)
-  GEMMA_MODEL_PATH:    Gemma4 MoE GGUFパス
-  NEMOTRON_MODEL_PATH: Nemotron GGUFパス
-  LLM_N_GPU_LAYERS:    GPU レイヤー数 (デフォルト: 0 = CPU専用)
-  LLM_N_THREADS:       CPUスレッド数 (デフォルト: 6 = i5-8500 物理コア数)
-  LLM_N_CTX:           コンテキスト長 (デフォルト: 2048)
+  LOCAL_LLM_PORT:        ポート番号 (デフォルト: 8082)
+  GEMMA_MODEL_PATH:      Gemma4 MoE GGUFパス
+  GEMMA_MMPROJ_PATH:     Gemma4 マルチモーダルプロジェクターパス (vision対応)
+  NEMOTRON_MODEL_PATH:   Nemotron GGUFパス
+  LLM_N_GPU_LAYERS:      GPU レイヤー数 (デフォルト: 0 = CPU専用)
+  LLM_N_THREADS:         CPUスレッド数 (デフォルト: 12 = Hyper-V VM 割り当て)
+  LLM_N_CTX:             コンテキスト長 (デフォルト: 4096)
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ from typing import Optional
 import secrets
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import FastAPI, HTTPException, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -42,8 +43,8 @@ logger = logging.getLogger("local_llm_server")
 
 PORT         = int(os.environ.get("LOCAL_LLM_PORT", "8082"))
 N_GPU_LAYERS = int(os.environ.get("LLM_N_GPU_LAYERS", "0"))   # CPU専用
-N_THREADS    = int(os.environ.get("LLM_N_THREADS", "6"))       # i5-8500: 6物理コア
-N_CTX        = int(os.environ.get("LLM_N_CTX", "2048"))
+N_THREADS    = int(os.environ.get("LLM_N_THREADS", "12"))      # Hyper-V VM: 12コア割り当て
+N_CTX        = int(os.environ.get("LLM_N_CTX", "4096"))  # landscape prompt ~1931 tokens + 900 output
 
 # API キー認証 (未設定時は認証スキップ、設定時は X-API-Key ヘッダー必須)
 _API_KEY = os.environ.get("LLM_API_KEY", "")
@@ -63,6 +64,12 @@ GEMMA_PATH = os.environ.get(
     os.path.expanduser(
         "~/Bushidan-Multi-Agent/models/grapeV-ai/"
         "gemma-4-26B-A4B-it-MXFP4_MOE.gguf"
+    ),
+)
+GEMMA_MMPROJ_PATH = os.environ.get(
+    "GEMMA_MMPROJ_PATH",
+    os.path.expanduser(
+        "~/Bushidan-Multi-Agent/models/grapeV-ai/mmproj-gemma4-F16.gguf"
     ),
 )
 NEMOTRON_PATH = os.environ.get(
@@ -108,12 +115,20 @@ app.add_middleware(
 
 # ── リクエストスキーマ ────────────────────────────────────────────────────
 
+class Message(BaseModel):
+    role: str   # "user" | "assistant" | "system"
+    content: str
+
 class GenerateRequest(BaseModel):
     prompt: str
     max_tokens: int = 512
     temperature: float = 0.7
     top_p: float = 0.9
     system: str = ""
+    images: list[str] = []           # base64エンコード済み画像 (vision)
+    thinking_budget: int = -1        # -1=無制限 / 0=thinking無効 / N=Nトークン上限
+    preserve_thinking: bool = False  # multi-turn で thinking ブロックを履歴に保持
+    history: list[Message] = []      # 会話履歴 (multi-turn)
 
 class StructuredRequest(BaseModel):
     prompt: str
@@ -127,14 +142,6 @@ class SwitchResponse(BaseModel):
     message: str
 
 # ── ヘルパー ──────────────────────────────────────────────────────────────
-
-import re as _re
-# Gemma 4 の内部思考トークンをレスポンスから除去
-_THINKING_PAT = _re.compile(r'<\|channel\>.*?<channel\|>', _re.DOTALL)
-
-def _strip_thinking(text: str) -> str:
-    """Gemma 4 の <|channel>thought...<channel|> タグを除去"""
-    return _THINKING_PAT.sub('', text).strip()
 
 def _free_memory() -> None:
     gc.collect()
@@ -150,19 +157,33 @@ async def _load_gemma() -> bool:
 
     try:
         from llama_cpp import Llama
+        from llama_cpp.llama_chat_format import Gemma4ChatHandler
         logger.info("🎌 Loading Gemma4 MoE: %s", GEMMA_PATH)
+        mmproj_exists = Path(GEMMA_MMPROJ_PATH).exists()
+        # TAO71-AI fork: enable_thinking=True でthinkingブロックを有効化
+        # thinking_budget はリクエスト単位で制御するためここではenable_thinking=True固定
+        if mmproj_exists:
+            logger.info("👁️  Vision enabled: %s", GEMMA_MMPROJ_PATH)
+            chat_handler = Gemma4ChatHandler(
+                clip_model_path=GEMMA_MMPROJ_PATH,
+                enable_thinking=True,
+            )
+        else:
+            logger.warning("⚠️  mmproj not found, vision disabled: %s", GEMMA_MMPROJ_PATH)
+            chat_handler = Gemma4ChatHandler(enable_thinking=True)
         t0 = time.time()
         loop = asyncio.get_running_loop()
-        _gemma_model = await loop.run_in_executor(None, lambda: Llama(
+        kwargs: dict = dict(
             model_path=GEMMA_PATH,
             n_gpu_layers=N_GPU_LAYERS,
             n_ctx=N_CTX,
             n_threads=N_THREADS,
             n_batch=512,
             use_mlock=True,
-            chat_format="gemma",
             verbose=False,
-        ))
+        )
+        kwargs["chat_handler"] = chat_handler
+        _gemma_model = await loop.run_in_executor(None, lambda: Llama(**kwargs))
         _active_model = "gemma"
         logger.info("✅ Gemma4 MoE ready (%.1fs)", time.time() - t0)
         return True
@@ -261,28 +282,72 @@ async def generate_gemma(req: GenerateRequest, _: None = _auth):
                 raise HTTPException(503, "Gemma4 unavailable")
         try:
             t0 = time.time()
-            messages = []
+
+            # thinking_budget → enable_thinking / effective_max_tokens を決定
+            #   budget= 0: thinking無効（/nothink）
+            #   budget= N: thinking最大Nトークン + 出力トークン
+            #   budget=-1: 無制限（出力の4倍をthinking用に確保）
+            enable_thinking = req.thinking_budget != 0
+            if req.thinking_budget == 0:
+                effective_max_tokens = req.max_tokens
+            elif req.thinking_budget > 0:
+                effective_max_tokens = req.thinking_budget + req.max_tokens
+            else:  # -1: 無制限 → 出力の4倍をthinking用に確保
+                effective_max_tokens = min(req.max_tokens * 5, N_CTX // 2)
+
+            # TAO71-AI Gemma4ChatHandler の enable_thinking を動的に切り替え
+            if hasattr(_gemma_model, "chat_handler") and _gemma_model.chat_handler is not None:
+                _gemma_model.chat_handler.enable_thinking = enable_thinking
+                _gemma_model.chat_handler.extra_template_arguments["enable_thinking"] = enable_thinking
+
+            messages: list = []
             if req.system:
                 messages.append({"role": "system", "content": req.system})
-            messages.append({"role": "user", "content": req.prompt})
+            # 会話履歴をそのまま追加
+            for h in req.history:
+                messages.append({"role": h.role, "content": h.content})
+            if req.images:
+                content: list = [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img}"}}
+                    for img in req.images
+                ]
+                content.append({"type": "text", "text": req.prompt})
+                messages.append({"role": "user", "content": content})
+            else:
+                messages.append({"role": "user", "content": req.prompt})
+
             loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(None, lambda: _gemma_model.create_chat_completion(
                 messages=messages,
-                max_tokens=req.max_tokens,
+                max_tokens=effective_max_tokens,
                 temperature=req.temperature,
                 top_p=req.top_p,
             ))
             choices = result.get("choices", [])
-            text = _strip_thinking(choices[0]["message"]["content"] if choices else "")
+            raw = (choices[0]["message"]["content"] if choices else "").strip()
+
+            # thinking ブロックを分離: <|channel>thought\n...<channel|> を抽出
+            thinking_text = ""
+            content_text = raw
+            import re as _re
+            m = _re.search(r"<\|channel>thought\n(.*?)<channel\|>(.*)", raw, _re.DOTALL)
+            if m:
+                thinking_text = m.group(1).strip()
+                content_text = m.group(2).strip()
+
             elapsed_ms = (time.time() - t0) * 1000
             tokens = result.get("usage", {}).get("completion_tokens", 0)
-            return {
-                "content": text,
+            resp = {
+                "content": content_text,
                 "model": "gemma4-26b-moe",
                 "elapsed_ms": round(elapsed_ms),
                 "tokens": tokens,
                 "tok_per_sec": round(tokens / (elapsed_ms / 1000), 1) if elapsed_ms > 0 else 0,
+                "thinking_budget": req.thinking_budget,
             }
+            if thinking_text:
+                resp["thinking"] = thinking_text
+            return resp
         except Exception as e:
             logger.error("Gemma4 generation failed: %s", e)
             raise HTTPException(500, str(e))
@@ -405,7 +470,7 @@ async def benchmark(_: None = _auth):
             ))
             elapsed_ms = (time.time() - t0) * 1000
             choices = result.get("choices", [])
-            text = _strip_thinking(choices[0]["message"]["content"] if choices else "")
+            text = (choices[0]["message"]["content"] if choices else "").strip()
             tokens = result.get("usage", {}).get("completion_tokens", 0)
             return {
                 "elapsed_ms": round(elapsed_ms),

@@ -281,7 +281,7 @@ async def _apply_proposal(ptype: str, target: str, proposed) -> str:
                     skill_name_db, typical_role, kw_json = row
 
             skill_name = skill_name_db or f"自動スキル_{target[:8]}"
-            route_hint = typical_role or "gunshi"
+            route_hint = typical_role or "daigensui"
 
             from utils.skill_tracker import approve_proposal
             result = await approve_proposal(

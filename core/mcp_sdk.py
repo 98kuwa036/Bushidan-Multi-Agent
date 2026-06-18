@@ -31,45 +31,17 @@ def build_mcp_server_configs() -> Dict[str, dict]:
     """
     MCP サーバー接続設定を構築する。
 
-    stdio (npx):    memory / sequential_thinking / filesystem / web_search / playwright
-    stdio (python): git  — /home/claude/mcp-git-venv/bin/python -m mcp_server_git
+    stdio (npx):    sequential_thinking / playwright
     stdio (binary): github — /home/claude/bin/github-mcp-server stdio
     """
-    tavily_key  = os.environ.get("TAVILY_API_KEY", "")
     github_token = os.environ.get("GITHUB_TOKEN", os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN", ""))
     configs: Dict[str, dict] = {}
-
-    # ── Memory ────────────────────────────────────────────────────────────
-    configs["memory"] = {
-        "transport": "stdio",
-        "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-memory"],
-    }
 
     # ── Sequential Thinking ───────────────────────────────────────────────
     configs["sequential_thinking"] = {
         "transport": "stdio",
         "command": "npx",
         "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-    }
-
-    # ── Filesystem ────────────────────────────────────────────────────────
-    configs["filesystem"] = {
-        "transport": "stdio",
-        "command": "npx",
-        "args": [
-            "-y", "@modelcontextprotocol/server-filesystem",
-            "/mnt/Bushidan-Multi-Agent",
-            "/mnt/Bushidan",
-        ],
-    }
-
-    # ── Git (ローカルリポジトリ操作) ─────────────────────────────────────
-    # mcp-server-git: /home/claude/mcp-git-venv に独立インストール
-    configs["git"] = {
-        "transport": "stdio",
-        "command": "/home/claude/mcp-git-venv/bin/python",
-        "args": ["-m", "mcp_server_git", "--repository", "/mnt/Bushidan-Multi-Agent"],
     }
 
     # ── GitHub (リモートリポジトリ / PR / Issue / clone / push) ──────────
@@ -82,14 +54,16 @@ def build_mcp_server_configs() -> Dict[str, dict]:
             "env": {"GITHUB_PERSONAL_ACCESS_TOKEN": github_token},
         }
 
-    # ── Tavily Web 検索 ───────────────────────────────────────────────────
-    if tavily_key:
-        configs["web_search"] = {
-            "transport": "stdio",
-            "command": "npx",
-            "args": ["-y", "tavily-mcp"],
-            "env": {"TAVILY_API_KEY": tavily_key},
-        }
+    # ── Filesystem (/mnt/Bushidan フルアクセス + /mnt/Bushidan-Multi-Agent 参照) ──
+    configs["filesystem"] = {
+        "transport": "stdio",
+        "command": "npx",
+        "args": [
+            "-y", "@modelcontextprotocol/server-filesystem",
+            "/mnt/Bushidan",
+            "/mnt/Bushidan-Multi-Agent",
+        ],
+    }
 
     # ── Playwright (ブラウザ自動化 / kengyo 用) ───────────────────────────
     configs["playwright"] = {
@@ -123,15 +97,13 @@ class MCPToolRegistry:
 
         # ロール → 使用可能MCPサーバーのマッピング
         self._role_servers: Dict[str, List[str]] = {
-            "daigensui": ["memory", "sequential_thinking", "filesystem", "git", "github"],
-            "shogun":    ["memory", "filesystem", "git", "github"],
-            "gunshi":    ["sequential_thinking", "memory"],
-            "sanbo":     ["filesystem", "git", "github", "web_search"],
-            "gaiji":     ["web_search"],
+            "daigensui": ["sequential_thinking", "filesystem", "github"],
+            "shogun":    ["filesystem", "github"],
+            "sanbo":     ["filesystem", "github"],
+            "gaiji":     [],
             "kengyo":    ["playwright", "filesystem"],
-            "uketuke":   ["web_search"],
-            "yuhitsu":   [],
-            "onmitsu":   ["filesystem", "git"],
+            "uketuke":   [],
+            "onmitsu":   ["filesystem"],
         }
 
     @classmethod

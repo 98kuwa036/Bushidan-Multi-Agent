@@ -91,6 +91,12 @@ class BaseRole(ABC):
         # 認識論的謙虚さを全ロールに注入
         prompt += _EPISTEMIC_HUMILITY
 
+        # Bushidan 共有ファイル領域のコンテキスト注入 (v18 ネイティブ移行版)
+        from utils.bushidan_files import build_file_context
+        file_ctx = build_file_context(state.get("message", ""))
+        if file_ctx:
+            prompt += f"\n\n{file_ctx}"
+
         # 訂正モード: ユーザーが前の回答の誤りを指摘した場合の追加指示
         if state.get("is_correction"):
             prompt += (
@@ -166,6 +172,22 @@ class BaseRole(ABC):
             self.logger.warning("Bushidanファイル保存失敗: %s", e)
             return []
 
+    def _get_fallback_notice(self, client) -> str:
+        """フォールバック使用時のユーザー向け通知を返す。プライマリ (Pro CLI) 使用時は空文字。"""
+        backend = getattr(client, "last_backend", None)
+        if not backend or backend in ("remote_claude_cli", "local_claude_cli", "unknown"):
+            return ""
+        _LABELS = {
+            "anthropic_api": "Anthropic API (有料フォールバック)",
+            "gemini":        "Gemini 3.1 Pro (Claude障害時代替)",
+            "bedrock":       "AWS Bedrock Claude (Claude障害時代替)",
+        }
+        label = _LABELS.get(backend, backend)
+        return (
+            f"> ⚠️ **[フォールバック通知]** Claude Pro CLI が一時的に利用できないため、"
+            f"**{label}** が代替対応しています。\n\n---\n\n"
+        )
+
     def _needs_followup(self, response: str, state: dict) -> bool:
         """
         応答がフォローアップを必要とするか判定する。
@@ -208,55 +230,26 @@ class BaseRole(ABC):
         return any(kw in message for kw in self._SEARCH_TRIGGERS)
 
     async def _mcp_search(self, query: str, max_results: int = 3) -> str:
-        """Tavily Web検索。結果をテキストで返す。失敗時は空文字。"""
+        """Web 検索を実行。失敗時は空文字。 (v18 ネイティブ版)"""
         try:
-            result = await self._call_mcp_tool("tavily_search", {
-                "query": query, "max_results": max_results,
-            })
-            if not result:
-                return ""
-            if isinstance(result, str):
-                return result[:2000]
-            if isinstance(result, list):
-                parts = []
-                for item in result[:max_results]:
-                    if isinstance(item, dict):
-                        title   = item.get("title", "")
-                        url     = item.get("url", "")
-                        content = item.get("content", item.get("snippet", ""))[:400]
-                        parts.append(f"• {title}\n  {url}\n  {content}")
-                    else:
-                        parts.append(str(item)[:200])
-                return "\n\n".join(parts)
-            # ContentBlock (LangChain ToolMessage) の場合
-            if hasattr(result, "content"):
-                return str(result.content)[:2000]
-            return str(result)[:2000]
+            from utils.web_search import search_web
+            return await search_web(query, max_results=max_results)
         except Exception as e:
             self.logger.debug("Web検索失敗 (スキップ): %s", e)
             return ""
 
     async def _mcp_read_memory(self) -> str:
-        """ナレッジグラフ全体を読んでコンテキスト文字列を返す。30秒TTLキャッシュ付き。"""
-        global _GRAPH_CACHE, _GRAPH_CACHE_AT
-        now = time.monotonic()
-        if _GRAPH_CACHE is not None and (now - _GRAPH_CACHE_AT) < _GRAPH_CACHE_TTL:
-            return _GRAPH_CACHE
+        """ナレッジグラフ全体を読んでコンテキスト文字列を返す。"""
         try:
-            result = await self._call_mcp_tool("read_graph", {})
-            if not result:
-                return ""
-            text = result.content if hasattr(result, "content") else str(result)
-            text = text[:1500]
-            _GRAPH_CACHE = text
-            _GRAPH_CACHE_AT = now
-            return text
+            from utils.memory_utils import read_graph
+            return read_graph()
         except Exception as e:
             self.logger.debug("メモリ読み込み失敗 (スキップ): %s", e)
             return ""
 
     async def _mcp_think(self, thought: str) -> str:
         """Sequential thinking で問題を1ステップ分析。結果文字列を返す。"""
+        # sequential_thinking は LLM への指示として統合されているため、ここでは MCP を呼び出す
         try:
             result = await self._call_mcp_tool("sequentialthinking", {
                 "thought": thought[:800],
@@ -275,33 +268,11 @@ class BaseRole(ABC):
             self.logger.debug("Sequential thinking 失敗 (スキップ): %s", e)
             return ""
 
-    async def _mcp_read_file(self, path: str) -> str:
-        """ファイルを読んで内容を返す。失敗時は空文字。"""
-        try:
-            result = await self._call_mcp_tool("read_file", {"path": path})
-            if not result:
-                return ""
-            text = result.content if hasattr(result, "content") else str(result)
-            return text[:2000]
-        except Exception as e:
-            self.logger.debug("ファイル読み込み失敗 %s (スキップ): %s", path, e)
-            return ""
-
-    async def _mcp_write_file(self, path: str, content: str) -> bool:
-        """ファイルを書き込む。成功なら True。"""
-        try:
-            await self._call_mcp_tool("write_file", {"path": path, "content": content})
-            return True
-        except Exception as e:
-            self.logger.debug("ファイル書き込み失敗 %s: %s", path, e)
-            return False
-
     async def _mcp_git_status(self) -> str:
         """git status を取得。失敗時は空文字。"""
         try:
-            result = await self._call_mcp_tool("git_status", {"repo_path": "/mnt/Bushidan-Multi-Agent"})
-            text = result.content if hasattr(result, "content") else str(result)
-            return text[:1500] if result else ""
+            from utils.git_utils import get_git_status
+            return get_git_status()
         except Exception as e:
             self.logger.debug("git_status 失敗 (スキップ): %s", e)
             return ""
@@ -309,12 +280,8 @@ class BaseRole(ABC):
     async def _mcp_git_log(self, max_count: int = 5) -> str:
         """git log を取得。失敗時は空文字。"""
         try:
-            result = await self._call_mcp_tool("git_log", {
-                "repo_path": "/mnt/Bushidan-Multi-Agent",
-                "max_count": max_count,
-            })
-            text = result.content if hasattr(result, "content") else str(result)
-            return text[:1500] if result else ""
+            from utils.git_utils import get_git_log
+            return get_git_log(max_count)
         except Exception as e:
             self.logger.debug("git_log 失敗 (スキップ): %s", e)
             return ""
@@ -322,12 +289,73 @@ class BaseRole(ABC):
     async def _mcp_git_diff(self) -> str:
         """git diff (staged + unstaged) を取得。失敗時は空文字。"""
         try:
-            result = await self._call_mcp_tool("git_diff_unstaged", {"repo_path": "/mnt/Bushidan-Multi-Agent"})
-            text = result.content if hasattr(result, "content") else str(result)
-            return text[:2000] if result else ""
+            from utils.git_utils import get_git_diff
+            return get_git_diff()
         except Exception as e:
             self.logger.debug("git_diff 失敗 (スキップ): %s", e)
             return ""
+
+    async def _mcp_gh_issue(self, owner: str, repo: str, issue_number: int) -> str:
+        """GitHub issue の内容を取得。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("get_issue", {
+                "owner": owner, "repo": repo, "issue_number": issue_number,
+            })
+            if not result:
+                return ""
+            if isinstance(result, dict):
+                title = result.get("title", "")
+                body = result.get("body", "")
+                state = result.get("state", "")
+                return f"Issue #{issue_number} [{state}]: {title}\n\n{body}"
+            return str(result)[:3000]
+        except Exception as e:
+            self.logger.debug("gh issue 取得失敗 (スキップ): %s", e)
+            return ""
+
+    async def _mcp_gh_list_issues(self, owner: str, repo: str, state: str = "open") -> str:
+        """GitHub issue 一覧を取得。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("list_issues", {
+                "owner": owner, "repo": repo, "state": state,
+            })
+            if not result:
+                return ""
+            if isinstance(result, list):
+                lines = [f"#{i.get('number')} [{i.get('state')}] {i.get('title')}" for i in result[:10]]
+                return "\n".join(lines)
+            return str(result)[:2000]
+        except Exception as e:
+            self.logger.debug("gh issue 一覧取得失敗 (スキップ): %s", e)
+            return ""
+
+    async def _mcp_gh_pr_list(self, owner: str, repo: str, state: str = "open") -> str:
+        """GitHub PR 一覧を取得。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("list_pull_requests", {
+                "owner": owner, "repo": repo, "state": state,
+            })
+            if not result:
+                return ""
+            if isinstance(result, list):
+                lines = [f"PR#{i.get('number')} [{i.get('state')}] {i.get('title')}" for i in result[:10]]
+                return "\n".join(lines)
+            return str(result)[:2000]
+        except Exception as e:
+            self.logger.debug("gh PR 一覧取得失敗 (スキップ): %s", e)
+            return ""
+
+    @staticmethod
+    def _extract_github_ref(message: str) -> tuple[str, str, int | None]:
+        """メッセージから owner/repo と issue 番号を抽出。例: 'foo/bar#12' → ('foo','bar',12)"""
+        import re
+        m = re.search(r'github\.com/([^/\s]+)/([^/\s#]+)(?:#(\d+))?', message)
+        if m:
+            return m.group(1), m.group(2), int(m.group(3)) if m.group(3) else None
+        m = re.search(r'\b([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)#(\d+)', message)
+        if m:
+            return m.group(1), m.group(2), int(m.group(3))
+        return "", "", None
 
     async def _mcp_screenshot(self, url: str) -> str:
         """URL のスクリーンショットを取得し base64 文字列を返す。失敗時は空文字。"""

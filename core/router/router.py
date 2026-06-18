@@ -43,13 +43,17 @@ class LangGraphRouter(
         self._pg_reconnect_task: Optional[asyncio.Task] = None
         self._memory_fallback: Optional[MemorySaver] = None
         self._audit_logs: dict = {}
-        # 応答キャッシュ: クラス変数を共有すると複数インスタンスで競合するためインスタンスに分離
+        # 応答キャッシュ (デバッグ・調整中は無効化)
         self._RESP_CACHE: dict = {}
-        self._RESP_CACHE_TTL: float = 300.0
+        self._RESP_CACHE_TTL: float = 0.0 # 0秒に設定
         self._cache_lock: asyncio.Lock = asyncio.Lock()
 
     async def initialize(self) -> None:
         logger.info("🔗 LangGraph Router v16 初期化開始")
+        # 型シリアライズの許可設定 (Python 3.12 移行に伴う互換性維持)
+        import os
+        os.environ["LANGGRAPH_ALLOWED_MSGPACK_MODULES"] = "core.router.batch.mode"
+
         try:
             self._checkpointer = await self._init_checkpointer()
 
@@ -94,11 +98,8 @@ class LangGraphRouter(
 
         graph.add_node("groq_qa",         self._exec_node("uketuke",   "groq_qa"))
         graph.add_node("parallel_groq",   self._parallel_groq_node)
-        graph.add_node("gunshi_haiku",    self._exec_node("gunshi",    "gunshi_haiku"))
-        graph.add_node("metsuke_proc",    self._exec_node("metsuke",   "metsuke_proc"))
         graph.add_node("gaiji_rag",       self._exec_node("gaiji",     "gaiji_rag"))
         graph.add_node("sanbo_mcp",       self._exec_node("sanbo",     "sanbo_mcp"))
-        graph.add_node("yuhitsu_jp",      self._exec_node("yuhitsu",   "yuhitsu_jp"))
         graph.add_node("uketuke_default", self._exec_node("uketuke",   "uketuke_default"))
         graph.add_node("onmitsu_local",   self._exec_node("onmitsu",   "onmitsu_local"))
         graph.add_node("kengyo_vision",   self._exec_node("kengyo",    "kengyo_vision"))
@@ -123,11 +124,8 @@ class LangGraphRouter(
             {
                 "groq_qa":          "groq_qa",
                 "parallel_groq":    "parallel_groq",
-                "gunshi_haiku":     "gunshi_haiku",
-                "gunshi_pdca":      "gunshi_haiku",   # 後方互換
                 "gaiji_rag":        "gaiji_rag",
                 "sanbo_mcp":        "sanbo_mcp",
-                "yuhitsu_jp":       "yuhitsu_jp",
                 "uketuke_default":  "uketuke_default",
                 "onmitsu_local":    "onmitsu_local",
                 "kengyo_vision":    "kengyo_vision",
@@ -138,9 +136,8 @@ class LangGraphRouter(
 
         graph.add_edge("batch_parallel", "check_followup")
 
-        for node in ("gunshi_haiku", "metsuke_proc", "gaiji_rag", "sanbo_mcp",
-                     "yuhitsu_jp", "uketuke_default", "onmitsu_local",
-                     "kengyo_vision", "groq_qa", "parallel_groq"):
+        for node in ("gaiji_rag", "sanbo_mcp", "uketuke_default",
+                     "onmitsu_local", "kengyo_vision", "groq_qa", "parallel_groq"):
             graph.add_edge(node, "check_followup")
 
         graph.add_edge("shogun_plan", "execute_step")
@@ -171,6 +168,7 @@ class LangGraphRouter(
                 "human": "human_interrupt",
                 "loop":  "notion_index",
                 "done":  "crosscheck",
+                "fast_done": "notion_store", # クロスチェックをスキップして保存へ
             },
         )
         graph.add_edge("human_interrupt", "notion_store")

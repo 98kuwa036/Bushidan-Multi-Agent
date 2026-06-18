@@ -473,7 +473,7 @@
           <div class="settings-section" style="margin-top:16px">
             <div class="section-title" style="display:flex; justify-content:space-between; align-items:center">
               Grafana ダッシュボード
-              <a href="http://192.168.11.231:3000" target="_blank"
+              <a href="http://192.168.11.231:3000/d/bushidan-v14/e6ada6-e5a3ab-e59ba3-multi-agent-monitor?orgId=1" target="_blank"
                  style="font-size:11px; color:var(--primary); text-decoration:none">↗ 別タブで開く</a>
             </div>
             <div style="font-size:11px; color:var(--text-dim); margin-bottom:8px">
@@ -1220,7 +1220,7 @@ function loadGrafanaFrame() {
   const frame = document.getElementById('grafana-iframe');
   const ph    = document.getElementById('grafana-placeholder');
   if (!frame || !ph) return;
-  frame.src = 'http://192.168.11.231:3000/d/bushidan/overview?orgId=1&kiosk=tv';
+  frame.src = 'http://192.168.11.231:3000/d/bushidan-v14/e6ada6-e5a3ab-e59ba3-multi-agent-monitor?orgId=1&kiosk=tv';
   frame.style.display = '';
   ph.style.display = 'none';
 }
@@ -2410,7 +2410,7 @@ async function loadSkillProposals(status = 'pending') {
 async function approveSkill(proposalId, evt) {
   const skillName = prompt('スキル名を入力してください:', '');
   if (!skillName) return;
-  const routeHint = prompt('推奨ルーティング先ロールキー (例: gunshi, sanbo):', 'gunshi');
+  const routeHint = prompt('推奨ルーティング先ロールキー (例: sanbo, shogun):', 'sanbo');
   if (!routeHint) return;
   try {
     const res = await fetch(`${S.apiBase}/skill-proposals/${proposalId}/approve`, {
