@@ -1,11 +1,11 @@
-"""roles/uketuke.py — 受付 (Groq Llama 3.3 + SudachiPy) ロール v18
+"""roles/uketuke.py — 受付 (Gemma4 Local + Gemini Flash-Lite) ロール v18
 
 役割: インテント分析・シンプルQ&A・雑談・簡易コード書き上げ・日本語前処理
      旧斥候 (seppou) の全機能を統合。
-モデル: Groq Llama 3.3 70B (超高速・無料枠)
+モデル: Gemma4 Local (プライマリ・20 tok/s・無料) → Gemini Flash-Lite (フォールバック)
 NLP:   SudachiPy + sudachidict-full (形態素解析 Mode C・NER)
 MCP:   tavily_search (検索キーワード検出時)
-Post:  コードレビューループ (sanbo → gunshi エスカレーション)
+Post:  コードレビューループ (sanbo → daigensui エスカレーション)
 """
 
 import re
@@ -89,7 +89,7 @@ def _extract_first_code(text: str) -> tuple[str, str]:
 class UketukeRole(BaseRole):
     role_key = "uketuke"
     role_name = "受付"
-    model_name = "Llama 3.3 70B (Groq)"
+    model_name = "Gemma4 Local → Gemini Flash-Lite"
     emoji = "🚪"
     default_handled_by = "uketuke_default"
 
@@ -193,9 +193,24 @@ class UketukeRole(BaseRole):
 
             max_tokens = 2048 if is_code else 512
             messages = self._format_messages(state)
-            response = await client.generate(
-                messages=messages, system=system, max_tokens=max_tokens,
-            )
+
+            # ── プライマリ: Gemma4 ローカル (20 tok/s・無料) ──────────────
+            response = None
+            try:
+                from utils.local_model_manager import LocalModelManager
+                manager = LocalModelManager.get()
+                prompt = f"{system}\n\nユーザー: {msg}\n\n受付:"
+                response = await manager.generate_gemma(prompt, max_tokens=max_tokens)
+                self.logger.info("🚪 受付 [Gemma4] %.1fs", time.time() - start)
+            except Exception as e_gemma:
+                self.logger.warning("受付 [Gemma4] 失敗、Gemini Flash-Liteへ: %s", e_gemma)
+
+            # ── フォールバック: Gemini Flash-Lite ────────────────────────
+            if response is None:
+                response = await client.generate(
+                    messages=messages, system=system, max_tokens=max_tokens,
+                )
+                self.logger.info("🚪 受付 [Gemini Flash-Lite フォールバック] %.1fs", time.time() - start)
 
             # ── コードレビューループ ──────────────────────────────────
             if is_code:

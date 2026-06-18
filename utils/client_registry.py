@@ -211,7 +211,7 @@ def _gemini_pro_factory() -> "_Gemini3Adapter":
 
 # ─── ロールキー → アダプタ ファクトリ ─────────────────────────────────────────
 _FACTORIES = {
-    "uketuke":         lambda: _GroqAdapter(),                                         # 受付+斥候統合: Groq Llama 3.3
+    "uketuke":         lambda: _Gemini3Adapter("gemini-3.1-flash-lite-preview"),        # 受付フォールバック: Gemini Flash-Lite (プライマリはGemma4 local)
     "gaiji":           lambda: _CohereAdapter("command-r-08-2024"),                    # RAG特化: Command R
     "sanbo":           lambda: _Gemini3Adapter("gemini-3-flash-preview"),              # 汎用処理+ツール実行: Gemini Flash (旧軍師・参謀統合)
     "shogun":          lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet
