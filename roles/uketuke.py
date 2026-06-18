@@ -89,7 +89,7 @@ def _extract_first_code(text: str) -> tuple[str, str]:
 class UketukeRole(BaseRole):
     role_key = "uketuke"
     role_name = "受付"
-    model_name = "Gemma4 Local → Gemini Flash-Lite"
+    model_name = "Gemma4 Local → Gemini 3.1 Flash-Lite"
     emoji = "🚪"
     default_handled_by = "uketuke_default"
 

@@ -211,15 +211,15 @@ def _gemini_pro_factory() -> "_Gemini3Adapter":
 
 # ─── ロールキー → アダプタ ファクトリ ─────────────────────────────────────────
 _FACTORIES = {
-    "uketuke":         lambda: _Gemini3Adapter("gemini-2.5-flash-lite"),               # 受付フォールバック: Gemini 2.5 Flash-Lite
-    "gaiji":           lambda: _CohereAdapter("command-a-plus-05-2026"),               # RAG特化: Command A+ (MoE・Vision・Reasoning統合)
+    "uketuke":         lambda: _Gemini3Adapter("gemini-3.1-flash-lite"),               # 受付フォールバック: Gemini 3.1 Flash-Lite ($0.25/$1.50/M)
+    "gaiji":           lambda: _CohereAdapter("command-r-08-2024"),                    # RAG特化: Command R 08-2024 (RAG・ツール使用特化)
     "sanbo":           lambda: _Gemini3Adapter("gemini-3.5-flash"),                    # 汎用処理+ツール実行: Gemini 3.5 Flash
     "shogun":          lambda: _ClaudeAdapter("claude-sonnet-4-6"),                    # 計画立案: Sonnet
     "daigensui":       lambda: _ClaudeAdapter("claude-opus-4-6"),                      # 最終判断: Opus (変更なし)
     "kengyo":          lambda: _Gemini3Adapter("gemini-3.5-flash"),                    # 画像解析: Gemini 3.5 Flash (Vision統合)
     "onmitsu":         lambda: _NemotronAdapter(),                                     # 機密+日本語処理: Gemma4 Local
     "claude_fallback": _gemini_pro_factory,                                            # Claude障害時: Gemini 3.1 Pro (共有)
-    "crosscheck_light":lambda: _CerebrasAdapter("llama-3.3-70b"),                      # 軽量クロスチェック: Cerebras Llama 3.3 70B (2100 tok/s)
+    "crosscheck_light":lambda: _CerebrasAdapter("gpt-oss-120b"),                       # 軽量クロスチェック: Cerebras GPT-OSS 120B (3000 tok/s・$0.35/$0.75/M)
     "crosscheck_heavy":_gemini_pro_factory,                                            # 重量クロスチェック: Gemini 3.1 Pro (共有)
 }
 
