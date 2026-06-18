@@ -135,28 +135,33 @@ class TestFollowupDecision:
 
     def test_batch_converts_human_to_done(self):
         mixin = self._make_mixin()
-        state = {"processing_mode": "batch", "awaiting_human_input": True, "requires_followup": False}
+        state = {"processing_mode": "batch", "awaiting_human_input": True,
+                 "requires_followup": False, "is_ready_to_go": True}
         assert mixin._followup_decision(state) == "done"
 
     def test_interactive_human_returns_human(self):
         mixin = self._make_mixin()
-        state = {"processing_mode": "interactive", "awaiting_human_input": True, "requires_followup": False}
+        state = {"processing_mode": "interactive", "awaiting_human_input": True,
+                 "requires_followup": False, "is_ready_to_go": True}
         # BATCH_CONFIG["hitl_enabled"] は False なので interactive でも done になる
         assert mixin._followup_decision(state) == "done"
 
     def test_requires_followup_returns_loop(self):
         mixin = self._make_mixin()
-        state = {"processing_mode": "interactive", "awaiting_human_input": False, "requires_followup": True}
+        state = {"processing_mode": "interactive", "awaiting_human_input": False,
+                 "requires_followup": True, "is_ready_to_go": True}
         assert mixin._followup_decision(state) == "loop"
 
     def test_all_clear_returns_done(self):
         mixin = self._make_mixin()
-        state = {"processing_mode": "interactive", "awaiting_human_input": False, "requires_followup": False}
+        state = {"processing_mode": "interactive", "awaiting_human_input": False,
+                 "requires_followup": False, "is_ready_to_go": True}
         assert mixin._followup_decision(state) == "done"
 
     def test_batch_loop_disabled(self):
         mixin = self._make_mixin()
-        state = {"processing_mode": "batch", "awaiting_human_input": False, "requires_followup": False}
+        state = {"processing_mode": "batch", "awaiting_human_input": False,
+                 "requires_followup": False, "is_ready_to_go": True}
         assert mixin._followup_decision(state) == "done"
 
 
