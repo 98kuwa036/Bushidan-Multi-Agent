@@ -572,14 +572,17 @@ class TestBatchBulkNotionStore:
         assert len(result["errors"]) == 1
 
     @pytest.mark.asyncio
-    async def test_should_save_false_counts_as_saved(self):
+    async def test_should_save_false_counts_as_skipped(self):
         mixin = self._make_mixin()
         save_mock = AsyncMock()
         states = [{"thread_id": "t0", "should_save": False}]
         with patch("integrations.notion.storage.save_task_result_bg", save_mock):
             result = await mixin.batch_bulk_notion_store(states)
 
-        assert result["saved"] == 1
+        assert result["skipped"] == 1
+        assert result["saved"] == 0
+        assert result["failed"] == 0
+        assert result["errors"] == []
         save_mock.assert_not_awaited()
 
 

@@ -5,7 +5,7 @@ build-backend = "setuptools.backends._legacy:_Backend"
 [project]
 name = "bushidan-multi-agent"
 version = "18.0"
-description = "武士団マルチエージェントシステム v18: 11役職 + LangGraph PostgreSQL永続化 + HITL + ローカルLLM統合 + 高速筆耕3段階パイプライン"
+description = "武士団マルチエージェントシステム v18: 10役職 + LangGraph PostgreSQL永続化 + HITL + ローカルLLM統合 + 高速筆耕3段階パイプライン"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

@@ -2,7 +2,7 @@
 core/code_verifier.py — コード実証主義ノード v1
 
 LangGraph の sandbox_verify ノードから呼び出す。
-shogun / gunshi が生成したコードブロックを抽出し、
+shogun / daigensui が生成したコードブロックを抽出し、
 ローカルサブプロセスで安全に実行して結果をレスポンスに付記する。
 
 設計:

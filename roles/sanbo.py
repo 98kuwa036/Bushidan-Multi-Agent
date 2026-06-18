@@ -31,6 +31,19 @@ _DESTRUCTIVE_KWS = frozenset([
     "強制プッシュ", "force push",
 ])
 
+# HITL 承認が必要な操作（破壊的ではないが不可逆・共有影響あり）
+_HITL_PATTERNS = [
+    r"\bgit\s+push\b(?!\s+.*--force)",  # git push (force push は _DESTRUCTIVE で先に検出)
+    r"\bgh\s+pr\s+create\b",            # gh pr create
+    r"\bgh\s+issue\s+close\b",          # gh issue close
+    r"\bgh\s+release\s+create\b",       # gh release create
+]
+
+_GH_KWS = [
+    "github", "issue", "イシュー", "pr", "pull request", "プルリク",
+    "gh ", "repo", "リポジトリ", "clone", "クローン",
+]
+
 
 class SanboRole(BaseRole):
     role_key = "sanbo"
@@ -40,15 +53,19 @@ class SanboRole(BaseRole):
     default_handled_by = "sanbo_mcp"
 
     def _check_destructive(self, msg: str) -> str:
-        """
-        破壊的操作を検出して説明文を返す。安全なら空文字列を返す。
-        """
-        # キーワード一致
+        """破壊的操作を検出して説明文を返す。安全なら空文字列を返す。"""
         for kw in _DESTRUCTIVE_KWS:
             if kw.lower() in msg.lower():
                 return kw
-        # パターン一致
         for pat in _DESTRUCTIVE_PATTERNS:
+            m = re.search(pat, msg, re.IGNORECASE)
+            if m:
+                return m.group(0)
+        return ""
+
+    def _check_hitl_required(self, msg: str) -> str:
+        """HITL 承認が必要な操作（不可逆・共有影響）を検出。安全なら空文字列を返す。"""
+        for pat in _HITL_PATTERNS:
             m = re.search(pat, msg, re.IGNORECASE)
             if m:
                 return m.group(0)
@@ -67,7 +84,14 @@ class SanboRole(BaseRole):
             system = self._build_system_prompt(
                 state,
                 "あなたは参謀担当 (Gemini Flash Preview)。ツール実行・コーディング・ファイル参照・Web検索の専門家です。"
-                "必要に応じてファイルやWeb検索の結果を活用し、明確・実践的な日本語で回答してください。",
+                "必要に応じてファイルやWeb検索の結果を活用し、明確・実践的な日本語で回答してください。"
+                "\n\n【コードタスク時の必須手順】\n"
+                "コードに関するタスクが来た場合、必ず最初に read_file または list_directory で"
+                "対象ファイル・ディレクトリの内容を確認してから作業を開始すること。"
+                "ファイルを読まずにコードを生成・修正してはならない。\n"
+                "リポジトリ名がメッセージに含まれる場合（例: 'Bushidan', 'Bushidan-Multi-Agent'）は"
+                "`/mnt/Bushidan-Multi-Agent/{リポジトリ名}/` をワークスペースとして使用すること。"
+                "変更前に必ず現状を把握し、差分を最小化する修正を心がけること。",
             )
             mcp_used = []
             msg = state.get("message", "")
@@ -85,13 +109,42 @@ class SanboRole(BaseRole):
                         execution_time=time.time() - start,
                         awaiting_human_input=True,
                         human_question=(
-                            f"以下の操作を実行してよいですか？\n\n"
+                            f"以下の破壊的操作を実行してよいですか？\n\n"
                             f"```\n{destructive_op}\n```\n\n"
                             "「はい」または「いいえ」で答えてください。"
                         ),
                     )
+                hitl_op = self._check_hitl_required(msg)
+                if hitl_op:
+                    self.logger.warning("🛑 参謀 HITL: 承認必要操作検出 '%s'", hitl_op)
+                    return RoleResult(
+                        response=f"⚠️ 承認待ち: `{hitl_op}` は外部に影響する操作です。",
+                        agent_role=self.role_name,
+                        handled_by=self.default_handled_by,
+                        execution_time=time.time() - start,
+                        awaiting_human_input=True,
+                        human_question=(
+                            f"以下の操作を実行してよいですか？\n\n"
+                            f"```\n{hitl_op}\n```\n\n"
+                            "この操作は外部（GitHub など）に影響します。「はい」または「いいえ」で答えてください。"
+                        ),
+                    )
             _GIT_KWS = ["git", "コミット", "commit", "プッシュ", "push", "プル", "pull",
                         "clone", "クローン", "ブランチ", "branch", "差分", "diff", "マージ", "merge"]
+
+            # ── GitHub コンテキスト ──────────────────────────────────────
+            if any(kw in msg.lower() for kw in _GH_KWS):
+                owner, repo, issue_num = self._extract_github_ref(msg)
+                if owner and repo and issue_num:
+                    gh_ctx = await self._mcp_gh_issue(owner, repo, issue_num)
+                    if gh_ctx:
+                        system = self._append_mcp_context(system, f"GitHub Issue {owner}/{repo}#{issue_num}", gh_ctx)
+                        mcp_used.append("gh_issue")
+                elif owner and repo:
+                    issues_ctx = await self._mcp_gh_list_issues(owner, repo)
+                    if issues_ctx:
+                        system = self._append_mcp_context(system, f"GitHub Issues {owner}/{repo}", issues_ctx)
+                        mcp_used.append("gh_list_issues")
 
             # ── ファイル参照 ─────────────────────────────────────────────
             for ref in self._extract_file_refs(msg)[:3]:

@@ -99,17 +99,19 @@ _ROLE_DESCRIPTIONS_FALLBACK: dict[str, list[str]] = {
 class SemanticRouter:
     """
     文埋め込みモデルを使ったローカルルーター。
-    sentence-transformers がインストールされていない場合は自動的に無効化される。
     """
 
     _instance: Optional["SemanticRouter"] = None
     _available: bool = False
+    
+    # クラスレベルで共有 (プロセス内1回のみロード)
+    _shared_model = None
+    _shared_role_vectors: dict[str, list] = {}
+    _shared_ready = False
+    _loading_lock = asyncio.Lock()  # ロード重複防止用
 
     def __init__(self):
-        self._model = None
-        self._role_vectors: dict[str, list] = {}
-        self._role_names: list[str] = []
-        self._ready = False
+        pass
 
     @classmethod
     def get(cls) -> "SemanticRouter":
@@ -118,33 +120,42 @@ class SemanticRouter:
         return cls._instance
 
     def initialize(self) -> bool:
-        """モデルをロードしてロールベクトルを計算する。失敗時は False を返す。"""
-        if self._ready:
+        """モデルをロードしてロールベクトルを計算する。非同期ではないため注意。"""
+        if SemanticRouter._shared_ready:
             return True
+        
+        # 起動直後のリクエストで同時に initialize が呼ばれた場合に
+        # 二重ロードされるのを防ぐ簡易チェック
+        if SemanticRouter._shared_model is not None:
+            return False
+
         try:
             from sentence_transformers import SentenceTransformer
             t0 = time.time()
-            # 多言語対応・軽量モデル (約 120MB)
-            self._model = SentenceTransformer(
+            
+            logger.info("⏳ SemanticRouter: モデルロード開始 (sentence-transformers)...")
+            # このロードに時間がかかる
+            SemanticRouter._shared_model = SentenceTransformer(
                 "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
             )
+            
             # ロール説明（例文リスト）をベクトル化し、ロールごとに平均ベクトルを計算
             import numpy as np
             role_descs = _load_role_descriptions()
             roles = list(role_descs.keys())
-            self._role_vectors = {}
+            
+            new_vectors = {}
             for role in roles:
                 examples = role_descs[role]
-                vecs = self._model.encode(examples, normalize_embeddings=True)
-                # 各例文ベクトルの平均を取り、再正規化
+                vecs = SemanticRouter._shared_model.encode(examples, normalize_embeddings=True)
                 avg = vecs.mean(axis=0)
                 norm = np.linalg.norm(avg)
                 if norm > 0:
                     avg = avg / norm
-                self._role_vectors[role] = avg.tolist()
-            self._role_names = roles
-            self._role_names = roles
-            self._ready = True
+                new_vectors[role] = avg.tolist()
+            
+            SemanticRouter._shared_role_vectors = new_vectors
+            SemanticRouter._shared_ready = True
             SemanticRouter._available = True
             logger.info("✅ SemanticRouter 初期化完了 (%.1fs, %d ロール)", time.time() - t0, len(roles))
             return True
@@ -158,19 +169,16 @@ class SemanticRouter:
     def route(self, message: str) -> tuple[Optional[str], float]:
         """
         メッセージを最も近いロールにルーティングする。
-
-        Returns:
-            (route_name, score) — score < CANDIDATE_THRESHOLD のとき route_name は None
         """
-        if not self._ready or not self._model:
+        if not SemanticRouter._shared_ready or not SemanticRouter._shared_model:
             return None, 0.0
 
         try:
             import numpy as np
-            vec = self._model.encode([message], normalize_embeddings=True)[0]
+            vec = SemanticRouter._shared_model.encode([message], normalize_embeddings=True)[0]
             best_role = None
             best_score = -1.0
-            for role, role_vec in self._role_vectors.items():
+            for role, role_vec in SemanticRouter._shared_role_vectors.items():
                 score = float(np.dot(vec, role_vec))
                 if score > best_score:
                     best_score = score
@@ -198,10 +206,7 @@ class SemanticRouter:
             return None, 0.0
 
     def add_example(self, role: str, text: str) -> bool:
-        """
-        成功した入力例をロールの学習例文に追加し、JSONとベクトルを更新する。
-        SemanticRouter が未初期化の場合は JSON のみ更新して True を返す。
-        """
+        """成功した入力例をロールの学習例文に追加し、JSONとベクトルを更新する。"""
         try:
             data = json.loads(_KNOWLEDGE_PATH.read_text(encoding="utf-8"))
         except Exception:
@@ -216,7 +221,6 @@ class SemanticRouter:
             return False  # 重複スキップ
         learned.append(text)
 
-        # 上限を超えたら古い順に削除
         if len(learned) > _MAX_LEARNED_EXAMPLES:
             learned[:] = learned[-_MAX_LEARNED_EXAMPLES:]
 
@@ -228,19 +232,18 @@ class SemanticRouter:
             logger.warning("semantic_knowledge.json 書き込み失敗: %s", e)
             return False
 
-        # ベクトルをその場で再計算（モデルがロード済みの場合のみ）
-        if self._ready and self._model:
+        if SemanticRouter._shared_ready and SemanticRouter._shared_model:
             try:
                 import numpy as np
                 role_descs = _load_role_descriptions()
                 examples = role_descs.get(role, [])
                 if examples:
-                    vecs = self._model.encode(examples, normalize_embeddings=True)
+                    vecs = SemanticRouter._shared_model.encode(examples, normalize_embeddings=True)
                     avg = vecs.mean(axis=0)
                     norm = np.linalg.norm(avg)
                     if norm > 0:
                         avg = avg / norm
-                    self._role_vectors[role] = avg.tolist()
+                    SemanticRouter._shared_role_vectors[role] = avg.tolist()
                     logger.info("🧭 SemanticRouter: %s のベクトル更新 (例文数=%d)", role, len(examples))
             except Exception as e:
                 logger.warning("SemanticRouter add_example ベクトル更新失敗: %s", e)
@@ -249,9 +252,9 @@ class SemanticRouter:
 
     def reload(self) -> bool:
         """JSONから再読み込みして全ベクトルを再計算する。"""
-        self._ready = False
+        SemanticRouter._shared_ready = False
         return self.initialize()
 
     @property
     def is_ready(self) -> bool:
-        return self._ready
+        return SemanticRouter._shared_ready

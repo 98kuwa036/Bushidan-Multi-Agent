@@ -67,13 +67,13 @@ def _rule_intent_complexity(ri: RoutingInput) -> Optional[_RULE_TYPE]:
     if it == IntentType.CODE:
         if cx in (ComplexityLevel.COMPLEX, ComplexityLevel.STRATEGIC):
             return ("code_complex", "sanbo", 0.80)
-        return ("code_normal", "yuhitsu", 0.78)
+        return ("code_normal", "onmitsu", 0.78)
 
     # 分析系
     if it == IntentType.ANALYSIS:
         if cx in (ComplexityLevel.COMPLEX, ComplexityLevel.STRATEGIC):
-            return ("analysis_complex", "gunshi", 0.80)
-        return ("analysis_normal", "gunshi", 0.72)
+            return ("analysis_complex", "daigensui", 0.80)
+        return ("analysis_normal", "daigensui", 0.72)
 
     # 外部知識が必要
     if it == IntentType.RAG or ri.intent.requires_external_knowledge:
@@ -84,13 +84,13 @@ def _rule_intent_complexity(ri: RoutingInput) -> Optional[_RULE_TYPE]:
         if cx == ComplexityLevel.STRATEGIC:
             return ("task_strategic", "shogun", 0.82)
         if cx == ComplexityLevel.COMPLEX:
-            return ("task_complex", "metsuke", 0.75)
-        return ("task_normal", "yuhitsu", 0.70)
+            return ("task_complex", "uketuke", 0.75)
+        return ("task_normal", "onmitsu", 0.70)
 
     # Q&A 系
     if it == IntentType.QA:
         if cx in (ComplexityLevel.COMPLEX, ComplexityLevel.STRATEGIC):
-            return ("qa_complex", "gunshi", 0.72)
+            return ("qa_complex", "daigensui", 0.72)
         if cx == ComplexityLevel.SIMPLE:
             return ("qa_simple", "uketuke", 0.80)
         return ("qa_normal", "uketuke", 0.70)
@@ -104,8 +104,8 @@ def _rule_complexity_fallback(ri: RoutingInput) -> Optional[_RULE_TYPE]:
     mapping = {
         ComplexityLevel.SIMPLE: ("cx_simple", "uketuke", 0.65),
         ComplexityLevel.LOW_MEDIUM: ("cx_low_medium", "uketuke", 0.62),
-        ComplexityLevel.MEDIUM: ("cx_medium", "yuhitsu", 0.60),
-        ComplexityLevel.COMPLEX: ("cx_complex", "gunshi", 0.65),
+        ComplexityLevel.MEDIUM: ("cx_medium", "onmitsu", 0.60),
+        ComplexityLevel.COMPLEX: ("cx_complex", "daigensui", 0.65),
         ComplexityLevel.STRATEGIC: ("cx_strategic", "shogun", 0.70),
     }
     return mapping.get(cx)

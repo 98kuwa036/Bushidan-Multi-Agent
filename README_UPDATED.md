@@ -13,17 +13,16 @@
 [![License](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
 > 戦国時代の軍事組織をモデルにした階層型マルチエージェントAIシステム。  
-> 11の専門役職と複数のLLMが協調し、複雑なタスクを自律的に処理する。
+> 10の専門役職と複数のLLMが協調し、複雑なタスクを自律的に処理する。
 
 ---
 
-## 🎖️ 役職体制（11役職）
+## 🎖️ 役職体制（10役職）
 
 | 役職 | キー | モデル | 担当領域 |
 |------|------|--------|---------|
-| **受付** | uketuke | Gemini 3.1 Flash-Lite | 意図分類・ルーティング判断 |
+| **受付** | uketuke | Llama 3.3 70B (Groq) + SudachiPy | Q&A・雑談・コード・日本語NLP・Web検索 |
 | **外事** | gaiji | Cohere Command R | 外部情報取得・RAG |
-| **斥候** | seppou | Llama 3.3 70B (Groq) | Web 検索・情報収集 |
 | **軍師** | gunshi | Cohere Command A | 戦略立案・複合タスク分解 |
 | **参謀** | sanbo | Gemini Flash Preview | コード実行支援・HITL承認制御 |
 | **将軍** | shogun | Claude Sonnet 4.6 | 汎用高精度処理・ロードマップ生成 |
@@ -81,7 +80,7 @@
                   ユーザー入力
                        │
               ┌────────▼────────┐
-              │  受付 (uketuke) │  Gemini Flash-Lite
+              │  受付 (uketuke) │  Llama 3.3 70B (Groq)
               │  意図分類・判断  │  SemanticRouter 事前チェック
               └────────┬────────┘
                        │  route 決定
@@ -164,7 +163,7 @@ Stage 3: Haiku (claude-haiku-4-5-20251001)
 ```
 
 各ステージは独立してフォールバック可能。Gemini 障害時は Haiku 直接生成に切替。  
-Groq は筆耕パイプラインから分離し、斥候（seppou）役職専用として運用。
+Groq は受付（uketuke）専用として運用（SudachiPy 日本語形態素解析付き）。
 
 ---
 

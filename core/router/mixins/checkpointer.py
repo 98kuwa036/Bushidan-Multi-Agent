@@ -142,17 +142,19 @@ class CheckpointerMixin:
         }
 
     async def _background_health_check(self) -> None:
-        """5分間隔で全ロールのヘルスチェックを実行する。"""
-        await asyncio.sleep(10)
+        """60秒間隔で全ロールのヘルスチェックを並列実行する。"""
+        # 起動直後のバタつきを避けるため少し待機
+        await asyncio.sleep(5)
         while True:
             try:
                 from utils.client_registry import ClientRegistry
+                # 並列実行版を呼び出す
                 results = await ClientRegistry.get().health_check_all()
                 unhealthy = [k for k, v in results.items() if not v]
                 if unhealthy:
-                    logger.warning("🏥 unhealthy ロール: %s", unhealthy)
+                    logger.warning("🏥 アイドル時診断: unhealthy ロール検出: %s", unhealthy)
                 else:
-                    logger.debug("🏥 全ロール healthy")
+                    logger.debug("🏥 アイドル時診断: 全ロール healthy")
             except Exception as e:
-                logger.debug("🏥 ヘルスチェック失敗: %s", e)
-            await asyncio.sleep(300)
+                logger.debug("🏥 アイドル時診断失敗: %s", e)
+            await asyncio.sleep(60)

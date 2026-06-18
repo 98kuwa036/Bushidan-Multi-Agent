@@ -20,6 +20,7 @@ import asyncio
 import logging
 import os
 import shutil
+from contextvars import ContextVar
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,16 @@ def set_incident_fallback_mode(mode: str) -> None:
 def get_incident_fallback_mode() -> str:
     """現在のフォールバックモードを返す。"""
     return _incident_fallback_mode
+
+
+# ── バックエンド追跡 (コルーチンスコープ、スレッドセーフ) ───────────────────
+# 値: "remote_claude_cli" | "local_claude_cli" | "anthropic_api" | "gemini" | "bedrock" | "unknown"
+_last_backend: ContextVar[str] = ContextVar("last_backend", default="unknown")
+
+
+def get_last_backend() -> str:
+    """直前の Claude 呼び出しで実際に使われたバックエンドを返す。"""
+    return _last_backend.get()
 
 
 # ── CLI出力でエラーと判断するキーワード
@@ -467,45 +478,55 @@ async def call_claude_with_history(
     # 1. リモート Claude API Server を試す
     remote_result = await _try_remote_claude_api(prompt, model, system, max_tokens)
     if remote_result is not None:
+        _last_backend.set("remote_claude_cli")
         return remote_result
 
     # 2. CLI優先の場合: ローカル CLI を試す
     if prefer_cli:
         cli_result = await _try_claude_cli(prompt, model, system)
         if cli_result is not None:
+            _last_backend.set("local_claude_cli")
             return cli_result
         logger.info("📌 リモートAPI・CLI失敗 → API フォールバック (会話履歴 %d件)", len(messages))
 
     # 3. Anthropic API フォールバック
     try:
-        return await _call_anthropic_api_with_messages(messages, model, api_key, system, max_tokens)
+        result = await _call_anthropic_api_with_messages(messages, model, api_key, system, max_tokens)
+        _last_backend.set("anthropic_api")
+        return result
     except AnthropicIncidentError as e:
         logger.warning("🚨 Anthropic インシデント検知 (HTTP %d) → %s フォールバック",
                        e.status_code, _incident_fallback_mode)
         if _incident_fallback_mode == "bedrock":
             bedrock_result = await _call_bedrock_api_with_messages(messages, model, system, max_tokens)
             if bedrock_result is not None:
+                _last_backend.set("bedrock")
                 return bedrock_result
         else:
             gemini_result = await _call_gemini_fallback(messages, system, max_tokens)
             if gemini_result is not None:
+                _last_backend.set("gemini")
                 return gemini_result
-            # Gemini 失敗時は Bedrock へ
-            logger.info("📌 Gemini フォールバック失敗 → AWS Bedrock 最終フォールバック")
-            bedrock_result = await _call_bedrock_api_with_messages(messages, model, system, max_tokens)
-            if bedrock_result is not None:
-                return bedrock_result
     except RuntimeError as e:
-        if "credit" in str(e).lower():
-            logger.warning("⚠️ Anthropic API クレジット不足 → AWS Bedrock フォールバック")
+        is_credit_error = "credit" in str(e).lower()
+        target_name = "Gemini" if _incident_fallback_mode == "gemini" else "AWS Bedrock"
+
+        if is_credit_error:
+            logger.warning("⚠️ Anthropic API クレジット不足 → %s フォールバック", target_name)
         else:
-            logger.warning("⚠️ Anthropic API エラー: %s → AWS Bedrock フォールバック", str(e)[:100])
-        bedrock_result = await _call_bedrock_api_with_messages(messages, model, system, max_tokens)
-        if bedrock_result is not None:
-            return bedrock_result
+            logger.warning("⚠️ Anthropic API エラー: %s → %s フォールバック", str(e)[:100], target_name)
+
+        if _incident_fallback_mode == "bedrock":
+            result = await _call_bedrock_api_with_messages(messages, model, system, max_tokens)
+            _last_backend.set("bedrock")
+            return result
+        else:
+            result = await _call_gemini_fallback(messages, system, max_tokens)
+            _last_backend.set("gemini")
+            return result
 
     # 全フォールバック失敗
-    raise RuntimeError("すべてのバックエンド失敗 (API・CLI・Anthropic・Gemini・Bedrock)")
+    raise RuntimeError(f"すべてのバックエンド失敗 (API・CLI・Anthropic・{_incident_fallback_mode.upper()})")
 
 
 async def call_claude_with_fallback(
@@ -539,43 +560,53 @@ async def call_claude_with_fallback(
     # 1. リモート Claude API Server を試す
     remote_result = await _try_remote_claude_api(prompt, model, system, max_tokens)
     if remote_result is not None:
+        _last_backend.set("remote_claude_cli")
         return remote_result
 
     # 2. ローカル Claude CLI を試す
     if not skip_cli:
         cli_result = await _try_claude_cli(prompt, model, system)
         if cli_result is not None:
+            _last_backend.set("local_claude_cli")
             return cli_result
 
     # 3. Anthropic API フォールバック
     logger.info("📌 リモートAPI・CLI失敗 → Anthropic API フォールバック")
     messages_for_fallback = [{"role": "user", "content": prompt}]
     try:
-        return await _call_anthropic_api(prompt, model, api_key, system, max_tokens)
+        result = await _call_anthropic_api(prompt, model, api_key, system, max_tokens)
+        _last_backend.set("anthropic_api")
+        return result
     except AnthropicIncidentError as e:
         logger.warning("🚨 Anthropic インシデント検知 (HTTP %d) → %s フォールバック",
                        e.status_code, _incident_fallback_mode)
         if _incident_fallback_mode == "bedrock":
             bedrock_result = await _call_bedrock_api(prompt, model, system, max_tokens)
             if bedrock_result is not None:
+                _last_backend.set("bedrock")
                 return bedrock_result
         else:
             gemini_result = await _call_gemini_fallback(messages_for_fallback, system, max_tokens)
             if gemini_result is not None:
+                _last_backend.set("gemini")
                 return gemini_result
-            # Gemini 失敗時は Bedrock へ
-            logger.info("📌 Gemini フォールバック失敗 → AWS Bedrock 最終フォールバック")
-            bedrock_result = await _call_bedrock_api(prompt, model, system, max_tokens)
-            if bedrock_result is not None:
-                return bedrock_result
     except RuntimeError as e:
-        if "credit" in str(e).lower():
-            logger.warning("⚠️ Anthropic API クレジット不足 → AWS Bedrock フォールバック")
+        is_credit_error = "credit" in str(e).lower()
+        target_name = "Gemini" if _incident_fallback_mode == "gemini" else "AWS Bedrock"
+
+        if is_credit_error:
+            logger.warning("⚠️ Anthropic API クレジット不足 → %s フォールバック", target_name)
         else:
-            logger.warning("⚠️ Anthropic API エラー: %s → AWS Bedrock フォールバック", str(e)[:100])
-        bedrock_result = await _call_bedrock_api(prompt, model, system, max_tokens)
-        if bedrock_result is not None:
-            return bedrock_result
+            logger.warning("⚠️ Anthropic API エラー: %s → %s フォールバック", str(e)[:100], target_name)
+
+        if _incident_fallback_mode == "bedrock":
+            result = await _call_bedrock_api(prompt, model, system, max_tokens)
+            _last_backend.set("bedrock")
+            return result
+        else:
+            result = await _call_gemini_fallback(messages_for_fallback, system, max_tokens)
+            _last_backend.set("gemini")
+            return result
 
     # 全フォールバック失敗
-    raise RuntimeError("すべてのバックエンド失敗 (API・CLI・Anthropic・Gemini・Bedrock)")
+    raise RuntimeError(f"すべてのバックエンド失敗 (API・CLI・Anthropic・{_incident_fallback_mode.upper()})")

@@ -55,7 +55,9 @@ def check_password(password: str) -> bool:
     if pw_hash:
         try:
             import bcrypt
-            return bcrypt.checkpw(password.encode(), pw_hash.encode())
+            # bcrypt は最大72バイトまで。エラー回避のため事前に切り捨てる。
+            encoded_pw = password.encode()[:72]
+            return bcrypt.checkpw(encoded_pw, pw_hash.encode())
         except Exception as e:
             logger.error("bcrypt 検証エラー: %s", e)
             return False
