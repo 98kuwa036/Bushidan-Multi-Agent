@@ -6,7 +6,7 @@ MCP サーバー初期化 / LangGraph Router 初期化 / ヘルスチェック /
 10役職体制:
   受付(Gemini 3.1 Flash-Lite) / 外事(Command A) / 検校(Gemini 3.1 Flash-Image)
   将軍(Claude Sonnet 4.6) / 軍師(Mistral Large 3) / 参謀(Mistral Large 3)
-  右筆(Gemini 3.1 Flash-Lite) / 斥候(Llama Groq) / 隠密(Gemma3/Nemotron)
+  右筆(Gemini 3.1 Flash-Lite) / 受付(Gemma4/Gemini) / 隠密(Gemma3/Nemotron)
   大元帥(Claude Opus 4.6)
 """
 

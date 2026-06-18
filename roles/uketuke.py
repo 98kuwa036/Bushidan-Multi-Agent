@@ -98,7 +98,7 @@ class UketukeRole(BaseRole):
         client = self._get_client()
         if not client:
             return RoleResult(
-                response="⚠️ 受付クライアント未設定 (GROQ_API_KEY を確認してください)",
+                response="⚠️ 受付クライアント未設定 (GEMINI_API_KEY を確認してください)",
                 agent_role=self.role_name,
                 handled_by=self.default_handled_by,
                 execution_time=time.time() - start,
@@ -230,7 +230,7 @@ class UketukeRole(BaseRole):
                                 code=code,
                                 requirements=msg,
                                 language=lang,
-                                groq_client=client,
+                                draft_client=client,
                                 review_client=review_client,
                                 escalation_client=escalation_client,
                             )

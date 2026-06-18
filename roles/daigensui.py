@@ -109,7 +109,7 @@ class DaigensuiRole(BaseRole):
                 or state.get("risk_level") in ("HIGH", "CRITICAL")
             )
             if _needs_xcheck:
-                response = await self._groq_crosscheck(msg, response, mcp_used)
+                response = await self._crosscheck(msg, response, mcp_used)
 
             return RoleResult(
                 response=response, agent_role=self.role_name,
@@ -125,11 +125,11 @@ class DaigensuiRole(BaseRole):
                 error=str(e), status="failed",
             )
 
-    async def _groq_crosscheck(self, question: str, primary_answer: str, mcp_used: list) -> str:
-        """Gemini 3.1 Pro Preview (異なる訓練バイアス) で一次回答を検証し、差異を付記して返す。"""
+    async def _crosscheck(self, question: str, primary_answer: str, mcp_used: list) -> str:
+        """crosscheck_light クライアント (異なる訓練バイアス) で一次回答を検証し、差異を付記して返す。"""
         try:
             from utils.client_registry import ClientRegistry
-            gemini_client = ClientRegistry.get().get_client("claude_fallback")  # gemini-3.1-pro-preview
+            gemini_client = ClientRegistry.get().get_client("crosscheck_light")
             if not gemini_client:
                 return primary_answer
 
@@ -145,11 +145,11 @@ class DaigensuiRole(BaseRole):
                 max_tokens=600,
             )
             if verdict and "検証OK" not in verdict:
-                self.logger.info("👑 大元帥: Gemini 3.1 Pro クロスチェックで差異検出")
-                mcp_used.append("gemini_crosscheck")
+                self.logger.info("👑 大元帥: クロスチェックで差異検出")
+                mcp_used.append("crosscheck_light")
                 return (
                     primary_answer
-                    + f"\n\n---\n**【クロスチェック指摘 (Gemini 3.1 Pro)】**\n{verdict.strip()}"
+                    + f"\n\n---\n**【クロスチェック指摘】**\n{verdict.strip()}"
                 )
         except Exception as e:
             self.logger.debug("Geminiクロスチェックスキップ: %s", e)

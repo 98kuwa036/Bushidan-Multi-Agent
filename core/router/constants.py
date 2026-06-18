@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 POSTGRES_URL: str = os.environ.get("POSTGRES_URL", "")
 
 NODE_TIMEOUTS: dict[str, int] = {
-    "groq_qa":           30,
+    "uketuke_qa":        30,
     "uketuke_default":   60,
     "gaiji_rag":         60,
     "sanbo_mcp":         60,
@@ -19,19 +19,21 @@ NODE_TIMEOUTS: dict[str, int] = {
     "execute_step":     120,
     "shogun_plan":      120,
     "daigensui_audit":  200,
+    "multi_role":       120,   # 複合タスク: 複数ロール並列実行
 }
 
 FALLBACK_MAP: dict[str, str] = {
-    "groq_qa":          "uketuke_default",
-    "parallel_groq":    "groq_qa",
-    "gaiji_rag":        "groq_qa",
-    "sanbo_mcp":        "groq_qa",
+    "uketuke_qa":       "uketuke_default",
+    "parallel_uketuke": "uketuke_qa",
+    "multi_role":       "sanbo_mcp",       # 複合タスク失敗 → 参謀に委ねる
+    "gaiji_rag":        "uketuke_qa",
+    "sanbo_mcp":        "uketuke_qa",
     "onmitsu_local":    "uketuke_default",
     "kengyo_vision":    "sanbo_mcp",
     "shogun_plan":      "sanbo_mcp",
     "execute_step":     "sanbo_mcp",
     "daigensui_audit":  "shogun_plan",
-    "uketuke_default":  "groq_qa",
+    "uketuke_default":  "uketuke_qa",
 }
 
 # fire-and-forget タスク管理

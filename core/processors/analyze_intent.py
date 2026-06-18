@@ -1,6 +1,6 @@
 """
 武士団 v18 — Uchu (analyze_intent) プロセッサ
-Groq JSON mode で複雑度・Intent を分類
+Gemini 3.1 Flash-Lite JSON mode で複雑度・Intent を分類
 pct239 が利用可能な場合は GBNF Grammar を使用（fallback: JSON regex）
 """
 from __future__ import annotations
@@ -155,17 +155,22 @@ class UchuProcessor:
     TIMEOUT_SEC = 8.0
 
     def __init__(self) -> None:
-        self._groq_key = os.getenv("GROQ_API_KEY", "")
-        self._groq = None
+        self._gemini_lite_client = None
 
-    def _get_groq(self):
-        if self._groq is None and self._groq_key:
+    def _get_gemini_lite(self):
+        if self._gemini_lite_client is None:
             try:
-                from groq import AsyncGroq
-                self._groq = AsyncGroq(api_key=self._groq_key)
+                from utils.gemini3_client import Gemini3Client
+                api_key = os.getenv("GEMINI_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
+                if api_key:
+                    self._gemini_lite_client = Gemini3Client(
+                        api_key=api_key, model="gemini-3.1-flash-lite"
+                    )
+                else:
+                    logger.warning("Uchu: GEMINI_API_KEY / GOOGLE_API_KEY が未設定")
             except ImportError:
-                logger.warning("groq not installed")
-        return self._groq
+                logger.warning("Uchu: gemini3_client が未インストール")
+        return self._gemini_lite_client
 
     async def process(self, user_input: str, karasu: Optional[KarasuOutput] = None) -> UchuOutput:
         """analyze_intent を実行"""
@@ -195,7 +200,7 @@ class UchuProcessor:
                 **shortcuts,
             )
 
-        # Groq で JSON 分類
+        # Gemini 3.1 Flash-Lite で JSON 分類
         system_prompt = _SYSTEM_PROMPT
         if karasu and karasu.search_results:
             from core.processors.pre_process import KarasuProcessor
@@ -203,28 +208,21 @@ class UchuProcessor:
             if injection:
                 system_prompt = injection + "\n\n" + system_prompt
 
-        groq = self._get_groq()
-        if groq is None:
-            logger.warning("Uchu: Groq unavailable, using defaults")
+        client = self._get_gemini_lite()
+        if client is None:
+            logger.warning("Uchu: Gemini 3.1 Flash-Lite 未設定、デフォルトを使用")
             return _default_output(user_input, shortcuts)
 
         last_error: Optional[Exception] = None
         for attempt in range(self.MAX_RETRIES):
             try:
-                response = await asyncio.wait_for(
-                    groq.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_input},
-                        ],
-                        temperature=0.3,
-                        max_tokens=400,
-                        response_format={"type": "json_object"},
+                text = await asyncio.wait_for(
+                    client.generate(
+                        messages=[{"role": "user", "content": user_input}],
+                        max_output_tokens=400,
                     ),
                     timeout=self.TIMEOUT_SEC,
                 )
-                text = response.choices[0].message.content or ""
                 obj = _parse_json_response(text)
                 if obj:
                     output = _json_to_uchu(obj, shortcuts)
@@ -235,10 +233,10 @@ class UchuProcessor:
                     return output
             except asyncio.TimeoutError:
                 last_error = asyncio.TimeoutError(f"attempt {attempt + 1}")
-                logger.warning("Uchu: Groq timeout attempt %d", attempt + 1)
+                logger.warning("Uchu: Gemini Flash-Lite timeout attempt %d", attempt + 1)
             except Exception as e:
                 last_error = e
-                logger.warning("Uchu: Groq error attempt %d: %s", attempt + 1, e)
+                logger.warning("Uchu: Gemini Flash-Lite error attempt %d: %s", attempt + 1, e)
 
         logger.error("Uchu: all attempts failed, using defaults. last_error=%s", last_error)
         return _default_output(user_input, shortcuts)

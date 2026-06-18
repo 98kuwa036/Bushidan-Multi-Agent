@@ -1,8 +1,8 @@
-"""utils/code_quality_loop.py — Groq × Gemini Flash コード品質ループ
+"""utils/code_quality_loop.py — Gemma4 Local × Gemini Flash コード品質ループ
 
 フロー:
-  1. Groq が生成したコードを Gemini Flash（参謀）がレビュー
-  2. 指摘あり → Groq が修正 → 再レビュー
+  1. draft_client が生成したコードを Gemini Flash（参謀）がレビュー
+  2. 指摘あり → draft_client が修正 → 再レビュー
   3. 「LGTM」or 指摘0件 → 完了
   4. 複雑なロジックエラー検知時 → 軍師（Command A）にエスカレーション
 
@@ -56,13 +56,18 @@ async def run_review_loop(
     code: str,
     requirements: str,
     language: str,
-    groq_client,
+    draft_client,
     review_client,          # Gemini Flash（参謀）
     escalation_client,      # Command A（軍師）
     max_iterations: int = 3,
 ) -> tuple[str, list[dict], int]:
     """
     コード品質ループを実行する。
+
+    Args:
+        draft_client: コード生成・修正用クライアント (Gemma4 Local 等)
+        review_client: レビュー用クライアント (Gemini Flash 等)
+        escalation_client: エスカレーション用クライアント (Command A 等)
 
     Returns:
         (最終コード, レビュー履歴, 実施ラウンド数)
@@ -116,8 +121,8 @@ async def run_review_loop(
             logger.info("⚠️ 最大ラウンド到達 — 現状コードで返却")
             break
 
-        # ── Groq で修正 ───────────────────────────────────────────────
-        fix_resp = await groq_client.generate(
+        # ── draft_client で修正 ───────────────────────────────────────
+        fix_resp = await draft_client.generate(
             messages=[{"role": "user", "content": (
                 f"以下のコードにレビュー指摘があります。修正してください。\n\n"
                 f"【元のコード】\n```{language}\n{current_code}\n```\n\n"

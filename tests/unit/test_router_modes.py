@@ -348,9 +348,9 @@ class TestMessagingCacheBypass:
         async def _fake_ainvoke(state, config=None):
             invoked.append(state.get("processing_mode"))
             return {
-                "response": "FRESH", "handled_by": "groq_qa", "agent_role": "seppou",
+                "response": "FRESH", "handled_by": "uketuke_qa", "agent_role": "seppou",
                 "execution_time": 0.1, "error": None, "mcp_tools_used": [],
-                "routed_to": "groq_qa", "complexity": "simple",
+                "routed_to": "uketuke_qa", "complexity": "simple",
                 "notion_page_id": None, "dialog_status": "completed",
                 "human_question": "", "requires_followup": False,
                 "is_action_task": False,

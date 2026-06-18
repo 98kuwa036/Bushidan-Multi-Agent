@@ -71,6 +71,55 @@ class SanboRole(BaseRole):
     emoji = "📋"
     default_handled_by = "sanbo_mcp"
 
+    # 大規模リポジトリで優先的に読む重要ファイルの順序
+    _PRIORITY_FILES = [
+        "README.md", "README.rst", "README.txt",
+        "pyproject.toml", "setup.py", "setup.cfg",
+        "package.json", "Cargo.toml", "go.mod",
+        "ARCHITECTURE.md", "CONTRIBUTING.md",
+        "src/main.py", "src/index.ts", "src/index.js",
+        "main.py", "app.py", "index.py", "server.py",
+    ]
+
+    async def _scan_repository_structure(self, repo_path: str) -> str:
+        """
+        大規模リポジトリの全体構造を段階的に把握する。
+        1. ルート直下のファイル/ディレクトリ一覧を取得
+        2. 重要ファイルを優先度順に最大8件読み込む
+        Returns: システムプロンプトに追記するコンテキスト文字列
+        """
+        import os
+        parts = [f"【リポジトリ構造: {repo_path}】"]
+
+        # Step1: ルート一覧 + 主要サブディレクトリ一覧
+        root_entries = await self._mcp_list_directory(repo_path)
+        if not root_entries:
+            return ""
+        parts.append("ルート:\n" + "\n".join(f"  {e}" for e in root_entries[:40]))
+
+        # Step2: 重要ファイルを優先読み込み
+        read_count = 0
+        for fname in self._PRIORITY_FILES:
+            fpath = os.path.join(repo_path, fname)
+            if os.path.exists(fpath):
+                content = await self._mcp_read_file(fpath, max_chars=2000)
+                if content:
+                    parts.append(f"\n--- {fname} ---\n{content}")
+                    read_count += 1
+            if read_count >= 5:
+                break
+
+        # Step3: src/ または lib/ があれば一覧も取得
+        for subdir in ("src", "lib", "app", "core"):
+            sub_path = os.path.join(repo_path, subdir)
+            if os.path.isdir(sub_path):
+                sub_entries = await self._mcp_list_directory(sub_path)
+                if sub_entries:
+                    parts.append(f"\n{subdir}/:\n" + "\n".join(f"  {e}" for e in sub_entries[:20]))
+                break
+
+        return "\n".join(parts)
+
     def _extract_project_name(self, msg: str) -> str:
         """メッセージからプロジェクト名（英数字・ハイフン）を抽出。なければ空文字。"""
         # 「XXXプロジェクト」「XXXアプリ」などを抽出
@@ -250,6 +299,23 @@ class SanboRole(BaseRole):
                     if issues_ctx:
                         system = self._append_mcp_context(system, f"GitHub Issues {owner}/{repo}", issues_ctx)
                         mcp_used.append("gh_list_issues")
+
+            # ── 大規模リポジトリ構造スキャン ────────────────────────────
+            # 「全体を把握」「リファクタ」「依存関係」などのキーワードで自動トリガー
+            _SCAN_KWS = [
+                "全体", "構造", "把握", "概要", "リファクタ", "リファクタリング",
+                "依存", "アーキテクチャ", "overview", "structure", "refactor", "codebase",
+            ]
+            if any(kw in msg for kw in _SCAN_KWS):
+                # ワークスペース or Bushidan-Multi-Agent 自身をスキャン
+                scan_target = (
+                    state.get("workspace_path") or _WORKSPACE_BASE
+                )
+                scan_ctx = await self._scan_repository_structure(scan_target)
+                if scan_ctx:
+                    system = self._append_mcp_context(system, "リポジトリ構造", scan_ctx)
+                    mcp_used.append("repo_scan")
+                    self.logger.info("🗡️ 参謀 リポジトリスキャン完了: %s", scan_target)
 
             # ── ファイル参照 ─────────────────────────────────────────────
             for ref in self._extract_file_refs(msg)[:3]:

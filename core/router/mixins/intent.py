@@ -126,7 +126,7 @@ class IntentMixin:
                     sem_route, sem_score = sr.route(message)
                     if sem_route and sem_score >= CONFIDENT_THRESHOLD:
                         _ROUTE_TO_ROLE = {
-                            "groq_qa":       "uketuke",
+                            "uketuke_qa":    "uketuke",
                             "yuhitsu_jp":    "onmitsu",
                             "gaiji_rag":     "gaiji",
                             "sanbo_mcp":     "sanbo",

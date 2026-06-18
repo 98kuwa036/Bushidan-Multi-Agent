@@ -29,7 +29,7 @@ def print_banner() -> None:
 ║    参謀    - Mistral Large 3        汎用コーディング           ║
 ║    外事    - Command A 03-2025      RAG・外部情報              ║
 ║    受付    - Gemini 3.1 Flash-Lite  フォールバック             ║
-║    斥候    - Llama 3.3 (Groq)       高速Q&A                   ║
+║    斥候    - Gemma4 Local            高速Q&A                   ║
 ║    検校    - Gemini 3.1 Flash-Image マルチモーダル             ║
 ║    右筆    - Gemini 3.1 Flash-Lite  日本語清書                 ║
 ║    隠密    - Gemma3 27B/Nemotron 3  機密・ローカル             ║

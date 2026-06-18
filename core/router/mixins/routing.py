@@ -35,7 +35,7 @@ class RoutingMixin:
             return {"notion_chunks": []}
 
     def _route_decision(self, state: "BushidanState") -> str:
-        """v18 Gatekeeper ルーティング — Goサインが出るまで受付(Groq)に強制固定"""
+        """v18 Gatekeeper ルーティング — Goサインが出るまで受付に強制固定"""
         is_ready = bool(state.get("is_ready_to_go", False))
         forced = state.get("forced_role")
         roadmap = state.get("roadmap")
@@ -77,7 +77,7 @@ class RoutingMixin:
         forced = state.get("forced_role")
 
         _valid = {
-            "groq_qa", "parallel_groq", "gaiji_rag", "sanbo_mcp",
+            "uketuke_qa", "parallel_uketuke", "gaiji_rag", "sanbo_mcp",
             "uketuke_default", "onmitsu_local", "kengyo_vision",
             "shogun_plan", "daigensui_audit",
         }
@@ -143,6 +143,29 @@ class RoutingMixin:
         intent_type  = intent.get("intent_type", "")
         required_caps = intent.get("required_capabilities", [])
 
+        # 複合タスク: 2ロール以上が必要と判定された場合 → parallel_multi_role
+        multi_roles = state.get("multi_role_tasks") or []
+        if not multi_roles:
+            # NodesMixin._detect_multi_role_tasks と同じロジックをルーティング時に適用
+            msg_for_detect = state.get("message", "")
+            _ROLE_KW_MAP = [
+                ({"天気","気象","為替","レート","ニュース","調べ","検索","search",
+                  "日銀","金利","情報収集","最新"}, "gaiji"),
+                ({"コード","実装","書いて","スクリプト","関数","git","commit",
+                  "push","PR","issue","デプロイ","code","implement"}, "sanbo"),
+                ({"設計","アーキテクチャ","判断","懸念","リスク","分析",
+                  "戦略","比較","architecture","design","analyze"}, "daigensui"),
+                ({"機密","プライバシー","個人情報","秘密","private","confidential"}, "onmitsu"),
+                ({"画像","写真","スクリーンショット","image","photo","screenshot"}, "kengyo"),
+            ]
+            for kw_set, role_key in _ROLE_KW_MAP:
+                if any(kw in msg_for_detect for kw in kw_set):
+                    if role_key not in multi_roles:
+                        multi_roles.append(role_key)
+        if len(multi_roles) >= 2:
+            logger.info("🔀 Route: multi_role (%s)", multi_roles)
+            return _check_health("multi_role")
+
         if intent_type == "rag" or (
             "rag" in required_caps and
             not any(c in required_caps for c in ["code", "tools", "web_search"])
@@ -176,7 +199,7 @@ class RoutingMixin:
             return _check_health("sanbo_mcp")
 
         if "code" in required_caps and complexity in ("simple", "low_medium"):
-            return _check_health("groq_qa")
+            return _check_health("uketuke_qa")
 
         if state.get("is_japanese_priority") and complexity in ("simple", "low_medium", "medium"):
             return _check_health("onmitsu_local")
@@ -184,7 +207,7 @@ class RoutingMixin:
         if complexity == "medium" or is_action:
             msg = state.get("message", "")
             if is_multi and msg.count("?") + msg.count("？") >= 2:
-                return _check_health("parallel_groq")
+                return _check_health("parallel_uketuke")
             # Goサイン後は参謀ではなく shogun が指揮を継続する
             if is_ready:
                 logger.info("🏯 Route: shogun_plan (Go済み + medium → shogun継続)")
@@ -197,8 +220,8 @@ class RoutingMixin:
         if is_simple or complexity == "simple":
             msg = state.get("message", "")
             if is_multi and msg.count("?") + msg.count("？") >= 2:
-                return _check_health("parallel_groq")
-            return _check_health("groq_qa")
+                return _check_health("parallel_uketuke")
+            return _check_health("uketuke_qa")
 
         logger.info("🏯 Route: uketuke_default (フォールバック)")
         return "uketuke_default"

@@ -199,13 +199,13 @@ async def startup_init_db_and_switch():
                     ]),
                     ("test-005", "モバイルアプリ設計", [
                         ("user", "モバイルアプリのアーキテクチャを教えてください", None, None),
-                        ("assistant", "推奨アーキテクチャ:\n- フロントエンド: React Native/Flutter\n- バックエンド: REST/GraphQL\n- 認証: OAuth 2.0", "uketuke", "Llama 3.3 70B (Groq)"),
+                        ("assistant", "推奨アーキテクチャ:\n- フロントエンド: React Native/Flutter\n- バックエンド: REST/GraphQL\n- 認証: OAuth 2.0", "uketuke", "Gemma4 Local → Gemini 3.1 Flash-Lite"),
                         ("user", "パフォーマンス最適化は？", None, None),
-                        ("assistant", "最適化方法:\n- バンドル削減\n- 画像最適化\n- 遅延ロード\n- APIバッチ化", "uketuke", "Llama 3.3 70B (Groq)"),
+                        ("assistant", "最適化方法:\n- バンドル削減\n- 画像最適化\n- 遅延ロード\n- APIバッチ化", "uketuke", "Gemma4 Local → Gemini 3.1 Flash-Lite"),
                     ]),
                     ("test-006", "クラウド移行", [
                         ("user", "AWS移行戦略を教えてください", None, None),
-                        ("assistant", "AWS移行フェーズ:\n1. 現状分析\n2. マイグレーション計画\n3. パイロット実行\n4. 本番移行\n\nサービス: EC2、RDS、CloudFront", "uketuke", "Llama 3.3 70B (Groq)"),
+                        ("assistant", "AWS移行フェーズ:\n1. 現状分析\n2. マイグレーション計画\n3. パイロット実行\n4. 本番移行\n\nサービス: EC2、RDS、CloudFront", "uketuke", "Gemma4 Local → Gemini 3.1 Flash-Lite"),
                     ]),
                 ]
 
@@ -502,7 +502,7 @@ async def models():
         {"key": "shogun",    "name": "🎌 将軍（計画立案・指揮）— Claude Sonnet 4.6",     "emoji": "🎌"},
         {"key": "sanbo",     "name": "📋 参謀（汎用処理・ツール実行・分析）— Gemini Flash", "emoji": "📋"},
         {"key": "gaiji",     "name": "🌏 外事（外部情報・RAG）— Command R",              "emoji": "🌏"},
-        {"key": "uketuke",   "name": "🚪 受付（Q&A・雑談・コード）— Llama 3.3 70B (Groq)", "emoji": "🚪"},
+        {"key": "uketuke",   "name": "🚪 受付（Q&A・雑談・コード）— Gemma4 Local", "emoji": "🚪"},
         {"key": "kengyo",    "name": "👁️ 検校（画像解析）— Gemini 3.1 Flash Image",    "emoji": "👁️"},
         {"key": "onmitsu",   "name": "🥷 隠密（機密・日本語処理）— Gemma4 Local",          "emoji": "🥷"},
     ]

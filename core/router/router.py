@@ -96,8 +96,9 @@ class LangGraphRouter(
         graph.add_node("analyze_intent",  self._analyze_intent)
         graph.add_node("notion_index",    self._notion_index_node)
 
-        graph.add_node("groq_qa",         self._exec_node("uketuke",   "groq_qa"))
-        graph.add_node("parallel_groq",   self._parallel_groq_node)
+        graph.add_node("uketuke_qa",        self._exec_node("uketuke",   "uketuke_qa"))
+        graph.add_node("parallel_uketuke", self._parallel_uketuke_node)
+        graph.add_node("multi_role",       self._parallel_multi_role_node)
         graph.add_node("gaiji_rag",       self._exec_node("gaiji",     "gaiji_rag"))
         graph.add_node("sanbo_mcp",       self._exec_node("sanbo",     "sanbo_mcp"))
         graph.add_node("uketuke_default", self._exec_node("uketuke",   "uketuke_default"))
@@ -122,8 +123,9 @@ class LangGraphRouter(
             "notion_index",
             self._route_decision,
             {
-                "groq_qa":          "groq_qa",
-                "parallel_groq":    "parallel_groq",
+                "uketuke_qa":       "uketuke_qa",
+                "parallel_uketuke": "parallel_uketuke",
+                "multi_role":       "multi_role",
                 "gaiji_rag":        "gaiji_rag",
                 "sanbo_mcp":        "sanbo_mcp",
                 "uketuke_default":  "uketuke_default",
@@ -137,7 +139,8 @@ class LangGraphRouter(
         graph.add_edge("batch_parallel", "check_followup")
 
         for node in ("gaiji_rag", "sanbo_mcp", "uketuke_default",
-                     "onmitsu_local", "kengyo_vision", "groq_qa", "parallel_groq"):
+                     "onmitsu_local", "kengyo_vision", "uketuke_qa",
+                     "parallel_uketuke", "multi_role"):
             graph.add_edge(node, "check_followup")
 
         graph.add_edge("shogun_plan", "execute_step")

@@ -83,7 +83,7 @@ ROLE_JA = {
 }
 
 ROLE_MODEL = {
-    'uketuke':   'Llama 3.3 70B (Groq)',
+    'uketuke':   'Gemma4 Local → Gemini 3.1 Flash-Lite',
     'gaiji':     'Cohere Command R',
     'gunshi':    'Cohere Command A',
     'sanbo':     'Gemini Flash Preview',

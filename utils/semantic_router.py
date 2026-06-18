@@ -48,7 +48,7 @@ def _load_role_descriptions() -> dict[str, list[str]]:
 
 # フォールバック用ハードコード（JSONが読めない場合のみ使用）
 _ROLE_DESCRIPTIONS_FALLBACK: dict[str, list[str]] = {
-    "groq_qa": [
+    "uketuke_qa": [
         "今日の天気は？ 今何時？ 計算して。 雑談したい。 クイズ出して。",
         "簡単な質問に答えて。 事実を教えて。 ちょっと聞きたいことがある。",
         "What time is it? Quick question. Tell me a fact. Let's chat.",

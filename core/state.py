@@ -100,7 +100,7 @@ class BushidanState(TypedDict):
     code_verified: bool             # 検証済みフラグ
     code_verify_result: str         # 実行結果サマリ ("ok" | "error: ..." | "skipped")
 
-    # ── v15: 並列 Groq (parallel_groq ノード) ────────────────────────
+    # ── v15: 並列受付 (parallel_uketuke ノード) ──────────────────────
     sub_queries: list               # 分割されたサブクエリリスト
     sub_responses: list             # 各サブクエリの応答リスト
 

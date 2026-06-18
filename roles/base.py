@@ -400,6 +400,45 @@ class BaseRole(ABC):
             self.logger.debug("スクリーンショット失敗 %s (スキップ): %s", url, e)
             return ""
 
+    async def _mcp_read_file(self, path: str, max_chars: int = 4000) -> str:
+        """ローカルファイルを読んで内容を返す。失敗時は空文字。"""
+        try:
+            result = await self._call_mcp_tool("read_file", {"path": path})
+            if not result:
+                return ""
+            text = result.content if hasattr(result, "content") else str(result)
+            return text[:max_chars]
+        except Exception:
+            # MCP 経由で失敗したら直接読む
+            try:
+                import aiofiles
+                async with aiofiles.open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    return (await f.read())[:max_chars]
+            except Exception as e:
+                self.logger.debug("read_file 失敗 (スキップ): %s — %s", path, e)
+                return ""
+
+    async def _mcp_list_directory(self, path: str) -> list[str]:
+        """ディレクトリ内ファイル一覧を返す（再帰しない）。失敗時は空リスト。"""
+        try:
+            result = await self._call_mcp_tool("list_directory", {"path": path})
+            if result:
+                text = result.content if hasattr(result, "content") else str(result)
+                return [line.strip() for line in text.splitlines() if line.strip()]
+        except Exception:
+            pass
+        try:
+            import os
+            entries = []
+            with os.scandir(path) as it:
+                for e in sorted(it, key=lambda x: (not x.is_dir(), x.name)):
+                    prefix = "[DIR] " if e.is_dir() else ""
+                    entries.append(f"{prefix}{e.name}")
+            return entries
+        except Exception as e:
+            self.logger.debug("list_directory 失敗 (スキップ): %s — %s", path, e)
+            return []
+
     def _extract_file_refs(self, message: str) -> list[str]:
         """メッセージからファイルパス候補を抽出"""
         import re

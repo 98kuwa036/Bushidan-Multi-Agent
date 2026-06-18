@@ -1,3 +1,5 @@
+# DEPRECATED: Groq API は廃止されました。このファイルは互換性のために残してあります。
+# 新規コードでは utils/local_model_manager.py (Gemma4) または utils/gemini3_client.py を使用してください。
 """
 Bushidan Multi-Agent System v18 - Groq Client
 

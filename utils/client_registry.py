@@ -57,34 +57,6 @@ class _CerebrasAdapter(BaseLLMClient):
         return await self._client.health_check()
 
 
-class _GroqAdapter(BaseLLMClient):
-    """GroqClient → BaseLLMClient"""
-
-    def __init__(self):
-        from utils.groq_client import GroqClient
-        api_key = os.environ.get("GROQ_API_KEY", "")
-        if not api_key or len(api_key) < 5:
-            raise RuntimeError("GROQ_API_KEY が未設定です (斥候用)")
-        self._client = GroqClient(api_key=api_key)
-
-    async def generate(self, messages, system="", max_tokens=1000, **kw):
-        if system:
-            full = [{"role": "system", "content": system}] + [
-                m for m in messages if m.get("role") != "system"
-            ]
-        else:
-            full = messages
-        # GroqClient は (messages, max_tokens, temperature, stream) のみ受け付ける
-        groq_kw = {}
-        if "temperature" in kw:
-            groq_kw["temperature"] = kw["temperature"]
-        return await self._client.generate(messages=full, max_tokens=max_tokens, **groq_kw)
-
-    async def health_check(self) -> bool:
-        return await self._client.health_check()
-
-
-
 class _MistralAdapter(BaseLLMClient):
     """MistralClient → BaseLLMClient（モデル指定可能）"""
 

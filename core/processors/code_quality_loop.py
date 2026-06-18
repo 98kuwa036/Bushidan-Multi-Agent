@@ -1,9 +1,9 @@
 """
 武士団 v18 — Phase 2 コード品質ループ (Actor-Critic)
-Groq (generate) → Haiku (review + fix) ループ
+Gemma4 Local (generate) → Haiku (review + fix) ループ
 
 最大 2 ラウンド:
-  Round 1: Groq 生成 → Haiku レビュー → PASS なら完了
+  Round 1: Gemma4 生成 → Haiku レビュー → PASS なら完了
   Round 2: Haiku フィックス → 最終出力
 """
 from __future__ import annotations
@@ -19,10 +19,9 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-_GROQ_MODEL = "llama-3.3-70b-versatile"
 _HAIKU_MODEL = "claude-haiku-4-5-20251001"
 _MAX_ROUNDS = 2
-_GROQ_TIMEOUT = 15.0
+_GEMMA_TIMEOUT = 30.0
 _HAIKU_TIMEOUT = 20.0
 _CODE_MAX_TOKENS = 2048
 
@@ -72,7 +71,7 @@ class CodeQualityResult:
     rounds: int
     issues_found: List[str] = field(default_factory=list)
     total_ms: float = 0.0
-    stage: str = ""  # e.g. "groq+haiku_fix" | "groq_pass" | "groq_only"
+    stage: str = ""  # e.g. "gemma4+haiku_fix" | "gemma4_pass" | "gemma4_only"
 
 
 def _extract_code_blocks(text: str) -> str:
@@ -108,22 +107,11 @@ def _parse_review_json(text: str) -> Optional[CodeReviewResult]:
 
 
 class CodeQualityLoop:
-    """Actor-Critic コード品質ループ"""
+    """Actor-Critic コード品質ループ (Gemma4 Local → Haiku)"""
 
     def __init__(self) -> None:
-        self._groq_key = os.getenv("GROQ_API_KEY", "")
         self._anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
-        self._groq = None
         self._anthropic = None
-
-    def _get_groq(self):
-        if self._groq is None and self._groq_key:
-            try:
-                from groq import AsyncGroq
-                self._groq = AsyncGroq(api_key=self._groq_key)
-            except ImportError:
-                logger.warning("groq not installed")
-        return self._groq
 
     def _get_anthropic(self):
         if self._anthropic is None and self._anthropic_key:
@@ -135,29 +123,20 @@ class CodeQualityLoop:
         return self._anthropic
 
     async def _generate_code(self, user_request: str, system_prompt: str) -> Optional[str]:
-        """Groq でコード生成"""
-        groq = self._get_groq()
-        if groq is None:
-            return None
+        """Gemma4 Local でコード生成"""
         try:
-            response = await asyncio.wait_for(
-                groq.chat.completions.create(
-                    model=_GROQ_MODEL,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_request},
-                    ],
-                    temperature=0.4,
-                    max_tokens=_CODE_MAX_TOKENS,
-                ),
-                timeout=_GROQ_TIMEOUT,
+            from utils.local_model_manager import LocalModelManager
+            manager = LocalModelManager.get()
+            prompt = f"{system_prompt}\n\nユーザー: {user_request}\n\nアシスタント:"
+            return await asyncio.wait_for(
+                manager.generate_gemma(prompt, max_tokens=_CODE_MAX_TOKENS),
+                timeout=_GEMMA_TIMEOUT,
             )
-            return response.choices[0].message.content or "" if response.choices else ""
         except asyncio.TimeoutError:
-            logger.warning("CodeLoop: Groq generate timeout")
+            logger.warning("CodeLoop: Gemma4 generate timeout")
             return None
         except Exception as e:
-            logger.warning("CodeLoop: Groq generate error: %s", e)
+            logger.warning("CodeLoop: Gemma4 generate error: %s", e)
             return None
 
     async def _review_code(
@@ -240,12 +219,12 @@ class CodeQualityLoop:
         all_issues: List[str] = []
         stages: List[str] = []
 
-        # Stage 1: Groq でコード生成
+        # Stage 1: Gemma4 Local でコード生成
         raw_code = await self._generate_code(user_request, sp)
 
         if raw_code is None:
-            # Groq 失敗 → Haiku で直接生成
-            logger.warning("CodeLoop: Groq failed, using Haiku directly")
+            # Gemma4 失敗 → Haiku で直接生成
+            logger.warning("CodeLoop: Gemma4 failed, using Haiku directly")
             stages.append("haiku_direct")
             anthropic = self._get_anthropic()
             if anthropic is None:
@@ -286,7 +265,7 @@ class CodeQualityLoop:
 
         original_code = _extract_code_blocks(raw_code) or raw_code
         current_code = original_code
-        stages.append("groq_generate")
+        stages.append("gemma4_generate")
 
         # ラウンドループ: レビュー → 修正
         for round_num in range(1, max_rounds + 1):

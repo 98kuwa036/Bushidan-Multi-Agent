@@ -2,7 +2,8 @@
 core/router/mixins/nodes.py — 実行・特殊ノード群 Mixin
 
 将軍プランニング (_shogun_plan_node, _execute_step_node, _step_decision)、
-大元帥監査 (_daigensui_audit_node)、並列受付 (_parallel_groq_node)、
+大元帥監査 (_daigensui_audit_node)、並列受付 (_parallel_uketuke_node)、
+複合タスク並列 (_parallel_multi_role_node)、
 バッチ並列 (_batch_parallel_node)、コード検証 (_sandbox_verify_node) を提供する。
 """
 import asyncio
@@ -354,24 +355,24 @@ class NodesMixin:
             return {"agent_role": "大元帥", "handled_by": "daigensui_audit",
                     "execution_time": time.time() - start, "error": str(e)}
 
-    async def _parallel_groq_node(self, state: "BushidanState") -> dict:
-        """メッセージを「?」で分割し各サブクエリを受付(Groq)で並列実行する。"""
+    async def _parallel_uketuke_node(self, state: "BushidanState") -> dict:
+        """メッセージを「?」で分割し各サブクエリを受付で並列実行する。"""
         message = state.get("message", "")
         start   = time.time()
         import re as _re
         sub_queries = [p.strip() for p in _re.split(r"[?？]\s*", message) if p.strip()]
 
         if len(sub_queries) <= 1:
-            exec_fn = self._exec_node("uketuke", "groq_qa")
+            exec_fn = self._exec_node("uketuke", "uketuke_qa")
             result  = await exec_fn(state)
-            result["routed_to"] = "parallel_groq"
+            result["routed_to"] = "parallel_uketuke"
             return result
 
         role = self._roles.get("uketuke")
         if not role:
-            return {"response": "⚠️ 受付ロール未初期化", "handled_by": "parallel_groq",
+            return {"response": "⚠️ 受付ロール未初期化", "handled_by": "parallel_uketuke",
                     "agent_role": "受付", "execution_time": 0.0, "error": "role not loaded",
-                    "routed_to": "parallel_groq", "mcp_tools_used": [],
+                    "routed_to": "parallel_uketuke", "mcp_tools_used": [],
                     "sub_queries": sub_queries, "sub_responses": []}
 
         async def _run_sub(q: str) -> str:
@@ -399,12 +400,100 @@ class NodesMixin:
         sub_responses = [r if isinstance(r, str) else f"❌ エラー: {r}" for r in sub_responses]
         merged  = "\n\n".join(f"**Q: {q}?**\n{a}" for q, a in zip(sub_queries, sub_responses))
         elapsed = time.time() - start
-        logger.info("✅ parallel_groq: %.1fs (%d サブクエリ)", elapsed, len(sub_queries))
+        logger.info("✅ parallel_uketuke: %.1fs (%d サブクエリ)", elapsed, len(sub_queries))
         return {
-            "response": merged, "handled_by": "parallel_groq", "agent_role": "受付 (並列)",
+            "response": merged, "handled_by": "parallel_uketuke", "agent_role": "受付 (並列)",
             "execution_time": elapsed, "error": None, "mcp_tools_used": [],
-            "requires_followup": False, "routed_to": "parallel_groq",
+            "requires_followup": False, "routed_to": "parallel_uketuke",
             "sub_queries": sub_queries, "sub_responses": sub_responses,
+            "conversation_history": [
+                {"role": "user",      "content": message},
+                {"role": "assistant", "content": merged},
+            ],
+        }
+
+    # ── 複合タスク: ロールごとのキーワードマッピング ──────────────────────────
+    # (検出キーワード集合, ロールキー) の順序付きリスト
+    _ROLE_KW_MAP = [
+        ({"天気", "気象", "為替", "レート", "ニュース", "調べ", "検索", "search",
+          "日銀", "金利", "情報収集", "最新"}, "gaiji"),
+        ({"コード", "実装", "書いて", "スクリプト", "関数", "git", "commit",
+          "push", "PR", "issue", "デプロイ", "code", "implement"}, "sanbo"),
+        ({"設計", "アーキテクチャ", "判断", "懸念", "リスク", "分析",
+          "戦略", "比較", "architecture", "design", "analyze"}, "daigensui"),
+        ({"機密", "プライバシー", "個人情報", "秘密", "private", "confidential"}, "onmitsu"),
+        ({"画像", "写真", "スクリーンショット", "image", "photo", "screenshot"}, "kengyo"),
+    ]
+
+    def _detect_multi_role_tasks(self, msg: str) -> list[str]:
+        """
+        メッセージから複数ロールが必要なタスクを検出し、担当ロールキーのリストを返す。
+        2ロール以上検出された場合のみ有効。
+        """
+        matched: list[str] = []
+        for kw_set, role_key in self._ROLE_KW_MAP:
+            if any(kw in msg for kw in kw_set):
+                if role_key not in matched:
+                    matched.append(role_key)
+        return matched if len(matched) >= 2 else []
+
+    async def _parallel_multi_role_node(self, state: "BushidanState") -> dict:
+        """
+        複数ロールを並列実行して結果を統合する（複合タスク対応）。
+        例: 「大阪の天気調べてPythonスクリプト書いて」→ gaiji + sanbo を並列実行
+        """
+        message = state.get("message", "")
+        start = time.time()
+
+        role_keys = state.get("multi_role_tasks", []) or self._detect_multi_role_tasks(message)
+        if not role_keys:
+            # フォールバック: uketuke に転送
+            exec_fn = self._exec_node("uketuke", "uketuke_qa")
+            return await exec_fn(state)
+
+        async def _run_role(role_key: str) -> tuple[str, str]:
+            role = self._roles.get(role_key)
+            if not role:
+                return role_key, f"⚠️ {role_key} ロール未初期化"
+            try:
+                sub_state = {**state, "mcp_tools_used": [], "sub_queries": [], "sub_responses": []}
+                result = await asyncio.wait_for(role.execute(sub_state), timeout=60)
+                return role_key, result.response
+            except asyncio.TimeoutError:
+                return role_key, f"⚠️ {role_key}: タイムアウト (60s)"
+            except Exception as e:
+                return role_key, f"❌ {role_key}: {e}"
+
+        results = await asyncio.gather(*[_run_role(k) for k in role_keys], return_exceptions=True)
+
+        _ROLE_LABELS = {
+            "gaiji":     "外事（情報収集）",
+            "sanbo":     "参謀（ツール実行）",
+            "daigensui": "大元帥（戦略判断）",
+            "onmitsu":   "隠密（機密処理）",
+            "kengyo":    "検校（画像解析）",
+            "uketuke":   "受付（Q&A）",
+        }
+        sections = []
+        for item in results:
+            if isinstance(item, BaseException):
+                continue
+            role_key, response = item
+            label = _ROLE_LABELS.get(role_key, role_key)
+            sections.append(f"## {label}\n{response}")
+
+        merged = "\n\n---\n\n".join(sections)
+        elapsed = time.time() - start
+        logger.info("✅ parallel_multi_role: %.1fs (%s)", elapsed, role_keys)
+        return {
+            "response": merged,
+            "handled_by": "multi_role",
+            "agent_role": f"複合 ({'+'.join(role_keys)})",
+            "execution_time": elapsed,
+            "error": None,
+            "mcp_tools_used": ["multi_role_parallel"],
+            "requires_followup": False,
+            "routed_to": "multi_role",
             "conversation_history": [
                 {"role": "user",      "content": message},
                 {"role": "assistant", "content": merged},
